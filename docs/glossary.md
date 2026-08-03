@@ -1,3 +1,5 @@
 # Glossary
 
 Project terminology.
+
+## Product
