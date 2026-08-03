@@ -1,1 +1,3 @@
+# Glossary
 
+Project terminology.
