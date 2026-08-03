@@ -1,2 +1,7 @@
-# creastrix-platform
-AI Design &amp; Manufacturing Platform
+# Creastrix
+
+> AI Design & Manufacturing Platform
+
+Status: Planning
+
+Version: 0.1.0
