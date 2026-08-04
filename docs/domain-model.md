@@ -14,6 +14,8 @@ Project is the central business entity of Creastrix.
 
 - Name
 
+- Description
+
 - Slug
 
 - Owner
