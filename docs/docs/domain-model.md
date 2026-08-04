@@ -21,3 +21,11 @@ Project is the central business entity of Creastrix.
 - Created At
 
 - Updated At
+
+### Ownership
+
+A project belongs to an owner.
+
+An owner can be:
+- User
+- Organization
