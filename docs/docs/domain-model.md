@@ -29,3 +29,5 @@ A project belongs to an owner.
 An owner can be:
 - User
 - Organization
+
+- ## Social Interaction
