@@ -11,19 +11,12 @@ Project is the central business entity of Creastrix.
 ### Identity
 
 - ID
-
 - Name
-
 - Description
-
 - Slug
-
 - Owner
-
 - Status
-
 - Created At
-
 - Updated At
 
 ### Status
@@ -31,10 +24,10 @@ Project is the central business entity of Creastrix.
 A project can have one of the following statuses:
 
 - Draft
-  
 - Published
-  
 - Archived
+
+### Capabilities
 
 ### Ownership
 
