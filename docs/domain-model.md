@@ -30,6 +30,7 @@ A project can have one of the following statuses:
 ### Capabilities
 
 - Publish
+- Archive
 
 ### Ownership
 
