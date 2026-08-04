@@ -29,6 +29,8 @@ A project can have one of the following statuses:
 
 ### Capabilities
 
+- Publish
+
 ### Ownership
 
 A project belongs to an owner.
