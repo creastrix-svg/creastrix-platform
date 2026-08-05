@@ -1,1 +1,53 @@
+# User
 
+## Purpose
+
+A User represents a person who can authenticate and interact with the Creastrix platform.
+
+A User is the identity of a real person. Business capabilities such as designing products or manufacturing items are provided through dedicated profiles.
+
+## Responsibilities
+
+A User is responsible for:
+
+- authentication;
+- account security;
+- platform access;
+- owning Workspaces;
+- participating in Organizations;
+- being associated with additional platform profiles.
+
+## Relationships
+
+A User may:
+
+- own zero or more Workspaces;
+- be a member of zero or more Workspaces;
+- belong to zero or more Organizations;
+- be associated with zero or one Designer Profile;
+- be associated with zero or one Manufacturer Profile.
+
+## Business Rules
+
+- A User may create Projects only within Workspaces where the User has sufficient permissions.
+- A User may act under a personal account or on behalf of an Organization, depending on the current context.
+- A User may publish Listings only through an associated verified Designer Profile.
+- A User may accept manufacturing orders only through an associated verified Manufacturer Profile.
+
+## Invariants
+
+- A User always has exactly one identity.
+- A User may own multiple Workspaces.
+- A User may belong to multiple Organizations.
+- A User cannot have more than one Designer Profile.
+- A User cannot have more than one Manufacturer Profile.
+- A User cannot exist without exactly one User Profile.
+
+## Notes
+
+Authentication and identity data belong to User, while personal information belongs to User Profile.
+
+---
+
+Status: APPROVED
+Version: 1.0
