@@ -4,7 +4,7 @@
 
 An Organization Membership represents the relationship between a User and an Organization.
 
-It defines the User's participation in an Organization, including the assigned role and membership status.
+It represents the User's participation in an Organization, including the assigned role and membership status.
 
 An Organization Membership exists independently from the User's memberships in Workspaces.
 
@@ -29,8 +29,6 @@ An Organization Membership:
 
 - A User may have multiple Organization Memberships.
 - An Organization may have multiple Organization Memberships.
-- Every Organization Membership has exactly one role.
-- Every Organization Membership has exactly one status.
 - A User cannot have more than one Organization Membership within the same Organization.
 
 ## Invariants
@@ -47,8 +45,9 @@ Organization Membership represents the business relationship between a User and 
 
 Roles and membership statuses are currently implemented as enumerations and may evolve into dedicated domain concepts in future versions.
 
+A User's permissions within an Organization are determined by the assigned organizational role.
+
 ---
 
-Status: DRAFT
-
-Version: 0.1
+Status: APPROVED
+Version: 1.0
