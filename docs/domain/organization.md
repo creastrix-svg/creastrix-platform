@@ -16,7 +16,7 @@ An Organization is responsible for:
 
 - representing a shared business identity;
 - owning business assets on the platform;
-- managing its members;
+- managing Organization Memberships;
 - collaborating through shared Workspaces;
 - participating in commercial activities through dedicated platform profiles.
 
