@@ -13,8 +13,8 @@ An Organization Membership exists independently from the User's memberships in W
 An Organization Membership is responsible for:
 
 - linking a User to an Organization;
-- defining the User's role within the Organization;
-- tracking the membership status.
+- storing the User's role within the Organization;
+- storing the membership status.
 
 ## Relationships
 
@@ -31,6 +31,7 @@ An Organization Membership:
 - An Organization may have multiple Organization Memberships.
 - Every Organization Membership has exactly one role.
 - Every Organization Membership has exactly one status.
+- A User cannot have more than one Organization Membership within the same Organization.
 
 ## Invariants
 
