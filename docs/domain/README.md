@@ -2,6 +2,8 @@
 
 Every domain entity must follow the structure defined in `entity-template.md`.
 
+Approved entities represent the current validated domain model.
+
 Current entities:
 
 - User
