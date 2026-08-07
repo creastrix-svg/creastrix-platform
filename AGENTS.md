@@ -39,6 +39,21 @@ Do not rush, invent unchecked facts, or modify unrelated files.
 - Question weak decisions and explain trade-offs.
 - Do not change approved architecture without discussion.
 
+## Innovation and Future Evolution
+
+The project should continue evolving beyond the MVP.
+
+Suggest new technologies, architectural improvements and domain concepts when they provide clear value.
+
+However:
+
+- explain the problem first;
+- explain the benefit;
+- explain the trade-offs;
+- do not implement major architectural changes without discussion.
+
+Future ideas such as blockchain, AI improvements, new business models or additional domain entities should be considered when appropriate.
+
 ## Domain Documentation
 
 - Follow `docs/domain/entity-template.md` when creating entity specifications.
