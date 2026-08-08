@@ -51,6 +51,9 @@ A Workspace Membership:
 - Organization Membership does not automatically create a Workspace Membership, assign a Workspace role, grant Workspace permission scopes, or provide Workspace resource access.
 - Workspace Membership roles and scope grants do not provide Workspace ownership or commercial rights.
 - A Workspace Membership does not replace Organization Membership.
+- If a Workspace is User-owned, the Workspace Membership belonging to the User owner cannot be removed, suspended, or changed from ADMIN while ownership remains unchanged in MVP.
+- Protection of the User owner's Workspace Membership applies independently from the last-ACTIVE-ADMIN rule.
+- An Organization-owned Workspace has no equivalent permanent individual-owner Membership; ADMIN Users may change as long as the Workspace retains at least one ACTIVE ADMIN.
 - The last ACTIVE Workspace Membership with the role ADMIN cannot be removed, suspended, or assigned another role until another active administrator exists.
 
 ## Invariants
@@ -67,6 +70,7 @@ A Workspace Membership:
 - An ACTIVE VIEWER never has write access.
 - Effective access for an EDITOR or VIEWER never extends outside explicitly granted scopes.
 - Introducing a future permission scope never expands the effective access of existing EDITOR or VIEWER Memberships automatically.
+- The User owner of a User-owned Workspace always has an ACTIVE ADMIN Workspace Membership.
 - Workspace Membership roles and permission scopes never change Workspace ownership or the business rights holder for Projects.
 - Organization Membership alone never grants a Workspace role, Workspace permission scope, or Workspace resource access.
 
@@ -88,4 +92,4 @@ The policy for external Users in Organization-owned Workspaces remains future wo
 
 Status: DRAFT
 
-Version: 0.2
+Version: 0.3

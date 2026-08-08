@@ -33,7 +33,10 @@ A Workspace:
 - A Workspace owner cannot be changed in MVP.
 - A Workspace cannot exist without an owner.
 - When a User-owned Workspace is created, the owner receives an ACTIVE Workspace Membership with the role ADMIN.
+- In a User-owned Workspace, the User owner must remain an ACTIVE ADMIN for as long as the User remains the Workspace owner in MVP.
+- The User owner's Workspace Membership cannot be removed, suspended, or changed from ADMIN through normal Workspace Membership administration while ownership remains unchanged.
 - When an Organization-owned Workspace is created, the User creating the Workspace on behalf of the Organization receives an ACTIVE Workspace Membership with the role ADMIN.
+- In an Organization-owned Workspace, individual ADMIN Users may be replaced as long as the Workspace retains at least one ACTIVE Workspace Membership with the role ADMIN.
 - A Workspace cannot be left without an ACTIVE administrator.
 - Access to Workspace resources is managed through scoped Workspace Memberships.
 - Effective Workspace authorization is determined by Membership status, Workspace role, the relevant permission scope, and rules of the requested domain operation.
@@ -52,6 +55,7 @@ A Workspace:
 - A Workspace always has exactly one owner.
 - A Workspace owner is always either exactly one User or exactly one Organization.
 - A Workspace owner remains unchanged throughout the MVP lifecycle of the Workspace.
+- A User-owned Workspace always has its owner as an ACTIVE ADMIN.
 - A Workspace always has at least one ACTIVE administrator.
 - Every Workspace Membership of a Workspace belongs to that Workspace only.
 - Workspace Membership roles and permission scopes do not change the owner of the Workspace or the business rights holder for its Projects.
@@ -75,4 +79,4 @@ The zero-or-more relationship describes the Workspace Membership collection inde
 
 Status: DRAFT
 
-Version: 0.2
+Version: 0.3

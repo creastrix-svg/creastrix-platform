@@ -49,6 +49,7 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - Workspace belongs to exactly one User or Organization.
 - Workspace remains a common operational and access boundary and is not limited to design work.
 - Workspace ownership and Workspace access are separate concepts.
+- In a User-owned Workspace, the User owner remains an ACTIVE ADMIN in MVP and cannot lose administrative access through normal Workspace membership changes.
 - Workspace Membership authorization combines membership status, Workspace role, the relevant permission scope, and rules of the requested domain operation.
 - An ACTIVE ADMIN has full Workspace access in MVP, while EDITOR and VIEWER operate only within explicitly granted scopes.
 - PROJECTS is the currently defined permission scope for Project and Revision work.
