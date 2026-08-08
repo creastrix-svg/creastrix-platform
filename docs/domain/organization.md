@@ -8,14 +8,16 @@ An Organization allows multiple Users to collaborate under a shared business ide
 
 An Organization acts as a single business participant on the Creastrix platform, regardless of its legal form.
 
-Business capabilities such as designing products, manufacturing items, owning Workspaces and Projects, and receiving payments are provided through dedicated platform profiles.
+An Organization may own Workspaces and thereby hold business rights to Projects in those Workspaces.
+
+Commercial capabilities such as publishing designs, manufacturing items, and participating in marketplace payments are exercised through dedicated platform profiles.
 
 ## Responsibilities
 
 An Organization is responsible for:
 
 - representing a shared business identity;
-- owning Workspaces and Projects;
+- owning Workspaces and holding business rights to Projects through those Workspaces;
 - managing Organization Memberships;
 - collaborating through shared Workspaces;
 - participating in commercial activities through dedicated platform profiles.
@@ -28,7 +30,7 @@ An Organization may:
 - have zero or more Organization Memberships;
 - be associated with zero or one Designer Profile;
 - be associated with zero or one Manufacturer Profile;
-- own zero or more Projects.
+- be the Effective Business Rights Holder for zero or more Projects through owned Workspaces.
 
 ## Business Rules
 
@@ -48,7 +50,9 @@ An Organization is a first-class business participant of the platform and may ow
 
 Business capabilities are exercised through dedicated platform profiles rather than directly by the Organization.
 
-----
+Project business rights are derived from Workspace ownership in MVP; an Organization does not act as a separate direct Project Business Owner.
+
+---
 
 Status: APPROVED
-Version: 1.0
+Version: 1.1
