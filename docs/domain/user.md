@@ -31,8 +31,9 @@ A User may:
 
 - A User may create Projects only within Workspaces where the User has sufficient permissions.
 - A User may act under a personal account or on behalf of an Organization, depending on the current context.
-- A User may publish Listings only through an associated verified Designer Profile.
-- A User may accept manufacturing orders only through an associated verified Manufacturer Profile.
+- A User may publish a Listing targeting a FINALIZED Revision only when acting in a context backed by an associated verified Designer Profile.
+- Eligibility to publish Listings for other commercial source types is defined by the corresponding domain rules.
+- A User may accept manufacturing orders only when acting in a context backed by an associated verified Manufacturer Profile.
 
 ## Invariants
 
@@ -50,4 +51,4 @@ Authentication and identity data belong to User, while personal information belo
 ---
 
 Status: APPROVED
-Version: 1.0
+Version: 1.1
