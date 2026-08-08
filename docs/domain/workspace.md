@@ -53,6 +53,7 @@ A Workspace:
 - The ownership rule applies only to Projects created or transferred into the Workspace under platform rules and does not apply automatically to all content stored in the Workspace.
 - The Workspace owner provides the platform-recognized commercial context in which Ready-Made Products in that Workspace are managed.
 - The commercial context of a Ready-Made Product does not establish legal title, physical custody, seller-of-record, manufacturer, supplier, importer, brand ownership, or intellectual-property ownership.
+- The Workspace context for Listing authorization is derived from the Listing's immutable commercial source; Listing has no separate Workspace ownership relationship in MVP.
 
 ## Invariants
 
@@ -71,7 +72,7 @@ Every Project belongs to exactly one Workspace and does not have a separate Busi
 
 Project Created By records origin and history. It does not automatically provide ownership, publication rights, or royalty rights.
 
-PROJECTS is the permission scope for the Project and Revision domain area. READY_MADE_PRODUCTS is the permission scope for Ready-Made Product management, including simple MVP available quantity. The scopes are independent.
+PROJECTS is the permission scope for the Project and Revision domain area. READY_MADE_PRODUCTS is the permission scope for Ready-Made Product management, including simple MVP available quantity. LISTINGS is the permission scope for Listing commercial management. The scopes are independent.
 
 A Workspace is not conceptually limited to design work and does not require DESIGN, STORE, or WAREHOUSE Workspace types merely to separate authorization. A User or Organization may still create multiple Workspaces when separate operational contexts are useful.
 
@@ -83,4 +84,4 @@ The zero-or-more relationship describes the Workspace Membership collection inde
 
 Status: DRAFT
 
-Version: 0.4
+Version: 0.5

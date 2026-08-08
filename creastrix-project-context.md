@@ -32,6 +32,7 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - Ready-Made Product
 - Project
 - Revision
+- Listing
 
 ## Domain Principles
 
@@ -55,7 +56,8 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - An ACTIVE ADMIN has full Workspace access in MVP, while EDITOR and VIEWER operate only within explicitly granted scopes.
 - PROJECTS is the Workspace permission scope for Project and Revision work.
 - READY_MADE_PRODUCTS is the Workspace permission scope for Ready-Made Product management, including simple MVP available quantity.
-- PROJECTS does not grant Ready-Made Product access, and READY_MADE_PRODUCTS does not grant Project or Revision access.
+- LISTINGS is the Workspace permission scope for Listing commercial management.
+- PROJECTS, READY_MADE_PRODUCTS, and LISTINGS are independent scopes and do not grant access to one another.
 - Future domain areas may introduce additional permission scopes without automatically expanding existing EDITOR or VIEWER access.
 - Organization Membership does not automatically grant Workspace access or Workspace permission scopes.
 - Scoped Workspace permissions never grant ownership or business rights.
@@ -73,8 +75,18 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - Revision itself carries the DRAFT and FINALIZED lifecycle; no separate Project Draft entity exists.
 - Multiple DRAFT Revisions may be developed in parallel.
 - A FINALIZED Revision has immutable product-defining content.
-- A future Listing has exactly one commercial source: a FINALIZED Revision for Project-based commerce or a Ready-Made Product for ready-made commerce, never both.
-- Listing cardinality per commercial source remains for the Listing specification.
+- Listing represents the commercial and public offer of exactly one immutable commercial source: a FINALIZED Revision or a Ready-Made Product, never both.
+- Listing Workspace context is derived from its commercial source, and source write permission is not required merely to manage Listing commercial data.
+- LISTINGS authorization and business eligibility are separate requirements.
+- A source may have multiple Listings over time but no more than one ACTIVE Listing at the same time in MVP.
+- Listing has the DRAFT, ACTIVE, PAUSED, and ARCHIVED lifecycle; ACTIVE does not guarantee effective orderability.
+- Source archive or loss of required business eligibility makes an existing Listing non-orderable without changing Listing lifecycle automatically.
+- A Project cannot move between Workspaces while a Listing targeting any of its Revisions is ACTIVE.
+- A Ready-Made Product Listing uses a fixed unit sale price, while a Revision-based Listing may use base or display pricing before the final Order Item price is determined.
+- Every Listing uses one currency in MVP.
+- A Revision-based Listing requires explicit applicable royalty terms before activation; a Ready-Made Product Listing does not create designer royalty automatically.
+- Listing is manufacturer-independent; a Manufacturer for made-to-order commerce is selected later for Order Item.
+- Seller-of-record remains future work, and historical Order Item snapshots are never rewritten by later Listing changes.
 - Personalization remains separate from Revision.
 - Royalty rules originate from Listing, and historical commercial context is snapshotted later in Order Item.
 
@@ -97,7 +109,7 @@ The following specifications are DRAFT and are not yet part of the validated dom
 
 ## Next Steps
 
-1. Review and finalize the Ready-Made Product draft.
-2. Design Listing with exactly one commercial source supporting either a FINALIZED Revision or a Ready-Made Product.
-3. Define the Listing-related permission scope and publication and seller-eligibility rules.
-4. Continue with Order, Order Item, and distinct fulfillment paths.
+1. Review and finalize the Listing draft.
+2. Model the Personalization boundary where needed for Revision-based Listings.
+3. Model Order and Order Item with distinct made-to-order and ready-made fulfillment paths.
+4. Continue with Shipment, Payment, Payment Allocation, and Royalty as their dependencies become clear.

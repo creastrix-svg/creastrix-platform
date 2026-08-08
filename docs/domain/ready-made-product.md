@@ -23,7 +23,7 @@ A Ready-Made Product:
 
 - belongs to exactly one Workspace;
 - has exactly one immutable Created By User;
-- may be targeted by zero or more future Listings;
+- may be targeted by zero or more Listings over time;
 - may be referenced by Audit Log events in the future.
 
 ## Business Rules
@@ -38,7 +38,10 @@ A Ready-Made Product:
 - An ACTIVE Ready-Made Product is operational and may participate in future commerce subject to Listing and other domain rules, but ACTIVE does not mean published or in stock.
 - An ARCHIVED Ready-Made Product is not intended for new commercial use, retains required historical references, and may return to ACTIVE.
 - A Ready-Made Product exists independently from Listing, may exist without a Listing, and is never published directly.
-- A Ready-Made Product represents product identity and product-defining physical characteristics, while public commercial offer and presentation concerns belong to future Listing.
+- A new Listing may be created for a Ready-Made Product only while the product is ACTIVE, and no more than one Listing for that product may be ACTIVE at the same time in MVP.
+- If a Ready-Made Product becomes ARCHIVED, existing Listing lifecycle status does not change automatically, but the Listing becomes non-orderable. Orderability may recover after the product returns to ACTIVE when all other conditions hold.
+- Available quantity changes never change Listing lifecycle.
+- A Ready-Made Product represents product identity and product-defining physical characteristics, while public commercial offer and presentation concerns belong to Listing.
 - One independently stocked physical configuration is represented by one Ready-Made Product in MVP.
 - Available quantity represents whole physical units currently available for allocation from the single MVP stock pool.
 - Available quantity does not determine lifecycle; an ACTIVE Ready-Made Product may have quantity zero, and an ARCHIVED Ready-Made Product may retain quantity greater than zero.
@@ -68,7 +71,7 @@ A Ready-Made Product:
 
 The simple available quantity is an intentional MVP model. Reservation, release, payment failure, cancellation, returns, restocking, manual adjustment, procurement, and technical concurrency mechanisms remain future Order or Inventory concerns. Quantity may later move into an Inventory domain without changing Ready-Made Product identity.
 
-Future Listing must have exactly one commercial source: either a FINALIZED Revision or a Ready-Made Product, never both. The number of Listings per Ready-Made Product and the behavior of active Listings when a product is archived remain for the Listing specification.
+Every Listing has exactly one immutable commercial source: either a FINALIZED Revision or a Ready-Made Product, never both. A source may have multiple Listings over time, but the Listing specification permits no more than one ACTIVE Listing for the same source in MVP.
 
 Canonical or reference product media versus Listing promotional media remains to be designed. SKU uniqueness, brand and model metadata, physical shipping data, shipping promises, and offer identifiers also remain future boundaries.
 
@@ -86,4 +89,4 @@ Significant creation, lifecycle, and quantity events may later be recorded throu
 
 Status: DRAFT
 
-Version: 0.1
+Version: 0.2

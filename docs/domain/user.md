@@ -31,6 +31,8 @@ A User may:
 
 - A User may create Projects only within Workspaces where the User has sufficient permissions.
 - A User may create or manage Ready-Made Products only within Workspaces where the User has the effective authorization required for READY_MADE_PRODUCTS operations.
+- A User may create or manage Listings only when the User has effective LISTINGS authorization in the Workspace context derived from the Listing's commercial source.
+- LISTINGS authorization does not replace the business eligibility required to activate or publish a Listing.
 - A User may act under a personal account or on behalf of an Organization, depending on the current context.
 - A User may publish a Listing targeting a FINALIZED Revision only when acting in a context backed by an associated verified Designer Profile.
 - Eligibility to publish Listings for other commercial source types is defined by the corresponding domain rules.
@@ -52,4 +54,4 @@ Authentication and identity data belong to User, while personal information belo
 ---
 
 Status: APPROVED
-Version: 1.2
+Version: 1.3

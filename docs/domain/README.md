@@ -15,11 +15,12 @@ Approved entities represent the current validated domain model.
 
 These entities have active draft specifications and are not yet part of the approved domain model.
 
-- [Workspace](workspace.md) — DRAFT 0.4
-- [Workspace Membership](workspace-membership.md) — DRAFT 0.4
-- [Ready-Made Product](ready-made-product.md) — DRAFT 0.1
-- [Project](project.md) — DRAFT 0.2
+- [Workspace](workspace.md) — DRAFT 0.5
+- [Workspace Membership](workspace-membership.md) — DRAFT 0.5
+- [Ready-Made Product](ready-made-product.md) — DRAFT 0.2
+- [Project](project.md) — DRAFT 0.3
 - [Revision](revision.md) — DRAFT 0.2
+- [Listing](listing.md) — DRAFT 0.1
 
 ## Planned entities
 
@@ -28,7 +29,6 @@ These entities represent planned domain areas and are not yet approved specifica
 - Organization Profile
 - Designer Profile
 - Manufacturer Profile
-- Listing
 - Personalization
 - Order
 - Order Item
