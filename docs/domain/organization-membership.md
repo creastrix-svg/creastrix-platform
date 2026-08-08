@@ -30,6 +30,8 @@ An Organization Membership:
 - A User may have multiple Organization Memberships.
 - An Organization may have multiple Organization Memberships.
 - A User cannot have more than one Organization Membership within the same Organization.
+- An Organization Membership role determines permissions only within the Organization context.
+- Organization Membership does not automatically create a Workspace Membership, assign a Workspace role, grant any Workspace permission scope, or provide Workspace resource access.
 
 ## Invariants
 
@@ -38,6 +40,7 @@ An Organization Membership:
 - Every Organization Membership always has exactly one role.
 - Every Organization Membership always has exactly one status.
 - An Organization Membership cannot exist without both its User and its Organization.
+- Organization Membership alone never grants a Workspace role, Workspace permission scope, or Workspace resource access.
 
 ## Notes
 
@@ -47,7 +50,9 @@ Roles and membership statuses are currently implemented as enumerations and may 
 
 A User's permissions within an Organization are determined by the assigned organizational role.
 
+Workspace access is governed independently by Workspace Membership status, role, and permission scopes.
+
 ---
 
 Status: APPROVED
-Version: 1.0
+Version: 1.1

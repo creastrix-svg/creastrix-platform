@@ -31,7 +31,7 @@ A Revision:
 
 - A Revision is created in the DRAFT state.
 - When a Project is created, its first DRAFT Revision is created together with it.
-- A DRAFT Revision is mutable and may be repeatedly saved or autosaved by Users with sufficient Workspace permissions.
+- A DRAFT Revision is mutable and may be repeatedly saved or autosaved by Users with effective write authorization for the PROJECTS scope.
 - Normal persistence or autosave does not finalize a Revision.
 - A Project may contain multiple DRAFT Revisions and multiple FINALIZED Revisions simultaneously and does not have one mandatory current Revision.
 - Finalization is an explicit transition from DRAFT to FINALIZED; no reverse transition exists in MVP.
@@ -41,8 +41,8 @@ A Revision:
 - A DRAFT Revision may be created without a Base Revision or may reference one Base Revision for provenance.
 - A Base Revision does not establish a mandatory linear revision chain, and multiple-base merge is not supported in MVP.
 - Created By identifies only the User who created the Revision record or work variant in Creastrix.
-- Created By and participation in editing do not determine creative authorship, ownership, business rights, royalty rights, or publication authority within the Creastrix domain model.
-- Revision creation, editing, and finalization are subject to the lifecycle of the parent Project and sufficient Workspace permissions. In particular, an ARCHIVED Project prevents editing or finalizing its DRAFT Revisions, and a DELETED Project prevents Revision development.
+- Created By, participation in editing, and PROJECTS-scope authorization do not determine creative authorship, ownership, business rights, royalty rights, or publication authority within the Creastrix domain model.
+- Revision creation and finalization require effective PROJECTS-scope authorization appropriate to the operation and remain subject to the lifecycle of the parent Project. In particular, having the scope does not permit editing or finalizing DRAFT Revisions of an ARCHIVED Project or developing Revisions of a DELETED Project.
 - A new Revision is appropriate when the product remains the same concept while its product-defining technical or design variant changes, including construction, geometry, assembly method, engineering dimensions, manufacturing files, material thickness requiring different production files, or a creator-made public decorative or design variant.
 - A new Project is required when the core identity, purpose, or essential function changes enough that the result is no longer the same product concept.
 - Buyer-specific customization remains Personalization and does not become a public Revision automatically.
@@ -77,10 +77,12 @@ Project itself is never published directly. Multiple FINALIZED Revisions of the 
 
 Manufacturing requirements and technology relationships will be modeled separately in future domain specifications. Revision has no Technology relationship in MVP, and this specification does not decide whether manufacturing requirements belong to Revision or a future Manufacturing Specification.
 
-The exact Workspace permission matrix, DRAFT abandonment or discard behavior, additional DRAFT statuses, multiple-Revision merge, contributor or co-author modeling, manufacturing validation or approval, and detailed retention policy remain unresolved.
+PROJECTS is the permission scope for the Project and Revision domain area. Exact operation-level authorization may be refined where necessary, while Project and Revision lifecycle rules and invariants remain authoritative even when the scope is available.
+
+DRAFT abandonment or discard behavior, additional DRAFT statuses, multiple-Revision merge, contributor or co-author modeling, manufacturing validation or approval, and detailed retention policy remain unresolved.
 
 ---
 
 Status: DRAFT
 
-Version: 0.1
+Version: 0.2

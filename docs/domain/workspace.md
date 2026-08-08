@@ -2,18 +2,19 @@
 
 ## Purpose
 
-A Workspace represents an operational and commercial context for collaborative work on the Creastrix platform.
+A Workspace represents an operational, ownership, and authorization boundary for collaborative work on the Creastrix platform.
 
-A Workspace groups Projects under a single owner while separating ownership from participant access.
+A Workspace may support multiple domain access areas under a single owner while separating ownership from participant authorization. Projects are the currently specified resource relationship.
 
 ## Responsibilities
 
 A Workspace is responsible for:
 
-- representing the operational context in which collaborative work takes place;
+- representing a common operational and authorization context for collaborative work;
 - grouping Projects under a single owner;
 - identifying the platform-recognized business rights holder for Projects inside the Workspace in MVP;
-- managing participant access through Workspace Memberships;
+- managing participant access through scoped Workspace Membership authorization;
+- supporting distinct domain access areas without mixing participant authorization with ownership;
 - ensuring that the Workspace remains actively administered.
 
 ## Relationships
@@ -23,7 +24,7 @@ A Workspace:
 - belongs to exactly one owner, which is either one User or one Organization;
 - contains zero or more Projects;
 - has zero or more Workspace Memberships;
-- is administered by at least one active Workspace Membership with the role ADMIN;
+- is administered by at least one ACTIVE Workspace Membership with the role ADMIN;
 - exists independently from Organization Memberships.
 
 ## Business Rules
@@ -31,10 +32,14 @@ A Workspace:
 - A Workspace owner must be either a User or an Organization, but cannot be both.
 - A Workspace owner cannot be changed in MVP.
 - A Workspace cannot exist without an owner.
-- When a User-owned Workspace is created, the owner receives an active Workspace Membership with the role ADMIN.
-- When an Organization-owned Workspace is created, the User creating the Workspace on behalf of the Organization receives an active Workspace Membership with the role ADMIN.
-- A Workspace cannot be left without an active administrator.
-- Access to a Workspace is managed through Workspace Memberships.
+- When a User-owned Workspace is created, the owner receives an ACTIVE Workspace Membership with the role ADMIN.
+- When an Organization-owned Workspace is created, the User creating the Workspace on behalf of the Organization receives an ACTIVE Workspace Membership with the role ADMIN.
+- A Workspace cannot be left without an ACTIVE administrator.
+- Access to Workspace resources is managed through scoped Workspace Memberships.
+- Effective Workspace authorization is determined by Membership status, Workspace role, the relevant permission scope, and rules of the requested domain operation.
+- A non-ADMIN Workspace role alone does not provide access to every Workspace resource or domain area.
+- Different Workspace domain areas may use different permission scopes.
+- A newly introduced permission scope is not granted automatically to existing EDITOR or VIEWER Memberships.
 - Organization Membership does not automatically provide access to a Workspace.
 - A Workspace is not an Organization and does not replace Organization Membership.
 - Ownership of a Workspace and access to a Workspace are separate concepts.
@@ -47,23 +52,27 @@ A Workspace:
 - A Workspace always has exactly one owner.
 - A Workspace owner is always either exactly one User or exactly one Organization.
 - A Workspace owner remains unchanged throughout the MVP lifecycle of the Workspace.
-- A Workspace always has at least one active administrator.
+- A Workspace always has at least one ACTIVE administrator.
 - Every Workspace Membership of a Workspace belongs to that Workspace only.
-- Workspace Membership does not change the owner of the Workspace or the business rights holder for its Projects.
+- Workspace Membership roles and permission scopes do not change the owner of the Workspace or the business rights holder for its Projects.
 - Organization Membership alone never grants access to a Workspace.
 
 ## Notes
 
-For the future Project specification, every Project belongs to exactly one Workspace and does not have a separate Business Owner in MVP. The Effective Business Rights Holder of a Project is derived from the Workspace owner.
+Every Project belongs to exactly one Workspace and does not have a separate Business Owner in MVP. The Effective Business Rights Holder of a Project is derived from the Workspace owner.
 
 Project Created By records origin and history. It does not automatically provide ownership, publication rights, or royalty rights.
 
-The zero-or-more relationship describes the Workspace Membership collection independently, while every valid Workspace must satisfy the invariant requiring at least one active administrator.
+PROJECTS is the currently defined permission scope for the Project and Revision domain area. Future domain areas may define additional scopes when they are designed.
 
-The exact Workspace Membership role-to-permission matrix remains to be approved in the Workspace Membership specification.
+A Workspace is not conceptually limited to design work and does not require DESIGN, STORE, or WAREHOUSE Workspace types merely to separate authorization. A User or Organization may still create multiple Workspaces when separate operational contexts are useful.
+
+Projects remain the only currently specified resource relationship. No relationship to a future domain entity is implied by the broader Workspace boundary.
+
+The zero-or-more relationship describes the Workspace Membership collection independently, while every valid Workspace must satisfy the invariant requiring at least one active administrator.
 
 ---
 
 Status: DRAFT
 
-Version: 0.1
+Version: 0.2

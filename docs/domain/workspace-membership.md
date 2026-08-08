@@ -2,9 +2,9 @@
 
 ## Purpose
 
-A Workspace Membership represents a User's access relationship with a Workspace.
+A Workspace Membership represents a User's scoped access relationship with a Workspace.
 
-It keeps access to collaborative work separate from Workspace ownership, commercial rights, and participation in an Organization.
+It keeps membership status, role, granted domain permission scopes, and effective authorization separate from Workspace ownership, commercial rights, and participation in an Organization.
 
 ## Responsibilities
 
@@ -13,7 +13,8 @@ A Workspace Membership is responsible for:
 - linking a User to a Workspace;
 - storing the User's role within the Workspace;
 - storing the membership status;
-- providing the basis for determining the User's access within the Workspace.
+- recording granted permission scopes;
+- providing the basis for determining effective Workspace authorization.
 
 ## Relationships
 
@@ -23,6 +24,7 @@ A Workspace Membership:
 - belongs to exactly one Workspace;
 - has exactly one Workspace role;
 - has exactly one membership status;
+- has zero or more granted permission scopes;
 - exists independently from Organization Membership.
 
 ## Business Rules
@@ -30,18 +32,26 @@ A Workspace Membership:
 - A User may have multiple Workspace Memberships across different Workspaces.
 - A Workspace may have multiple Workspace Memberships.
 - A User cannot have more than one Workspace Membership within the same Workspace.
-- When a User-owned Workspace is created, the owner receives an active Workspace Membership with the role ADMIN.
-- When an Organization-owned Workspace is created, the User creating the Workspace on behalf of the Organization receives an active Workspace Membership with the role ADMIN.
+- When a User-owned Workspace is created, the owner receives an ACTIVE Workspace Membership with the role ADMIN.
+- When an Organization-owned Workspace is created, the User creating the Workspace on behalf of the Organization receives an ACTIVE Workspace Membership with the role ADMIN.
 - A Workspace Membership role must be ADMIN, EDITOR, or VIEWER in MVP.
-- OWNER is not a Workspace Membership role.
-- Ownership is represented separately by the Workspace owner.
+- OWNER is not a Workspace Membership role; ownership is represented separately by the Workspace owner.
 - A Workspace Membership status must be INVITED, ACTIVE, or SUSPENDED in MVP.
-- Only an ACTIVE Workspace Membership provides Workspace access.
-- Whether a Workspace Membership provides access depends on its role and status.
-- Organization Membership does not automatically create a Workspace Membership or provide Workspace access.
-- A Workspace Membership does not provide ownership or commercial rights.
+- Only an ACTIVE Workspace Membership provides effective Workspace resource access.
+- Effective authorization is determined by membership status, Workspace role, the relevant granted permission scope, and rules of the requested domain operation.
+- An ACTIVE ADMIN has full administrative access to the Workspace and effective access to all current Workspace permission scopes in MVP without requiring individual scope grants.
+- Only an ACTIVE ADMIN may manage Workspace Memberships, assign Workspace roles, or add and remove scope grants, subject to existing administrator-protection rules.
+- An ACTIVE EDITOR has read and write capability only within explicitly granted scopes and cannot manage Membership roles or scope grants solely because of the EDITOR role.
+- An ACTIVE VIEWER has read-only access only within explicitly granted scopes and never receives write capability.
+- A non-ADMIN role alone does not grant access to every Workspace domain area.
+- Permission for a scope does not bypass stricter rules or invariants of an individual domain operation.
+- PROJECTS is the currently defined permission scope and covers the Project and Revision domain area.
+- Future permission scopes are introduced only when their corresponding domain areas are designed.
+- A newly introduced permission scope is not granted automatically to existing EDITOR or VIEWER Memberships.
+- Organization Membership does not automatically create a Workspace Membership, assign a Workspace role, grant Workspace permission scopes, or provide Workspace resource access.
+- Workspace Membership roles and scope grants do not provide Workspace ownership or commercial rights.
 - A Workspace Membership does not replace Organization Membership.
-- The last active Workspace Membership with the role ADMIN cannot be removed, suspended, or assigned another role until another active administrator exists.
+- The last ACTIVE Workspace Membership with the role ADMIN cannot be removed, suspended, or assigned another role until another active administrator exists.
 
 ## Invariants
 
@@ -53,27 +63,29 @@ A Workspace Membership:
 - A Workspace Membership role is always ADMIN, EDITOR, or VIEWER in MVP.
 - A Workspace Membership never has the role OWNER.
 - A Workspace Membership status is always INVITED, ACTIVE, or SUSPENDED in MVP.
-- A Workspace Membership cannot exist without both its User and its Workspace.
-- A Workspace Membership never changes Workspace ownership or the business rights holder for Projects.
+- Only an ACTIVE Workspace Membership can produce effective Workspace resource access.
+- An ACTIVE VIEWER never has write access.
+- Effective access for an EDITOR or VIEWER never extends outside explicitly granted scopes.
+- Introducing a future permission scope never expands the effective access of existing EDITOR or VIEWER Memberships automatically.
+- Workspace Membership roles and permission scopes never change Workspace ownership or the business rights holder for Projects.
+- Organization Membership alone never grants a Workspace role, Workspace permission scope, or Workspace resource access.
 
 ## Notes
 
-The exact permission matrix for ADMIN, EDITOR, and VIEWER remains to be approved.
+Permission scope is a domain concept within Workspace Membership and is not a separate domain entity in MVP.
 
-For MVP, Workspace Membership represents both pending invitations and temporary access suspension.
+PROJECTS is the currently defined scope for Project and Revision work. Exact operation-level authorization may be refined by individual domain specifications, whose lifecycle rules and invariants remain authoritative.
 
-The MVP statuses are:
+Domain specialization is expressed through permission scopes rather than additional domain-specific Workspace roles.
 
-- INVITED;
-- ACTIVE;
-- SUSPENDED.
+In MVP, the Membership role applies uniformly across all granted scopes. More granular per-scope capability levels may be considered later only if concrete domain requirements require them.
 
-The allowed status transitions and the rules for accepting invitations, suspending access, and restoring access remain to be approved.
+INVITED represents pending access and SUSPENDED represents temporarily disabled access. Their allowed transitions and detailed invitation, suspension, and restoration rules remain to be specified.
 
-The policy for external Users in Organization-owned Workspaces remains to be approved.
+The policy for external Users in Organization-owned Workspaces remains future work.
 
 ---
 
 Status: DRAFT
 
-Version: 0.1
+Version: 0.2

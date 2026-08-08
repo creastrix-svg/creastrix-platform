@@ -15,10 +15,10 @@ Approved entities represent the current validated domain model.
 
 These entities have active draft specifications and are not yet part of the approved domain model.
 
-- [Workspace](workspace.md) — DRAFT 0.1
-- [Workspace Membership](workspace-membership.md) — DRAFT 0.1
-- [Project](project.md) — DRAFT 0.1
-- [Revision](revision.md) — DRAFT 0.1
+- [Workspace](workspace.md) — DRAFT 0.2
+- [Workspace Membership](workspace-membership.md) — DRAFT 0.2
+- [Project](project.md) — DRAFT 0.2
+- [Revision](revision.md) — DRAFT 0.2
 
 ## Planned entities
 
