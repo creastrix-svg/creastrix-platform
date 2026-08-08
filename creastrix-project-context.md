@@ -33,6 +33,7 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - Project
 - Revision
 - Listing
+- Personalization
 
 ## Domain Principles
 
@@ -87,7 +88,18 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - A Revision-based Listing requires explicit applicable royalty terms before activation; a Ready-Made Product Listing does not create designer royalty automatically.
 - Listing is manufacturer-independent; a Manufacturer for made-to-order commerce is selected later for Order Item.
 - Seller-of-record remains future work, and historical Order Item snapshots are never rewritten by later Listing changes.
-- Personalization remains separate from Revision.
+- Personalization is a private, reusable buyer-specific configuration with exactly one immutable FINALIZED Revision base.
+- Personalization belongs to exactly one User in MVP and preserves immutable Created By provenance.
+- Personalization has no direct Workspace or permanent Listing relationship, and no PERSONALIZATIONS Workspace permission scope exists.
+- Workspace ownership, Membership, and current Workspace permission scopes do not automatically expose private buyer Personalization.
+- Revision defines immutable technical personalization capability and constraints; Listing may commercially offer or narrow but never expand those constraints.
+- Initial buyer creation occurs through a suitable ACTIVE Revision-sourced Listing, after which the saved Personalization remains independent from that Listing.
+- Personalization has no lifecycle in MVP. Validity is evaluated separately, and the saved object may be temporarily invalid while editing.
+- Personalization remains mutable and reusable after purchase, while a future Order Item snapshots the purchased configuration immutably.
+- AI-assisted generation and generated artifacts remain workflow inside Personalization and do not change Created By.
+- Personalization never mutates or automatically becomes a Revision.
+- Ordinary Ready-Made Product fulfillment does not use Personalization in MVP.
+- Final price, currency, royalty terms, and Manufacturer selection remain outside Personalization and are snapshotted later through Order Item.
 - Royalty rules originate from Listing, and historical commercial context is snapshotted later in Order Item.
 
 ## Product Rules
@@ -109,7 +121,7 @@ The following specifications are DRAFT and are not yet part of the validated dom
 
 ## Next Steps
 
-1. Review and finalize the Listing draft.
-2. Model the Personalization boundary where needed for Revision-based Listings.
-3. Model Order and Order Item with distinct made-to-order and ready-made fulfillment paths.
-4. Continue with Shipment, Payment, Payment Allocation, and Royalty as their dependencies become clear.
+1. Review and finalize the Personalization draft.
+2. Model Order and Order Item together, including immutable commercial, pricing, Personalization, royalty, and fulfillment snapshots.
+3. Define made-to-order Manufacturer selection and ready-made stock allocation timing.
+4. Continue with Shipment, Payment, Payment Allocation, and Royalty once Order semantics are stable.

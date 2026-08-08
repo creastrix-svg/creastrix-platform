@@ -15,7 +15,8 @@ A Revision is responsible for:
 - preserving finalized product-defining content;
 - managing the DRAFT-to-FINALIZED lifecycle;
 - receiving a human-readable revision number at finalization;
-- preserving creation and optional Base Revision provenance.
+- preserving creation and optional Base Revision provenance;
+- defining optional technical personalization capability and constraints as product-defining content.
 
 ## Relationships
 
@@ -25,6 +26,7 @@ A Revision:
 - has exactly one Created By User;
 - may reference zero or one Base Revision;
 - may be targeted by zero or more Listings when FINALIZED;
+- may be the immutable technical base for zero or more Personalizations when FINALIZED;
 - may be referenced by Audit Log events.
 
 ## Business Rules
@@ -37,7 +39,7 @@ A Revision:
 - Finalization is an explicit transition from DRAFT to FINALIZED; no reverse transition exists in MVP.
 - Finalization makes product-defining content immutable and assigns the Revision a human-readable revision number.
 - A human-readable revision number is unique within its Project, remains immutable, represents finalization order, and does not imply lineage. Gapless numbering is not required as a business rule.
-- A FINALIZED Revision may later be targeted by Listings, but finalization does not create a Listing and does not make the Revision automatically published or manufacturing-approved.
+- A FINALIZED Revision may be targeted by Listings, but finalization does not create a Listing and does not make the Revision automatically published or manufacturing-approved.
 - A DRAFT Revision may be created without a Base Revision or may reference one Base Revision for provenance.
 - A Base Revision does not establish a mandatory linear revision chain, and multiple-base merge is not supported in MVP.
 - Created By identifies only the User who created the Revision record or work variant in Creastrix.
@@ -46,6 +48,10 @@ A Revision:
 - A new Revision is appropriate when the product remains the same concept while its product-defining technical or design variant changes, including construction, geometry, assembly method, engineering dimensions, manufacturing files, material thickness requiring different production files, or a creator-made public decorative or design variant.
 - A new Project is required when the core identity, purpose, or essential function changes enough that the result is no longer the same product concept.
 - Buyer-specific customization remains Personalization and does not become a public Revision automatically.
+- A Revision may define technical personalization capability and constraints as part of its product-defining content, but not every Revision is required to support Personalization.
+- Personalization values may vary within the constraints of a FINALIZED Revision and may produce physically different buyer-specific output without creating a new Revision.
+- Finalization makes any personalization capability and constraints of the Revision immutable. Changing personalization zones, parameter structure, allowed ranges, shared technical rules, or other reusable personalization constraints requires a new Revision.
+- A Personalization never mutates its FINALIZED Revision, and buyer-specific changes outside Revision-defined constraints cannot bypass the Revision lifecycle.
 - A new Revision is not required for changes limited to typo corrections, marketing copy, general descriptions, photographs, catalog metadata, or instructions that do not alter the actual product.
 - A Revision does not have a separate Business Owner in MVP. Its commercial context derives through its Project, the Project's Workspace, and the Workspace owner.
 
@@ -59,9 +65,11 @@ A Revision:
 - A DRAFT Revision never has a finalized human-readable revision number.
 - A FINALIZED Revision always has exactly one immutable human-readable revision number that is unique within its Project.
 - Product-defining content of a FINALIZED Revision never changes.
+- Any personalization capability and constraints of a FINALIZED Revision never change.
 - A FINALIZED Revision never returns to DRAFT in MVP.
 - If a Base Revision exists, it belongs to the same Project, is FINALIZED, and is not the Revision itself.
 - Only a FINALIZED Revision may be targeted by a Listing.
+- Only a FINALIZED Revision may be the technical base of a Personalization.
 
 ## Notes
 
@@ -73,7 +81,7 @@ Significant Revision creation and finalization events are recorded through futur
 
 Detailed Listing, Royalty, and Order Item rules remain outside Revision. Revision does not calculate or store actual Royalty allocation, and later changes to the surrounding Project or Workspace context must not retroactively rewrite immutable historical commercial snapshots.
 
-Project itself is never published directly. Multiple FINALIZED Revisions of the same Project may later have active Listings simultaneously, but their detailed behavior belongs to the future Listing specification.
+Project itself is never published directly. Multiple FINALIZED Revisions of the same Project may have ACTIVE Listings simultaneously, as defined by the Listing specification.
 
 Manufacturing requirements and technology relationships will be modeled separately in future domain specifications. Revision has no Technology relationship in MVP, and this specification does not decide whether manufacturing requirements belong to Revision or a future Manufacturing Specification.
 
@@ -85,4 +93,4 @@ DRAFT abandonment or discard behavior, additional DRAFT statuses, multiple-Revis
 
 Status: DRAFT
 
-Version: 0.2
+Version: 0.3

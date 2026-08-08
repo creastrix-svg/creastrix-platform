@@ -17,6 +17,7 @@ A Listing is responsible for:
 - controlling commercial activation through its lifecycle;
 - recording the User who created the record;
 - defining applicable royalty terms where required;
+- commercially offering Revision-defined personalization capability where applicable;
 - preserving the boundary between current offer data and historical commerce.
 
 ## Relationships
@@ -47,7 +48,15 @@ A Listing:
 - An ARCHIVED Listing is permanently closed for new commerce in MVP, retains historical references, and does not return to ACTIVE.
 - Activating a Listing requires effective LISTINGS authorization, a source that permits commerce, valid current pricing information, applicable business eligibility, and any required royalty terms.
 - Activating a Listing sourced by a FINALIZED Revision requires an acting context backed by a verified Designer Profile and explicitly defined applicable royalty terms, which may be zero only when applicable business rules permit.
+- A Listing sourced by a FINALIZED Revision may commercially offer Personalization only when that Revision defines technical personalization capability.
+- A Listing determines whether and under what current commercial restrictions Revision-defined personalization capability is offered. It may narrow but never expand the Revision's technical personalization constraints.
+- Initial buyer creation of a Personalization requires a suitable ACTIVE Listing targeting its FINALIZED Revision base and does not require the buyer to have LISTINGS authorization.
+- A Personalization does not retain the Listing used during creation as a permanent relationship.
+- A saved Personalization may later be used through another suitable Listing targeting the same FINALIZED Revision after current technical and commercial revalidation.
+- A Listing becoming PAUSED or ARCHIVED does not mutate a saved Personalization.
+- Effective orderability with Personalization requires a currently valid Personalization under the applicable Revision and Listing restrictions in addition to the other Listing, source, business, fulfillment, and future Order rules.
 - A Ready-Made Product Listing does not require a Designer Profile, Manufacturer Profile, or designer royalty merely because of its source type; seller eligibility remains separate from LISTINGS authorization.
+- A Ready-Made Product Listing does not support product-defining Personalization requiring fabrication, cutting, engraving, or other production customization in ordinary MVP fulfillment.
 - Loss of required business eligibility does not change Listing lifecycle automatically but makes an existing Listing effectively non-orderable.
 - A source lifecycle change does not change Listing lifecycle automatically. An ARCHIVED or DELETED parent Project, or an ARCHIVED Ready-Made Product, makes an existing Listing non-orderable under current source rules.
 - If an ARCHIVED Project or Ready-Made Product returns to ACTIVE, effective orderability may recover when all other conditions hold.
@@ -85,7 +94,7 @@ The Workspace context of a Listing is source-derived and is not a legal seller-o
 
 A source may later have canonical or reference media, while Listing owns or selects its public and promotional presentation. Exact media relationships remain future work, and no Media entity is introduced here.
 
-Personalization capability for Revision-based Listings remains for the future Personalization specification. Ordinary ready-made commerce does not include customization requiring fabrication or product-defining production work.
+Revision defines immutable technical personalization capability and constraints, while a Revision-sourced Listing determines whether and under what narrower current commercial restrictions that capability is offered. Personalization remains a private buyer object without a permanent Listing relationship. Ordinary ready-made commerce does not include customization requiring fabrication or product-defining production work.
 
 Multi-currency, multiple simultaneously ACTIVE channels, manufacturer-specific offers, detailed quoting, tax and shipping price presentation, royalty representation format, deletion and retention, public URL or slug behavior, and exact visibility of PAUSED, ARCHIVED, or non-orderable Listings remain future concerns.
 
@@ -97,4 +106,4 @@ Significant creation, activation, pause, archive, pricing, and royalty-term even
 
 Status: DRAFT
 
-Version: 0.1
+Version: 0.2

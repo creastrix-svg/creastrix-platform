@@ -24,6 +24,7 @@ A User may:
 - own zero or more Workspaces;
 - be a member of zero or more Workspaces;
 - belong to zero or more Organizations;
+- own zero or more Personalizations;
 - be associated with zero or one Designer Profile;
 - be associated with zero or one Manufacturer Profile.
 
@@ -33,6 +34,10 @@ A User may:
 - A User may create or manage Ready-Made Products only within Workspaces where the User has the effective authorization required for READY_MADE_PRODUCTS operations.
 - A User may create or manage Listings only when the User has effective LISTINGS authorization in the Workspace context derived from the Listing's commercial source.
 - LISTINGS authorization does not replace the business eligibility required to activate or publish a Listing.
+- A User may create, view, edit, reuse, and discard the User's own Personalizations subject to Personalization rules and future retention requirements.
+- Access to an owned Personalization is governed by User authorization and does not require Workspace Membership or a Workspace permission scope.
+- The owning User and Created By User are the same when a Personalization is created in MVP, and Personalization ownership cannot be transferred between Users in MVP.
+- Personalization ownership represents platform control of a private saved object and does not establish legal or intellectual-property ownership.
 - A User may act under a personal account or on behalf of an Organization, depending on the current context.
 - A User may publish a Listing targeting a FINALIZED Revision only when acting in a context backed by an associated verified Designer Profile.
 - Eligibility to publish Listings for other commercial source types is defined by the corresponding domain rules.
@@ -54,4 +59,4 @@ Authentication and identity data belong to User, while personal information belo
 ---
 
 Status: APPROVED
-Version: 1.3
+Version: 1.4
