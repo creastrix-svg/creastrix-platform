@@ -45,9 +45,13 @@ A Workspace Membership:
 - An ACTIVE VIEWER has read-only access only within explicitly granted scopes and never receives write capability.
 - A non-ADMIN role alone does not grant access to every Workspace domain area.
 - Permission for a scope does not bypass stricter rules or invariants of an individual domain operation.
-- PROJECTS is the currently defined permission scope and covers the Project and Revision domain area.
+- PROJECTS is a currently defined permission scope and covers the Project and Revision domain area.
+- READY_MADE_PRODUCTS is a currently defined permission scope and covers Ready-Made Product management, including simple MVP available quantity.
+- PROJECTS does not grant Ready-Made Product access, and READY_MADE_PRODUCTS does not grant Project or Revision access.
+- READY_MADE_PRODUCTS does not grant Listing price management, Order management, finance, Warehouse, future Inventory administration, or seller eligibility.
 - Future permission scopes are introduced only when their corresponding domain areas are designed.
 - A newly introduced permission scope is not granted automatically to existing EDITOR or VIEWER Memberships.
+- Existing EDITOR and VIEWER Memberships do not receive READY_MADE_PRODUCTS automatically when the scope is introduced.
 - Organization Membership does not automatically create a Workspace Membership, assign a Workspace role, grant Workspace permission scopes, or provide Workspace resource access.
 - Workspace Membership roles and scope grants do not provide Workspace ownership or commercial rights.
 - A Workspace Membership does not replace Organization Membership.
@@ -71,14 +75,19 @@ A Workspace Membership:
 - Effective access for an EDITOR or VIEWER never extends outside explicitly granted scopes.
 - Introducing a future permission scope never expands the effective access of existing EDITOR or VIEWER Memberships automatically.
 - The User owner of a User-owned Workspace always has an ACTIVE ADMIN Workspace Membership.
-- Workspace Membership roles and permission scopes never change Workspace ownership or the business rights holder for Projects.
+- Workspace Membership roles and permission scopes never change Workspace ownership, the business rights holder for Projects, or the commercial context of Ready-Made Products.
 - Organization Membership alone never grants a Workspace role, Workspace permission scope, or Workspace resource access.
 
 ## Notes
 
 Permission scope is a domain concept within Workspace Membership and is not a separate domain entity in MVP.
 
-PROJECTS is the currently defined scope for Project and Revision work. Exact operation-level authorization may be refined by individual domain specifications, whose lifecycle rules and invariants remain authoritative.
+The currently defined Workspace permission scopes are:
+
+- PROJECTS for Project and Revision work;
+- READY_MADE_PRODUCTS for Ready-Made Product management, including simple MVP available quantity.
+
+Exact operation-level authorization may be refined by individual domain specifications, whose lifecycle rules and invariants remain authoritative. Future Listing, Order, finance, Warehouse, and Inventory concerns require their own domain decisions and are not included in READY_MADE_PRODUCTS automatically.
 
 Domain specialization is expressed through permission scopes rather than additional domain-specific Workspace roles.
 
@@ -92,4 +101,4 @@ The policy for external Users in Organization-owned Workspaces remains future wo
 
 Status: DRAFT
 
-Version: 0.3
+Version: 0.4

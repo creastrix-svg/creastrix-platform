@@ -4,15 +4,16 @@
 
 A Workspace represents an operational, ownership, and authorization boundary for collaborative work on the Creastrix platform.
 
-A Workspace may support multiple domain access areas under a single owner while separating ownership from participant authorization. Projects are the currently specified resource relationship.
+A Workspace may support multiple domain access areas under a single owner while separating ownership from participant authorization. Projects and Ready-Made Products are the currently specified resource relationships.
 
 ## Responsibilities
 
 A Workspace is responsible for:
 
 - representing a common operational and authorization context for collaborative work;
-- grouping Projects under a single owner;
+- grouping Projects and Ready-Made Products within a single operational boundary;
 - identifying the platform-recognized business rights holder for Projects inside the Workspace in MVP;
+- providing the platform-recognized commercial context in which Ready-Made Products are managed;
 - managing participant access through scoped Workspace Membership authorization;
 - supporting distinct domain access areas without mixing participant authorization with ownership;
 - ensuring that the Workspace remains actively administered.
@@ -23,6 +24,7 @@ A Workspace:
 
 - belongs to exactly one owner, which is either one User or one Organization;
 - contains zero or more Projects;
+- contains zero or more Ready-Made Products;
 - has zero or more Workspace Memberships;
 - is administered by at least one ACTIVE Workspace Membership with the role ADMIN;
 - exists independently from Organization Memberships.
@@ -49,6 +51,8 @@ A Workspace:
 - The Workspace owner is the platform-recognized business rights holder for Projects in the Workspace unless future domain rules explicitly define otherwise.
 - In MVP, Projects do not have a separate Business Owner and no exception to Workspace-derived business rights is supported.
 - The ownership rule applies only to Projects created or transferred into the Workspace under platform rules and does not apply automatically to all content stored in the Workspace.
+- The Workspace owner provides the platform-recognized commercial context in which Ready-Made Products in that Workspace are managed.
+- The commercial context of a Ready-Made Product does not establish legal title, physical custody, seller-of-record, manufacturer, supplier, importer, brand ownership, or intellectual-property ownership.
 
 ## Invariants
 
@@ -58,7 +62,7 @@ A Workspace:
 - A User-owned Workspace always has its owner as an ACTIVE ADMIN.
 - A Workspace always has at least one ACTIVE administrator.
 - Every Workspace Membership of a Workspace belongs to that Workspace only.
-- Workspace Membership roles and permission scopes do not change the owner of the Workspace or the business rights holder for its Projects.
+- Workspace Membership roles and permission scopes do not change the owner of the Workspace, the business rights holder for its Projects, or the commercial context of its Ready-Made Products.
 - Organization Membership alone never grants access to a Workspace.
 
 ## Notes
@@ -67,11 +71,11 @@ Every Project belongs to exactly one Workspace and does not have a separate Busi
 
 Project Created By records origin and history. It does not automatically provide ownership, publication rights, or royalty rights.
 
-PROJECTS is the currently defined permission scope for the Project and Revision domain area. Future domain areas may define additional scopes when they are designed.
+PROJECTS is the permission scope for the Project and Revision domain area. READY_MADE_PRODUCTS is the permission scope for Ready-Made Product management, including simple MVP available quantity. The scopes are independent.
 
 A Workspace is not conceptually limited to design work and does not require DESIGN, STORE, or WAREHOUSE Workspace types merely to separate authorization. A User or Organization may still create multiple Workspaces when separate operational contexts are useful.
 
-Projects remain the only currently specified resource relationship. No relationship to a future domain entity is implied by the broader Workspace boundary.
+Projects and Ready-Made Products are the currently specified resource relationships. No relationship to another future domain entity is implied by the broader Workspace boundary.
 
 The zero-or-more relationship describes the Workspace Membership collection independently, while every valid Workspace must satisfy the invariant requiring at least one active administrator.
 
@@ -79,4 +83,4 @@ The zero-or-more relationship describes the Workspace Membership collection inde
 
 Status: DRAFT
 
-Version: 0.3
+Version: 0.4
