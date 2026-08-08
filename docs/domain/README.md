@@ -4,21 +4,31 @@ Every domain entity must follow the structure defined in `entity-template.md`.
 
 Approved entities represent the current validated domain model.
 
-Current entities:
+## Approved entities
 
-- User
-- User Profile
-- Organization
+- [User](user.md)
+- [User Profile](user-profile.md)
+- [Organization](organization.md)
+- [Organization Membership](organization-membership.md)
+
+## Draft specifications
+
+These entities have active draft specifications and are not yet part of the approved domain model.
+
+- [Workspace](workspace.md) — DRAFT 0.1
+- [Workspace Membership](workspace-membership.md) — DRAFT 0.1
+- [Project](project.md) — DRAFT 0.1
+- [Revision](revision.md) — DRAFT 0.1
+
+## Planned entities
+
+These entities represent planned domain areas and are not yet approved specifications.
+
 - Organization Profile
 - Designer Profile
 - Manufacturer Profile
-- Workspace
-- Workspace Membership
-- Project
-- Revision
 - Listing
 - Personalization
-- Manufacturer Profile
 - Order
 - Order Item
 - Shipment

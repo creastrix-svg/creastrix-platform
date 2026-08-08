@@ -1,43 +1,14 @@
 # Domain Model
 
-## Core Principle
+> **Deprecated:** This file contains an early exploratory domain model and is no longer an authoritative source for Creastrix architecture.
 
-A user may have multiple roles simultaneously.
+The authoritative domain model is maintained in:
 
-## Project
+- `docs/domain/README.md`
+- the individual entity specifications under `docs/domain/`
 
-Project is the central business entity of Creastrix.
+Approved specifications are the source of truth for implementation decisions.
 
-### Identity
+Draft specifications represent active architectural work but are not yet approved.
 
-- ID
-- Name
-- Description
-- Slug
-- Owner
-- Status
-- Created At
-- Updated At
-
-### Status
-
-A project can have one of the following statuses:
-
-- Draft
-- Published
-- Archived
-
-### Capabilities
-
-- Publish
-- Archive
-
-### Ownership
-
-A project belongs to an owner.
-
-An owner can be:
-- User
-- Organization
-
-- ## Social Interaction
+The historical contents of this file remain available through Git history.
