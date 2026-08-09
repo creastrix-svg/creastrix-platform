@@ -18,7 +18,7 @@ An Order Item is responsible for:
 - establishing confirmed Ready-Made Product stock allocation when applicable;
 - preserving exactly one assigned Manufacturer Profile for made-to-order fulfillment;
 - managing its source-neutral fulfillment and cancellation lifecycle;
-- providing a stable boundary for future Shipment, Payment Allocation, and Royalty integration.
+- providing a stable boundary for Shipment and future Payment Allocation and Royalty integration.
 
 ## Relationships
 
@@ -29,7 +29,8 @@ An Order Item:
 - may reference zero or one Personalization for traceability;
 - has exactly one assigned Manufacturer Profile when its purchased source is a FINALIZED Revision;
 - has no assigned Manufacturer Profile merely for ordinary Ready-Made Product fulfillment;
-- may later participate in Shipment, Payment Allocation, and Royalty records;
+- may be a current or frozen member of zero or more Shipments over time, subject to at most one non-CANCELLED Shipment at a time;
+- may later participate in Payment Allocation and Royalty records;
 - has no direct Workspace relationship.
 
 ## Business Rules
@@ -67,13 +68,21 @@ An Order Item:
 - Ready-made allocation succeeds only when the full quantity is currently available. Allocation is atomic at the domain level, available quantity never becomes negative, and the same stock capacity cannot be confirmed more than once.
 - A confirmed ready-made allocation remains associated with the Order Item until fulfillment or consumption, or until an applicable release.
 - Successful cancellation may release a ready-made allocation when it is no longer required.
+- Ready-Made Product stock allocation remains an Order Item responsibility. Shipment does not reserve or allocate stock, change ordered quantity, or create Inventory state.
+- An Order Item may be added to a Shipment only after the Item is in the IN_FULFILLMENT state.
+- Shipment creation does not transition an Order Item from CONFIRMED to IN_FULFILLMENT.
+- A Shipment always covers the full quantity of an included Order Item. Partial-quantity shipment is not supported in MVP.
+- An Order Item may be covered by at most one non-CANCELLED Shipment in MVP.
 - An Order Item has the lifecycle state CONFIRMED, IN_FULFILLMENT, FULFILLED, or CANCELLED.
 - CONFIRMED means the immutable commercial snapshot exists and fulfillment has not yet begun.
 - IN_FULFILLMENT means the applicable source-specific fulfillment obligations are being performed.
 - FULFILLED means all applicable fulfillment obligations for the Order Item are complete.
+- For the current physical-delivery MVP, a non-CANCELLED Shipment covering the full Order Item quantity must reach DELIVERED before the Item may transition to FULFILLED, and all other applicable fulfillment obligations must also be complete.
+- Shipment DELIVERED is delivery evidence and is not a universal permanent synonym for Order Item FULFILLED.
 - CANCELLED means the item will not be fulfilled and its historical commercial snapshot remains preserved.
 - The allowed normal fulfillment transitions are CONFIRMED to IN_FULFILLMENT and IN_FULFILLMENT to FULFILLED.
-- A CONFIRMED Order Item may transition to CANCELLED. An IN_FULFILLMENT Order Item may transition to CANCELLED only when applicable future cancellation and production rules permit it.
+- A CONFIRMED Order Item may transition to CANCELLED. An IN_FULFILLMENT Order Item may transition to CANCELLED before physical dispatch only when applicable cancellation and production rules permit it.
+- Once the non-CANCELLED Shipment covering an Order Item is SHIPPED, ordinary MVP Order Item cancellation is not permitted. Returns, delivery failure, and other post-dispatch resolution remain future work.
 - FULFILLED and CANCELLED are terminal states.
 - Cancellation applies to the complete Order Item in MVP. Partial-quantity cancellation is not supported.
 - A FULFILLED Order Item cannot be cancelled.
@@ -100,6 +109,8 @@ An Order Item:
 - A made-to-order Order Item always has exactly one assigned Manufacturer Profile.
 - An ordinary ready-made Order Item never has an assigned Manufacturer Profile merely for stock fulfillment.
 - Manufacturer Profile assignment never changes after confirmation.
+- An Order Item included in a Shipment is always covered in its full quantity.
+- An Order Item is never covered by more than one non-CANCELLED Shipment in MVP.
 - An Order Item always has exactly one lifecycle state: CONFIRMED, IN_FULFILLMENT, FULFILLED, or CANCELLED.
 - FULFILLED and CANCELLED are terminal states.
 - Later source, profile, access, or commercial changes never rewrite the immutable confirmed snapshot.
@@ -110,7 +121,7 @@ The immutable source snapshot does not create a second authoritative direct sour
 
 Order Item does not own Inventory, and no Inventory or Reservation entity is introduced in MVP. Temporary reservation, payment-failure release, returns, restocking, and technical locking remain future integration concerns.
 
-Exact evidence for the FULFILLED transition belongs to future Shipment and fulfillment specifications. Manufacturing, shipping, delivery, payment, and refund substates are not duplicated in the Order Item lifecycle.
+Shipment provides delivery evidence toward the FULFILLED transition, while Shipment lifecycle states are not duplicated in the Order Item lifecycle. Manufacturing, payment, and refund substates also remain outside the Order Item lifecycle.
 
 Actual Royalty accrual, amount, reversal, and payout belong to the future Royalty and Payment domains.
 
@@ -120,4 +131,4 @@ Seller-of-record, final payable totals, taxes, shipping amounts, discounts, paym
 
 Status: DRAFT
 
-Version: 0.1
+Version: 0.2

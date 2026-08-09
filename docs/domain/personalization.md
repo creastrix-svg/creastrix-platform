@@ -75,7 +75,7 @@ Personalization is not a Project, Revision, public design variant, Listing, Read
 
 Physical output may differ between buyers without creating a new Revision when buyer-specific values remain within the predefined constraints of the same FINALIZED Revision. A reusable design change or a change to personalization zones, parameter structure, ranges, construction, shared geometry, manufacturing files, or structural and safety assumptions requires a new Revision.
 
-Lightweight validation may occur while editing, authoritative purchase validation occurs before Order Item confirmation, and feasibility validation for an assigned Manufacturer Profile may occur later before production. Detailed timing remains future fulfillment work.
+Lightweight validation may occur while editing. Authoritative purchase validation occurs before Order confirmation, and all item-specific Manufacturer eligibility required to confirm an Order Item must succeed before confirmation. Additional production-time feasibility revalidation may occur later before production, but it does not replace confirmation-time eligibility. If production-time revalidation later fails, resolution belongs to future fulfillment, failure, and cancellation policy.
 
 Generated SVG, geometry, text layout, image composition, decorative pattern, or other manufacturing-oriented output may remain mutable artifacts of the Personalization workflow. Whether those artifacts are persisted or regenerated remains unresolved, while an Order Item must preserve or reference the reproducible output actually used for production.
 
@@ -85,4 +85,4 @@ Hard versus soft deletion, retention, Organization-owned or shared Personalizati
 
 Status: DRAFT
 
-Version: 0.3
+Version: 0.4

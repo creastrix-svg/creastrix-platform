@@ -37,6 +37,7 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - Manufacturer Profile
 - Order
 - Order Item
+- Shipment
 
 ## Domain Principles
 
@@ -118,6 +119,7 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - Manufacturer Profile is a manufacturing capability identity, not a seller-of-record, payout account, payment recipient, or tax merchant.
 - Order represents one confirmed purchase for exactly one Buyer User, contains one or more Order Items, and uses exactly one currency.
 - Order and its fixed Order Item collection are created atomically only at successful confirmation. No DRAFT Order exists in MVP, and pre-confirmation checkout and Manufacturer acceptance remain workflow rather than current entities.
+- Order preserves exactly one immutable checkout delivery-destination snapshot in MVP, and later User Profile changes do not rewrite it.
 - An Order may structurally mix ready-made and made-to-order items from multiple Listings, source Workspaces, and Manufacturer Profiles when all items use the same currency and current checkout policy permits it.
 - Order has no Workspace relationship, and no ORDERS Workspace permission scope exists in MVP.
 - Order confirmed merchandise subtotal equals the sum of immutable Order Item line merchandise amounts and is not a final payable total.
@@ -132,6 +134,12 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - Payment state remains separate from Order confirmation and lifecycle.
 - Cancellation preserves all confirmed snapshots, and partial-quantity cancellation is unsupported in MVP.
 - Later Listing, source, Personalization, Workspace access, Designer verification, Manufacturer Profile, or royalty-term changes never rewrite confirmed commerce.
+- Order owns one immutable confirmed delivery destination, and every Shipment of that Order uses it without an independent divergent destination.
+- Shipment belongs to one Order and groups full-quantity Order Items from that Order. Partial-quantity shipment and Shipment Item are unsupported in MVP.
+- Shipment establishes one immutable fulfillment context: made-to-order context is tied to one Manufacturer Profile through Order Items, ready-made context is platform-controlled, and the paths never mix or switch.
+- Shipment lifecycle is PREPARING, SHIPPED, DELIVERED, or CANCELLED, and accepted delivery evidence contributes to Order Item fulfillment.
+- Shipment has no Workspace relationship or new Workspace scope and owns no independent destination, money, stock allocation, or manufacturing responsibility.
+- Shipment operation follows fulfillment-context authorization, while provider statuses are evidence rather than automatic domain authority.
 
 ## Product Rules
 
@@ -152,7 +160,7 @@ The following specifications are DRAFT and are not yet part of the validated dom
 
 ## Next Steps
 
-1. Review and finalize the Order and Order Item drafts.
-2. Model Shipment and fulfillment evidence and grouping.
-3. Model Payment and Payment Allocation, including payable totals, seller and payout semantics, and multi-context allocations.
-4. Model Royalty accrual, reversal, and payout after Payment semantics stabilize.
+1. Review and finalize the Shipment draft.
+2. Model Payment and Payment Allocation, including payable total, payment attempts, seller and payout semantics, and multi-context allocations.
+3. Model Royalty accrual and reversal after Payment semantics stabilize.
+4. Continue with Reviews, Notifications, Conversations, and Audit Log as dependencies become clear.

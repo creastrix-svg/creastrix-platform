@@ -14,6 +14,7 @@ An Order is responsible for:
 - preserving its immutable Buyer User relationship;
 - grouping a fixed collection of confirmed Order Items;
 - preserving one currency for the purchase;
+- preserving one immutable confirmed checkout delivery-destination snapshot;
 - exposing the confirmed merchandise subtotal derived from its Order Items;
 - representing aggregate lifecycle state derived from its Order Items;
 - providing a stable boundary for future Payment and other commerce integration.
@@ -24,6 +25,7 @@ An Order:
 
 - belongs to exactly one Buyer User;
 - contains one or more Order Items;
+- has zero or more Shipments;
 - may later be referenced by Payments and other commerce records;
 - has no Workspace relationship.
 
@@ -36,6 +38,11 @@ An Order:
 - Every Order belongs to exactly one Buyer User in MVP. Organization buying and guest checkout are not supported in MVP.
 - The Buyer User cannot be changed after confirmation.
 - The Order Item collection is fixed at confirmation. No Order Item may be added, removed, or deleted afterward.
+- Order confirmation captures exactly one immutable checkout delivery-destination snapshot containing the structured delivery information required for the physical goods in the Order.
+- The confirmed delivery destination cannot change after Order confirmation in MVP.
+- User Profile address or contact information is not the historical source of truth for the confirmed Order delivery destination.
+- Every Shipment of an Order uses that Order's immutable confirmed delivery destination and does not own an independently divergent destination in MVP.
+- One Order cannot use multiple delivery destinations in MVP.
 - Every Order uses exactly one currency, and every Order Item in the Order must use that same currency.
 - At confirmation, every purchased Listing represented in an Order must use that Order's currency; therefore, Listings using different currencies cannot be confirmed in the same Order in MVP.
 - An Order may structurally contain ready-made and made-to-order Order Items from multiple Listings, source Workspaces, and Manufacturer Profiles when all items use the same currency and current checkout policy permits them to be confirmed together.
@@ -65,6 +72,8 @@ An Order:
 - An Order always contains at least one Order Item.
 - Every Order Item in an Order belongs to that Order only.
 - Order Item membership never changes after confirmation.
+- An Order always preserves exactly one immutable confirmed checkout delivery-destination snapshot.
+- Every Shipment of an Order always uses that Order's confirmed delivery destination in MVP.
 - An Order always uses exactly one currency.
 - Every Order Item in an Order always uses the Order's currency.
 - The confirmed merchandise subtotal always equals the sum of the immutable Order Item line merchandise amounts.
@@ -78,7 +87,11 @@ Order is not a Cart, Checkout session, Quote, Manufacturing Request, Payment, or
 
 Future checkout, seller, payment, or legal policy may split selected items into multiple Orders before confirmation without introducing a single-Workspace invariant into Order.
 
-Final payable total, taxes, shipping amounts, discounts, payment fees, payment attempts, settlement, refunds, shipment grouping, and seller-of-record remain future domain concerns.
+Shipment grouping and delivery evidence belong to the Shipment specification.
+
+Final payable total, taxes, shipping amounts, discounts, payment fees, payment attempts, settlement, refunds, and seller-of-record remain future domain concerns.
+
+No Address entity is introduced in MVP. Address correction, rerouting, and multiple delivery destinations require future explicit domain work.
 
 Order contains no Created By relationship in MVP. Its Buyer User relationship identifies the customer context of the confirmed purchase without asserting legal ownership.
 
@@ -86,4 +99,4 @@ Order contains no Created By relationship in MVP. Its Buyer User relationship id
 
 Status: DRAFT
 
-Version: 0.1
+Version: 0.2
