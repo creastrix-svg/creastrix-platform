@@ -24,6 +24,7 @@ A Ready-Made Product:
 - belongs to exactly one Workspace;
 - has exactly one immutable Created By User;
 - may be targeted by zero or more Listings over time;
+- may have stock allocated through zero or more ready-made Order Items;
 - may be referenced by Audit Log events in the future.
 
 ## Business Rules
@@ -45,7 +46,11 @@ A Ready-Made Product:
 - One independently stocked physical configuration is represented by one Ready-Made Product in MVP.
 - Available quantity represents whole physical units currently available for allocation from the single MVP stock pool.
 - Available quantity does not determine lifecycle; an ACTIVE Ready-Made Product may have quantity zero, and an ARCHIVED Ready-Made Product may retain quantity greater than zero.
-- An allocation may be confirmed only when sufficient quantity is available for that allocation at the time of confirmation. The same available stock capacity must not be confirmed for more than one buyer.
+- Confirmation of a ready-made Order Item establishes allocation of its full quantity against the Ready-Made Product only when that quantity is currently available.
+- If the full Order Item quantity cannot be allocated, Order confirmation fails and no partial confirmed Order is created.
+- Allocation succeeds atomically at the domain level, available quantity never becomes negative, and the same stock capacity cannot be confirmed for more than one Order Item.
+- A confirmed allocation remains associated with its Order Item until fulfillment or consumption, or until an applicable release.
+- Successful cancellation may release a confirmed allocation when it is no longer required.
 - Physical units exist before the customer order, and ordinary ready-made fulfillment does not require a new manufacturing process or a Manufacturer assignment because of that order.
 - Pick, pack, label, and shipment handling do not by themselves turn ready-made fulfillment into made-to-order manufacturing.
 - An order requiring fabrication, cutting, engraving, production, or other changes to product-defining physical characteristics is not ordinary Ready-Made Product fulfillment in MVP.
@@ -61,7 +66,7 @@ A Ready-Made Product:
 - A Ready-Made Product always has exactly one lifecycle state: ACTIVE or ARCHIVED.
 - A Ready-Made Product never has PUBLISHED or DELETED as a lifecycle state in MVP.
 - Available quantity is always a non-negative integer.
-- The same available stock capacity is never confirmed for more than one buyer.
+- The same available stock capacity is never confirmed for more than one Order Item.
 - A Ready-Made Product lifecycle remains independent from its stock availability.
 - A Ready-Made Product remains independent from Project and Revision lifecycles.
 - The platform-recognized commercial context of a Ready-Made Product is always derived from the owner of its Workspace in MVP.
@@ -69,7 +74,7 @@ A Ready-Made Product:
 
 ## Notes
 
-The simple available quantity is an intentional MVP model. Reservation, release, payment failure, cancellation, returns, restocking, manual adjustment, procurement, and technical concurrency mechanisms remain future Order or Inventory concerns. Quantity may later move into an Inventory domain without changing Ready-Made Product identity.
+The simple available quantity is an intentional MVP model. Temporary reservation, payment-failure release, returns, restocking, manual adjustment, procurement, and technical concurrency mechanisms remain future Order or Inventory integration concerns. Quantity may later move into an Inventory domain without changing Ready-Made Product identity.
 
 Every Listing has exactly one immutable commercial source: either a FINALIZED Revision or a Ready-Made Product, never both. A source may have multiple Listings over time, but the Listing specification permits no more than one ACTIVE Listing for the same source in MVP.
 
@@ -81,7 +86,7 @@ No Product Variant entity exists in MVP. Future product-family or variant groupi
 
 Creastrix-first selling is platform policy rather than a Ready-Made Product invariant. Third-party seller verification, seller-of-record, and seller self-service remain future commercial concerns.
 
-Historical Order Items must later preserve the purchased-product and commercial snapshots required for history without depending on the current mutable presentation of a Ready-Made Product.
+Order Items preserve the purchased-product and commercial snapshots required for history without depending on the current mutable presentation of a Ready-Made Product.
 
 Significant creation, lifecycle, and quantity events may later be recorded through Audit Log behavior.
 
@@ -89,4 +94,4 @@ Significant creation, lifecycle, and quantity events may later be recorded throu
 
 Status: DRAFT
 
-Version: 0.2
+Version: 0.3

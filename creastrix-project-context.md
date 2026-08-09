@@ -35,6 +35,8 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - Listing
 - Personalization
 - Manufacturer Profile
+- Order
+- Order Item
 
 ## Domain Principles
 
@@ -69,7 +71,7 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - Ready-Made Product is the stable identity of one independently stocked physical product configuration and belongs to exactly one Workspace.
 - The Workspace owner provides the platform-recognized commercial context in which a Ready-Made Product is managed; this does not prove legal ownership, physical custody, seller-of-record, manufacturer, or supplier status.
 - Ready-Made Product has the ACTIVE and ARCHIVED lifecycle and may transition in either direction.
-- Ready-Made Product uses simple non-negative available quantity in MVP; an allocation may be confirmed only when sufficient quantity is available at confirmation, and the same available stock capacity cannot be confirmed for more than one buyer. Lifecycle remains independent from stock availability.
+- Ready-Made Product uses simple non-negative available quantity in MVP; an allocation may be confirmed only when sufficient quantity is available at confirmation, and the same available stock capacity cannot be confirmed for more than one Order Item. Lifecycle remains independent from stock availability.
 - One independently stocked physical configuration is one Ready-Made Product in MVP; no Product Variant entity exists.
 - Ready-Made Product exists independently from Listing and is never published directly.
 - Ready-Made Product does not require a Manufacturer Profile.
@@ -84,10 +86,10 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - Listing has the DRAFT, ACTIVE, PAUSED, and ARCHIVED lifecycle; ACTIVE does not guarantee effective orderability.
 - Source archive or loss of required business eligibility makes an existing Listing non-orderable without changing Listing lifecycle automatically.
 - A Project cannot move between Workspaces while a Listing targeting any of its Revisions is ACTIVE.
-- A Ready-Made Product Listing uses a fixed unit sale price, while a Revision-based Listing may use base or display pricing before the final Order Item price is determined.
+- A Ready-Made Product Listing uses a fixed unit sale price, while a Revision-based Listing may use base or display pricing before confirmed Order Item merchandise amounts are determined.
 - Every Listing uses one currency in MVP.
 - A Revision-based Listing requires explicit applicable royalty terms before activation; a Ready-Made Product Listing does not create designer royalty automatically.
-- Listing is manufacturer-independent; a Manufacturer Profile for made-to-order commerce is selected later for Order Item.
+- Listing is manufacturer-independent; a Manufacturer Profile for made-to-order commerce is selected through pre-confirmation workflow and assigned to Order Item at confirmation.
 - Seller-of-record remains future work, and historical Order Item snapshots are never rewritten by later Listing changes.
 - Personalization is a private, reusable buyer-specific configuration with exactly one immutable FINALIZED Revision base.
 - Personalization belongs to exactly one User in MVP and preserves immutable Created By provenance.
@@ -96,12 +98,12 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - Revision defines immutable technical personalization capability and constraints; Listing may commercially offer or narrow but never expand those constraints.
 - Initial buyer creation occurs through a suitable ACTIVE Revision-sourced Listing, after which the saved Personalization remains independent from that Listing.
 - Personalization has no lifecycle in MVP. Validity is evaluated separately, and the saved object may be temporarily invalid while editing.
-- Personalization remains mutable and reusable after purchase, while a future Order Item snapshots the purchased configuration immutably.
+- Personalization remains mutable and reusable after purchase, while Order Item snapshots the purchased configuration immutably.
 - AI-assisted generation and generated artifacts remain workflow inside Personalization and do not change Created By.
 - Personalization never mutates or automatically becomes a Revision.
 - Ordinary Ready-Made Product fulfillment does not use Personalization in MVP.
-- Final price, currency, royalty terms, and Manufacturer Profile selection remain outside Personalization and are snapshotted later through Order Item.
-- Royalty rules originate from Listing, and historical commercial context is snapshotted later in Order Item.
+- Confirmed merchandise amounts, currency, royalty terms, and Manufacturer Profile selection remain outside Personalization and are snapshotted through Order Item.
+- Royalty rules originate from Listing, and historical commercial context is snapshotted in Order Item.
 - Manufacturer Profile is the stable manufacturing-capability identity of exactly one Profile Holder, which is either one User or one Organization, never both.
 - A Manufacturer Profile Holder is immutable in MVP, and a User or Organization may hold no more than one Manufacturer Profile. A User's personal profile remains independent from Organization-held profiles through which that User may be authorized to act.
 - Manufacturer Profile has exactly one immutable Created By User as historical provenance.
@@ -110,10 +112,26 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - Manufacturer Profile may describe generic declared manufacturing capabilities without defining detailed machines, technologies, facilities, or capacity in MVP.
 - An Organization-held Manufacturer Profile is managed and used by authorized Users acting on behalf of the Organization. Organization Membership alone does not automatically grant that authority.
 - Manufacturer Profile has no mandatory Workspace relationship. Workspace Membership and the PROJECTS, READY_MADE_PRODUCTS, and LISTINGS scopes do not grant Manufacturer Profile management, verification, or work-acceptance authority.
-- A future made-to-order Order Item has exactly one assigned Manufacturer Profile. Manufacturer is domain shorthand for that assigned profile; no separate Manufacturer entity exists in MVP.
-- Actual Manufacturer acceptance belongs to the future Order Item workflow. Later Manufacturer Profile status changes never rewrite historical assignments or automatically cancel existing Order Items.
+- A made-to-order Order Item has exactly one assigned Manufacturer Profile. Manufacturer is domain shorthand for that assigned profile; no separate Manufacturer entity exists in MVP.
+- Actual Manufacturer acceptance belongs to the Order Item confirmation workflow. Later Manufacturer Profile status changes never rewrite historical assignments or automatically cancel existing Order Items.
 - Ordinary Ready-Made Product fulfillment does not require a Manufacturer Profile.
 - Manufacturer Profile is a manufacturing capability identity, not a seller-of-record, payout account, payment recipient, or tax merchant.
+- Order represents one confirmed purchase for exactly one Buyer User, contains one or more Order Items, and uses exactly one currency.
+- Order and its fixed Order Item collection are created atomically only at successful confirmation. No DRAFT Order exists in MVP, and pre-confirmation checkout and Manufacturer acceptance remain workflow rather than current entities.
+- An Order may structurally mix ready-made and made-to-order items from multiple Listings, source Workspaces, and Manufacturer Profiles when all items use the same currency and current checkout policy permits it.
+- Order has no Workspace relationship, and no ORDERS Workspace permission scope exists in MVP.
+- Order confirmed merchandise subtotal equals the sum of immutable Order Item line merchandise amounts and is not a final payable total.
+- Order aggregate lifecycle is CONFIRMED, COMPLETED, or CANCELLED and is derived canonically from Order Item states.
+- Order Item represents one confirmed purchased line and is the immutable commercial, source, Personalization, royalty-context, and fulfillment-line snapshot boundary.
+- Order Item lifecycle is CONFIRMED, IN_FULFILLMENT, FULFILLED, or CANCELLED. FULFILLED and CANCELLED are terminal.
+- An immutable snapshotted FINALIZED Revision source uses made-to-order fulfillment, while a Ready-Made Product source uses existing-stock fulfillment in MVP.
+- A made-to-order Order Item requires exactly one VERIFIED and item-eligible Manufacturer Profile whose acceptance was obtained before confirmation. Assignment is immutable afterward.
+- Confirmation of a ready-made Order Item establishes allocation of its full quantity without overselling.
+- An Order Item Personalization snapshot is immutable and authoritative even when the referenced Personalization later changes or is deleted.
+- Order Item preserves immutable Listing, source, source Workspace, commercial context, merchandise amounts, and applicable royalty terms without establishing seller-of-record.
+- Payment state remains separate from Order confirmation and lifecycle.
+- Cancellation preserves all confirmed snapshots, and partial-quantity cancellation is unsupported in MVP.
+- Later Listing, source, Personalization, Workspace access, Designer verification, Manufacturer Profile, or royalty-term changes never rewrite confirmed commerce.
 
 ## Product Rules
 
@@ -134,7 +152,7 @@ The following specifications are DRAFT and are not yet part of the validated dom
 
 ## Next Steps
 
-1. Review and finalize the Manufacturer Profile draft.
-2. Return to Order and Order Item together using Manufacturer Profile as the made-to-order assignment identity.
-3. Finalize Manufacturer acceptance, Order confirmation, stock allocation, and cancellation boundaries.
-4. Continue with Shipment, Payment, Payment Allocation, and Royalty once Order semantics are stable.
+1. Review and finalize the Order and Order Item drafts.
+2. Model Shipment and fulfillment evidence and grouping.
+3. Model Payment and Payment Allocation, including payable totals, seller and payout semantics, and multi-context allocations.
+4. Model Royalty accrual, reversal, and payout after Payment semantics stabilize.

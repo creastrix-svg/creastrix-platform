@@ -15,7 +15,7 @@ A Personalization is responsible for:
 - representing buyer-selected values within Revision-defined constraints;
 - holding mutable manual or AI-assisted generated artifacts where needed;
 - remaining a reusable saved configuration while its values are edited;
-- providing the configuration data required for future immutable Order Item snapshots.
+- providing the configuration data required for immutable Order Item snapshots.
 
 ## Relationships
 
@@ -24,7 +24,7 @@ A Personalization:
 - belongs to exactly one User;
 - has exactly one immutable Created By User;
 - is based on exactly one immutable FINALIZED Revision;
-- may later be used by zero or more Order Items;
+- may be referenced by zero or more Order Items for traceability;
 - has no direct relationship to a Workspace, Listing, Ready-Made Product, or Manufacturer Profile in MVP.
 
 ## Business Rules
@@ -42,15 +42,16 @@ A Personalization:
 - A Listing may commercially offer or narrow the personalization space defined by its FINALIZED Revision source but never expand those technical constraints.
 - Personalization values and generated artifacts may be edited repeatedly and may temporarily be invalid while editing.
 - Personalization has no lifecycle state in MVP. Current validity is evaluated separately from persistence.
-- A Personalization may be accepted into a confirmed Order Item only when the actual configuration passes required current technical, commercial, and future Order validation.
-- A Personalization remains mutable and may be reused for multiple purchases. Each future Order Item snapshots the configuration used for that purchase independently.
+- A Personalization may be used by a confirmed Order Item only when the actual configuration passes required current technical, commercial, and Order confirmation validation.
+- When used by an Order Item in MVP, the Personalization must belong to the Buyer User of that Order.
+- A Personalization remains mutable and may be reused for multiple purchases. Each Order Item snapshots the configuration used for that purchase independently.
 - A Personalization never mutates its FINALIZED Revision and never moves automatically to another Revision. Adapting it to another Revision requires a new Personalization through a future explicit workflow.
 - AI-assisted generation does not change Personalization identity or Created By.
 - Project and Listing lifecycle changes do not mutate Personalization. They may affect whether it can currently be purchased.
 - Personalization does not use Ready-Made Product as its technical base in MVP and does not represent ordinary ready-made fulfillment information.
-- Buyer-selected values may provide inputs to future price calculation, while final calculated price and currency belong to the future Order Item snapshot.
+- Buyer-selected values may provide inputs to price calculation, while confirmed merchandise amounts and currency belong to the Order Item snapshot.
 - Personalization does not select or own a Manufacturer Profile and does not own final sale price, Listing pricing terms, currency, tax, shipping price, or royalty terms.
-- Manufacturer Profile selection, assignment, and item-specific manufacturing feasibility belong to the future made-to-order Order Item and fulfillment workflow.
+- Manufacturer Profile selection, assignment, and item-specific manufacturing feasibility belong to the made-to-order Order Item confirmation and fulfillment workflow.
 - Discard or deletion of a saved Personalization remains subject to future retention rules and never changes historical Order Item snapshots.
 
 ## Invariants
@@ -74,9 +75,9 @@ Personalization is not a Project, Revision, public design variant, Listing, Read
 
 Physical output may differ between buyers without creating a new Revision when buyer-specific values remain within the predefined constraints of the same FINALIZED Revision. A reusable design change or a change to personalization zones, parameter structure, ranges, construction, shared geometry, manufacturing files, or structural and safety assumptions requires a new Revision.
 
-Lightweight validation may occur while editing, authoritative purchase validation occurs before future Order Item confirmation, and feasibility validation for an assigned Manufacturer Profile may occur later before production. Detailed timing remains future Order and fulfillment work.
+Lightweight validation may occur while editing, authoritative purchase validation occurs before Order Item confirmation, and feasibility validation for an assigned Manufacturer Profile may occur later before production. Detailed timing remains future fulfillment work.
 
-Generated SVG, geometry, text layout, image composition, decorative pattern, or other manufacturing-oriented output may remain mutable artifacts of the Personalization workflow. Whether those artifacts are persisted or regenerated remains unresolved, while a future Order Item must preserve or reference the reproducible output actually used for production.
+Generated SVG, geometry, text layout, image composition, decorative pattern, or other manufacturing-oriented output may remain mutable artifacts of the Personalization workflow. Whether those artifacts are persisted or regenerated remains unresolved, while an Order Item must preserve or reference the reproducible output actually used for production.
 
 Hard versus soft deletion, retention, Organization-owned or shared Personalizations, support-assisted creation, copy or adaptation to another Revision, media and file architecture, buyer-content intellectual-property rules, feasibility for an assigned Manufacturer Profile, and hybrid Ready-Made Product customization remain future concerns.
 
@@ -84,4 +85,4 @@ Hard versus soft deletion, retention, Organization-owned or shared Personalizati
 
 Status: DRAFT
 
-Version: 0.2
+Version: 0.3

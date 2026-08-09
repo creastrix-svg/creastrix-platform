@@ -25,12 +25,13 @@ A User may:
 - be a member of zero or more Workspaces;
 - belong to zero or more Organizations;
 - own zero or more Personalizations;
+- be the Buyer of zero or more Orders;
 - be associated with zero or one Designer Profile;
 - hold zero or one personal Manufacturer Profile.
 
 ## Business Rules
 
-- A User may create Projects only within Workspaces where the User has sufficient permissions.
+- A User may create Projects only within Workspaces where the User has the effective authorization required for PROJECTS operations.
 - A User may create or manage Ready-Made Products only within Workspaces where the User has the effective authorization required for READY_MADE_PRODUCTS operations.
 - A User may create or manage Listings only when the User has effective LISTINGS authorization in the Workspace context derived from the Listing's commercial source.
 - LISTINGS authorization does not replace the business eligibility required to activate or publish a Listing.
@@ -43,6 +44,8 @@ A User may:
 - Eligibility to publish Listings for other commercial source types is defined by the corresponding domain rules.
 - A User may accept made-to-order manufacturing work only when acting in a context backed by a VERIFIED Manufacturer Profile and satisfying the authorization rules of that Profile Holder context.
 - In a personal manufacturing context, the Manufacturer Profile is held by the User. In an Organization manufacturing context, the Manufacturer Profile is held by the Organization and the User must be authorized to act on behalf of that Organization.
+- A User may access the User's own Orders through User and customer authorization without requiring Workspace Membership or a Workspace permission scope.
+- When an Order Item uses Personalization in MVP, that Personalization must belong to the Buyer User of the Order.
 
 ## Invariants
 
@@ -59,7 +62,9 @@ Authentication and identity data belong to User, while personal information belo
 
 A User may act through Organization-held Manufacturer Profiles when authorized. Those profiles are independent from the User's personal Manufacturer Profile and do not count against its cardinality.
 
+Being the Buyer of an Order represents the customer context of a confirmed purchase and does not establish legal ownership of commerce or its underlying products.
+
 ---
 
 Status: APPROVED
-Version: 1.5
+Version: 1.6

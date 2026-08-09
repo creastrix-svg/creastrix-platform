@@ -27,7 +27,7 @@ A Listing:
 - has exactly one immutable commercial source, which is either one FINALIZED Revision or one Ready-Made Product;
 - has exactly one immutable Created By User;
 - derives its Workspace context from its commercial source;
-- may later be referenced by zero or more Order Items;
+- may be referenced by zero or more Order Items;
 - may be referenced by Audit Log events in the future.
 
 ## Business Rules
@@ -54,7 +54,7 @@ A Listing:
 - A Personalization does not retain the Listing used during creation as a permanent relationship.
 - A saved Personalization may later be used through another suitable Listing targeting the same FINALIZED Revision after current technical and commercial revalidation.
 - A Listing becoming PAUSED or ARCHIVED does not mutate a saved Personalization.
-- Effective orderability with Personalization requires a currently valid Personalization under the applicable Revision and Listing restrictions in addition to the other Listing, source, business, fulfillment, and future Order rules.
+- Effective orderability with Personalization requires a currently valid Personalization under the applicable Revision and Listing restrictions in addition to the other Listing, source, business, fulfillment, and Order confirmation rules.
 - A Ready-Made Product Listing does not require a Designer Profile, Manufacturer Profile, or designer royalty merely because of its source type; seller eligibility remains separate from LISTINGS authorization.
 - A Ready-Made Product Listing does not support product-defining Personalization requiring fabrication, cutting, engraving, or other production customization in ordinary MVP fulfillment.
 - Loss of required business eligibility does not change Listing lifecycle automatically but makes an existing Listing effectively non-orderable.
@@ -66,10 +66,11 @@ A Listing:
 - A Listing uses exactly one currency in MVP.
 - A Ready-Made Product Listing uses a fixed unit sale price in MVP.
 - A FINALIZED Revision Listing may use base, display, or indicative pricing; when further calculation is required, that price must not be represented as a guaranteed final price.
-- The final customer price is established and snapshotted in Order Item before order confirmation; the detailed quoting workflow remains future commerce work.
+- The confirmed Order Item unit merchandise price and line merchandise amount are known and snapshotted at Order confirmation; the detailed quoting workflow remains future commerce work.
+- Order confirmation applies current Listing, source, business, pricing, fulfillment, and other applicable orderability rules.
 - Listing commercial presentation and current terms may change while the Listing is DRAFT, ACTIVE, or PAUSED, subject to authorization and business rules. Changes apply prospectively and never rewrite historical Order Item snapshots.
 - A Listing owns public commercial presentation rather than source product identity, product-defining content, manufacturing files, stock mechanics, Workspace ownership, authentication, or fulfillment history.
-- Listing is manufacturer-independent in MVP. The future assigned Manufacturer identity for made-to-order commerce is a Manufacturer Profile selected and assigned later in the Order or Order Item flow.
+- Listing is manufacturer-independent in MVP. The assigned Manufacturer identity for made-to-order commerce is a Manufacturer Profile selected through pre-confirmation workflow and assigned to Order Item at confirmation.
 - A VERIFIED Manufacturer Profile is a prerequisite for new made-to-order work but does not by itself establish item-specific suitability, capacity, or acceptance.
 
 ## Invariants
@@ -89,7 +90,7 @@ A Listing:
 
 ## Notes
 
-Listing lifecycle and effective orderability are separate. Effective orderability is evaluated from current Listing lifecycle, source state, business eligibility, pricing validity, source-specific fulfillment conditions, and future Order rules; it is not a separate persisted Listing state in this specification.
+Listing lifecycle and effective orderability are separate. Effective orderability is evaluated from current Listing lifecycle, source state, business eligibility, pricing validity, source-specific fulfillment conditions, and Order confirmation rules; it is not a separate persisted Listing state in this specification.
 
 The Workspace context of a Listing is source-derived and is not a legal seller-of-record, tax merchant, payout recipient, manufacturer, or proof of legal ownership. Creastrix-first ready-made selling remains platform policy. Third-party seller eligibility, reseller offers, and any future separate offering commercial context remain future work.
 
@@ -99,7 +100,7 @@ Revision defines immutable technical personalization capability and constraints,
 
 Multi-currency, multiple simultaneously ACTIVE channels, manufacturer-specific offers, detailed quoting, tax and shipping price presentation, royalty representation format, deletion and retention, public URL or slug behavior, and exact visibility of PAUSED, ARCHIVED, or non-orderable Listings remain future concerns.
 
-Actual Royalty accrual is not historical state inside Listing. Future Order Items preserve the applicable Listing, source, final price, currency, royalty, commercial context, Personalization, fulfillment, and Manufacturer Profile snapshots required for historical commerce.
+Actual Royalty accrual is not historical state inside Listing. Order Items preserve the immutable purchased Listing reference and applicable source, merchandise amounts, currency, royalty, commercial context, Personalization, fulfillment, and Manufacturer Profile snapshots required for historical commerce. Current Listing changes never rewrite those confirmed snapshots.
 
 Significant creation, activation, pause, archive, pricing, and royalty-term events may later be recorded through Audit Log behavior.
 
@@ -107,4 +108,4 @@ Significant creation, activation, pause, archive, pricing, and royalty-term even
 
 Status: DRAFT
 
-Version: 0.3
+Version: 0.4

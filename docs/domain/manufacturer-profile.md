@@ -23,7 +23,7 @@ A Manufacturer Profile:
 
 - belongs to exactly one immutable Profile Holder, which is either one User or one Organization;
 - has exactly one immutable Created By User;
-- may later be assigned to zero or more made-to-order Order Items;
+- may be assigned to zero or more made-to-order Order Items;
 - has no mandatory Workspace relationship.
 
 ## Business Rules
@@ -47,8 +47,11 @@ A Manufacturer Profile:
 - An Organization-held Manufacturer Profile is managed by authorized Users acting on behalf of the Organization under Organization rules.
 - Organization Membership alone does not automatically authorize Manufacturer Profile management or acceptance of manufacturing work.
 - Workspace Membership and the PROJECTS, READY_MADE_PRODUCTS, and LISTINGS scopes do not automatically authorize Manufacturer Profile management, verification, or acceptance of manufacturing work.
-- Actual item-specific eligibility, pricing, capacity validation, acceptance, and assignment belong to the future Order Item workflow.
-- Manufacturer acceptance is specific to future made-to-order work, is not Manufacturer Profile state, and does not change the profile eligibility status.
+- A made-to-order Order Item has exactly one assigned Manufacturer Profile at confirmation.
+- The assigned Manufacturer Profile must be VERIFIED at confirmation, while item-specific eligibility and required Manufacturer acceptance must also succeed.
+- Actual item-specific eligibility, pricing, capacity validation, acceptance, and assignment belong to the Order Item confirmation workflow.
+- Manufacturer acceptance is specific to made-to-order work, is not Manufacturer Profile state, and does not change the profile eligibility status.
+- Manufacturer Profile assignment is immutable after Order confirmation.
 - A later profile status change does not rewrite an existing Manufacturer Profile assignment or automatically reassign or cancel an existing Order Item.
 - A Manufacturer Profile required by historical references cannot be destructively deleted.
 
@@ -90,4 +93,4 @@ Manufacturer Profile does not depend on Organization Profile or Designer Profile
 
 Status: DRAFT
 
-Version: 0.1
+Version: 0.2
