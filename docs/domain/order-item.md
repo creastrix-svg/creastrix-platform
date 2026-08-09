@@ -14,13 +14,15 @@ An Order Item is responsible for:
 - preserving its immutable Order and purchased Listing relationships;
 - preserving an immutable purchase-time commercial and source snapshot;
 - recording positive integer quantity, currency, unit merchandise price, and line merchandise amount;
+- preserving its immutable confirmed discount share for captured-funds attribution;
 - preserving optional Personalization traceability and the authoritative purchased Personalization snapshot;
 - establishing confirmed Ready-Made Product stock allocation when applicable;
 - preserving exactly one assigned Manufacturer Profile for made-to-order fulfillment;
 - preserving an immutable, authoritative confirmation-time Manufacturer acceptance fact for made-to-order fulfillment;
+- preserving the confirmed manufacturer compensation and beneficiary basis for made-to-order Payment Allocation;
 - managing its source-neutral fulfillment and cancellation lifecycle;
 - governing path-specific authorization for formally starting fulfillment;
-- providing a stable boundary for Shipment and future Payment Allocation and Royalty integration.
+- providing a stable boundary for Shipment, Payment Allocation, and future Royalty integration.
 
 ## Relationships
 
@@ -32,7 +34,8 @@ An Order Item:
 - has exactly one assigned Manufacturer Profile when its purchased source is a FINALIZED Revision;
 - has no assigned Manufacturer Profile merely for ordinary Ready-Made Product fulfillment;
 - may be a current or frozen member of zero or more Shipments over time, subject to at most one non-CANCELLED Shipment at a time;
-- may later participate in Payment Allocation and Royalty records;
+- may be the charge subject of zero or more Payment Allocations through captured Payments of its Order;
+- may later participate in Royalty records;
 - has no direct Workspace relationship.
 
 ## Business Rules
@@ -54,6 +57,10 @@ An Order Item:
 - Personalization and manufacturing pricing effects must already be reflected in the confirmed merchandise amounts when applicable.
 - Line merchandise amount is snapshotted independently and is not permanently constrained by an invariant requiring it to equal unit merchandise price multiplied by quantity.
 - Tax, shipping, coupons, order-level discounts, and payment fees are not modeled as Order Item merchandise amounts in this specification.
+- The confirmed aggregate Order discount is attributed deterministically across Order Items for Payment Allocation using authoritative line merchandise amounts as the proportional basis and largest-remainder distribution in currency minor units. Equal fractional remainders are resolved by canonical ascending immutable Order Item identity.
+- Each Order Item preserves its immutable confirmed discount share for allocation calculation and history. The share reduces net item merchandise contribution but never rewrites unit merchandise price or line merchandise amount.
+- Every confirmed item discount share is non-negative and does not exceed the authoritative line merchandise amount. The complete sum of confirmed item discount shares equals the Order's aggregate confirmed discount total.
+- Net item merchandise contribution equals authoritative line merchandise amount minus the confirmed item discount share, is always non-negative, and is never recomputed from unit merchandise price multiplied by quantity.
 - Confirmation requires the Listing and source to permit purchase, fixed quantity and merchandise amounts, the applicable commercial and royalty context, and all source-specific prerequisites.
 - Personalization is optional and may be used only for an applicable FINALIZED Revision-sourced Order Item in MVP.
 - When Personalization is used, it must belong to the Buyer User of the Order, use the applicable FINALIZED Revision base, and pass current required validation before confirmation.
@@ -64,10 +71,17 @@ An Order Item:
 - VERIFIED status alone does not establish item-specific capability, available capacity, pricing, acceptance, lead time, or product compliance.
 - Manufacturer acceptance is a pre-confirmation prerequisite rather than Manufacturer Profile state.
 - Every confirmed made-to-order Order Item preserves an immutable, authoritative confirmation-time business fact that the required Manufacturer acceptance was obtained.
+- Every confirmed made-to-order Order Item preserves sufficient immutable confirmed Manufacturer compensation basis and terms for future captured-funds attribution, including the compensation amount, beneficiary type, applicable live User or Organization reference, immutable beneficiary identity snapshot, and source or basis of the confirmed commercial terms.
+- The Manufacturer compensation beneficiary is the confirmation-time User or Organization Profile Holder context of the assigned Manufacturer Profile. The Manufacturer Profile itself is never the beneficiary or payment recipient.
+- Manufacturer Profile assignment alone does not create a Manufacturer compensation right. The compensation amount and beneficiary context must have been explicitly established in accepted commercial and manufacturing terms before Order confirmation.
+- The Order Item compensation basis does not by itself prove that Manufacturer compensation has been earned, become due or payable, become eligible for withdrawal or payout, or been transferred. A MANUFACTURING_COMPENSATION Payment Allocation at capture records captured-funds attribution toward that basis and does not prove those later conditions either.
+- Buyer-facing Order discount is borne by Creastrix merchant economics by default and does not reduce an already confirmed Manufacturer compensation amount in MVP.
+- Order confirmation must reject a made-to-order economic configuration when its net item merchandise contribution after discount attribution cannot support the explicit confirmed Manufacturer compensation amount. No subsidy or external funding model exists in MVP.
 - The Manufacturer acceptance fact belongs to the Order Item confirmation history and snapshot and remains authoritative even if no Audit Log record exists.
 - A future Audit Log may record acting User, exact timestamp, evidence source, workflow provenance, or detailed acceptance evidence, but it does not replace the Order Item as the authoritative source of truth that Manufacturer acceptance occurred.
 - Later changes to Manufacturer Profile eligibility status, Organization Membership, acting User status, future Audit Log behavior, or Profile Holder permissions never rewrite the historical confirmed Manufacturer acceptance fact.
 - Manufacturer Profile assignment is immutable after confirmation. Later UNVERIFIED or SUSPENDED status does not rewrite the assignment or automatically reassign or cancel the Order Item.
+- Later changes to the Manufacturer Profile, Profile Holder, User, Organization, or commercial rules do not rewrite the confirmed Manufacturer compensation or beneficiary basis.
 - If an assigned Manufacturer later fails, the Order Item may be cancelled when applicable rules permit. Replacement requires a future separate purchasing workflow rather than mutation of the confirmed assignment or Order Item collection.
 - A ready-made Order Item has no assigned Manufacturer Profile merely because of ordinary existing-stock fulfillment.
 - Ready-made confirmation establishes a confirmed allocation of the full Order Item quantity against its Ready-Made Product.
@@ -83,7 +97,7 @@ An Order Item:
 - CONFIRMED means the immutable commercial snapshot exists and fulfillment has not yet begun.
 - IN_FULFILLMENT means the applicable source-specific fulfillment obligations are being performed.
 - FULFILLED means all applicable fulfillment obligations for the Order Item are complete.
-- Transition from CONFIRMED to IN_FULFILLMENT means that applicable fulfillment execution has formally started. It is not caused merely by Payment state, Shipment creation, Listing lifecycle, or source lifecycle.
+- Transition from CONFIRMED to IN_FULFILLMENT means that applicable fulfillment execution has formally started. It requires the Order to satisfy its current payment-readiness rule in addition to all path-specific authorization and fulfillment prerequisites, but it is not caused automatically by Payment state, Shipment creation, Listing lifecycle, or source lifecycle.
 - For a made-to-order Order Item, transition from CONFIRMED to IN_FULFILLMENT requires authorization within the Item's immutable assigned Manufacturer Profile context.
 - Made-to-order fulfillment may be started by an authorized User acting through that Manufacturer Profile holder context or by explicitly authorized platform automation or an internal platform process acting within the same context.
 - For a User-held Manufacturer Profile, the holder User provides the holder context. For an Organization-held Manufacturer Profile, current User authorization resolves through an ACTIVE Organization Membership with the role OWNER unless a future explicit delegation rule authorizes another actor.
@@ -99,7 +113,10 @@ An Order Item:
 - Cancellation applies to the complete Order Item in MVP. Partial-quantity cancellation is not supported.
 - A FULFILLED Order Item cannot be cancelled.
 - Cancellation preserves the Order Item identity, relationships, merchandise amounts, commercial and source snapshot, Manufacturer Profile assignment, Personalization snapshot, and royalty context.
-- Payment refund is separate from Order Item cancellation.
+- Payment failure or timeout does not directly mutate Order Item state. After a bounded payment-resolution window, commerce workflow may attempt cancellation when the existing Item cancellation rules permit it.
+- Payment refund is separate from Order Item cancellation. Cancellation before capture may require no refund, cancellation after capture may create a refund obligation, and an accepted refund does not itself change Order Item lifecycle.
+- Partial refund does not create partial Item cancellation, and neither cancellation nor refund rewrites original merchandise amounts, confirmed discount share, Manufacturer compensation basis, or the Order payable snapshot.
+- ORIGINAL Payment Allocations may use the Order Item as their charge subject only after capture of a Payment of the Order is accepted. Payment Allocation does not become an Order Item lifecycle state.
 - An Order Item preserves the applicable Listing royalty terms and context at confirmation. It is not the authoritative accrued Royalty ledger.
 - A ready-made Order Item may explicitly preserve that no designer royalty applied.
 - Later Listing, Project, Revision context, Ready-Made Product, Personalization, Workspace access, Designer verification, Manufacturer Profile, or royalty-term changes never rewrite the immutable confirmed commercial snapshot.
@@ -116,10 +133,14 @@ An Order Item:
 - Order Item currency always matches its Order currency.
 - The confirmed Order Item currency is always the purchased Listing currency captured at confirmation.
 - Unit merchandise price and line merchandise amount never change after confirmation.
+- The confirmed discount share is always non-negative, never exceeds the authoritative line merchandise amount, never changes after confirmation, and never rewrites the line merchandise amount.
+- The sum of all confirmed item discount shares in an Order always equals that Order's aggregate confirmed discount total.
+- Net item merchandise contribution is always non-negative.
 - The purchase-time commercial, source, Workspace, and royalty context never changes after confirmation.
 - When Personalization is used, the authoritative purchased Personalization snapshot never changes after confirmation.
 - A made-to-order Order Item always has exactly one assigned Manufacturer Profile.
 - A confirmed made-to-order Order Item always preserves an immutable, authoritative confirmation-time fact that required Manufacturer acceptance was obtained.
+- A confirmed made-to-order Order Item always preserves its explicitly established Manufacturer compensation and User or Organization beneficiary basis.
 - An ordinary ready-made Order Item never has an assigned Manufacturer Profile merely for stock fulfillment.
 - Manufacturer Profile assignment never changes after confirmation.
 - The historical confirmed Manufacturer acceptance fact never changes after confirmation.
@@ -127,6 +148,7 @@ An Order Item:
 - An Order Item is never covered by more than one non-CANCELLED Shipment in MVP.
 - An Order Item always has exactly one lifecycle state: CONFIRMED, IN_FULFILLMENT, FULFILLED, or CANCELLED.
 - Every transition from CONFIRMED to IN_FULFILLMENT satisfies the applicable path-specific authorization rules.
+- Every transition from CONFIRMED to IN_FULFILLMENT satisfies the Order's applicable payment-readiness rule.
 - FULFILLED and CANCELLED are terminal states.
 - Later source, profile, access, or commercial changes never rewrite the immutable confirmed snapshot.
 
@@ -134,16 +156,16 @@ An Order Item:
 
 The immutable source snapshot does not create a second authoritative direct source relationship. The purchased Listing remains the entity relationship, and the snapshot provides historical autonomy from current Listing and source state.
 
-Order Item does not own Inventory, and no Inventory or Reservation entity is introduced in MVP. Temporary reservation, payment-failure release, returns, restocking, and technical locking remain future integration concerns.
+Order Item does not own Inventory, and no Inventory or Reservation entity is introduced in MVP. Temporary reservation, returns, restocking, and technical locking remain future integration concerns. Payment-resolution failure may lead to Order Item cancellation, but Payment never directly releases ready-made stock allocation.
 
-Shipment provides delivery evidence toward the FULFILLED transition, while Shipment lifecycle states are not duplicated in the Order Item lifecycle. Manufacturing, payment, and refund substates also remain outside the Order Item lifecycle.
+Shipment provides delivery evidence toward the FULFILLED transition, while Shipment lifecycle states are not duplicated in the Order Item lifecycle. Manufacturing, Payment, Payment Allocation, and refund substates also remain outside the Order Item lifecycle.
 
-Actual Royalty accrual, amount, reversal, and payout belong to the future Royalty and Payment domains.
+Actual Royalty accrual, amount, earning or release condition, reversal, and payout belong to future Royalty and Payout work. Payment Allocation explains captured funds without becoming the Royalty ledger, proof that compensation has been earned or become payable, or proof of payout.
 
-Seller-of-record, final payable totals, taxes, shipping amounts, discounts, payment fees, and replacement commerce remain future domain concerns.
+The Order preserves the current Creastrix seller-of-record and merchant-of-record context and its final payable snapshot. Detailed tax, payment-fee, refund-policy, and replacement-commerce rules remain future domain concerns.
 
 ---
 
 Status: DRAFT
 
-Version: 0.3
+Version: 0.4

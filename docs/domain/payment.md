@@ -1,0 +1,123 @@
+# Payment
+
+## Purpose
+
+A Payment represents one durable attempt to collect buyer funds for exactly one existing Order.
+
+It preserves the accepted financial and provider-correlated history of that collection attempt without becoming the Order lifecycle, settlement, payout, Royalty, or seller identity.
+
+## Responsibilities
+
+A Payment is responsible for:
+
+- preserving its immutable relationship with one Order;
+- managing the PENDING, AUTHORIZED, CAPTURED, FAILED, and CANCELLED collection lifecycle;
+- preserving its immutable currency and intended amount;
+- preserving accepted authorization and capture facts where applicable;
+- correlating the collection attempt with external provider evidence;
+- preserving append-only accepted refund facts and the cumulative refund condition derived from them;
+- preserving only non-sensitive historical payment-method metadata;
+- providing the captured-funds boundary for Payment Allocations.
+
+## Relationships
+
+A Payment:
+
+- belongs to exactly one immutable Order;
+- derives its Buyer User through that Order;
+- may have zero or more Payment Allocations;
+- has no Workspace relationship.
+
+## Business Rules
+
+- A core Payment cannot exist without an Order in MVP, and one Payment never covers more than one Order.
+- A core Payment in MVP always belongs to a positive-payable Order and represents an attempt to collect that Order's full immutable confirmed payable total. Its intended amount is greater than zero and always equals the Order's confirmed payable total.
+- An Order may have zero or more Payments over time. A zero-payable Order does not create a zero-value Payment merely to represent payment readiness and may validly have no Payment.
+- In the normal positive-payable card flow, external provider authorization may be obtained before the Order exists, but that external interaction is checkout and provider workflow rather than a core Payment.
+- When pre-Order authorization succeeds, the Order, all Order Items, applicable ready-made stock allocations, immutable Order monetary snapshots, and an AUTHORIZED Payment are created together in one local confirmation transaction.
+- If external authorization fails before Order confirmation, no Order and no core Payment are created.
+- If external authorization succeeds but local Order confirmation fails, no Order and no core Payment are created. The external authorization must be durably and idempotently voided or released through compensation and reconciliation workflow.
+- Once an Order exists, each retry is represented by a new Payment. A retry Payment may begin in PENDING while its final provider result has not yet been accepted, but its intended amount still equals the same immutable Order confirmed payable total rather than only an unpaid difference.
+- A FAILED or CANCELLED Payment never returns to PENDING.
+- At most one PENDING or AUTHORIZED Payment may be active for an Order at one time in MVP.
+- After one Payment has been fully CAPTURED for the Order's confirmed payable total, no additional collection attempt may be started. A later refund does not automatically reopen collection.
+- Split tender and intentional partial payment or capture are unsupported in MVP.
+- A Payment has exactly one immutable currency, and it must equal the currency of its Order.
+- A Payment preserves its intended amount and accepted authorized and captured amounts where applicable. Its intended amount always equals the Order's confirmed payable total.
+- When a Payment has an accepted authorization fact, the accepted authorized amount is greater than zero and equals both the Payment intended amount and the Order confirmed payable total.
+- A Payment may reach CAPTURED through a supported direct-capture flow without a separate accepted authorization fact.
+- For every CAPTURED Payment, the accepted captured amount is greater than zero and equals both the Payment intended amount and the Order confirmed payable total.
+- Provider evidence of a partial or otherwise mismatched capture requires exception handling and reconciliation and cannot be accepted as a normal CAPTURED Payment in the current MVP.
+- Across all Payments of one Order, accepted gross captured amount must never exceed the Order's confirmed payable total. Overpayment is forbidden.
+- A Payment has exactly one lifecycle state: PENDING, AUTHORIZED, CAPTURED, FAILED, or CANCELLED.
+- PENDING means a durable collection attempt exists for an existing Order but the final provider collection result has not been accepted.
+- AUTHORIZED means the platform has accepted valid evidence that provider authorization for the required amount exists.
+- CAPTURED means the platform has accepted valid evidence of capture of the authoritative amount. It does not mean final bank settlement, beneficiary payout, absence of chargeback or dispute risk, or irreversible funds.
+- FAILED means the collection attempt cannot continue successfully under the current workflow.
+- CANCELLED means the collection attempt was intentionally terminated or voided without capture.
+- The allowed lifecycle transitions are PENDING to AUTHORIZED, CAPTURED, FAILED, or CANCELLED, and AUTHORIZED to CAPTURED, FAILED, or CANCELLED.
+- CAPTURED, FAILED, and CANCELLED are terminal for the collection lifecycle of that Payment.
+- REFUNDED is not a Payment lifecycle state. Not-refunded, partially-refunded, and fully-refunded conditions are derived from append-only accepted refund history.
+- External provider responses and webhooks are evidence rather than automatic domain truth. Before accepting authorization, capture, refund, cancellation, or void evidence, platform rules validate provider and account identity, authenticity, correlation, amount, currency, current Payment state, duplicate economic-event identity, and the allowed transition.
+- Once accepted for a Payment, its provider, account, and transaction correlation identity remains immutable. A later attempt, including one routed through another provider, is a new Payment.
+- Only an authorized platform payment workflow may mutate Payment lifecycle or accept financial evidence. A Buyer may initiate checkout, retry, or a refund request but cannot directly assign Payment domain state.
+- A Manufacturer, beneficiary, Workspace member, or Organization member does not receive Payment mutation authority merely because of that role or relationship.
+- The same external economic authorization, capture, cancellation, void, or refund must not be recognized more than once.
+- Payment may preserve non-sensitive historical method metadata such as method type, masked display data, a provider token or reference, and card brand or last digits where legally and operationally permitted.
+- Raw card number, CVV, and complete payment credentials are never Payment domain data.
+- No Refund entity exists in DRAFT 0.1. A Payment preserves append-only accepted refund facts or value records, including one immutable platform-accepted refund-event identity, provider refund reference where applicable, amount, currency, accepted timestamp, and appropriate reason and evidence context.
+- An accepted refund fact may exist only for a CAPTURED Payment. No accepted refund fact may be attached to a PENDING, AUTHORIZED, FAILED, or CANCELLED Payment.
+- Every accepted refund amount is greater than zero and uses the Payment currency. Foreign-exchange refund inside Payment is unsupported in MVP.
+- The immutable refund-event identity provides stable correlation for idempotency, reconciliation, and the complete REVERSAL Payment Allocation set associated with that accepted refund. Exact storage fields remain implementation detail.
+- Platform recognition of an accepted refund fact and its complete correlated REVERSAL Payment Allocation set is one local atomic domain operation.
+- If a provider refund succeeds externally but local recognition fails, retry or reconciliation must recognize the same refund event exactly once without creating another accepted refund fact or REVERSAL set.
+- Payment remains CAPTURED after an accepted refund. Cumulative accepted refund amount must never exceed captured amount, and accepted refund history cannot be destructively deleted.
+- For the positive-payable card MVP, an Order is payment-ready for fulfillment only after full accepted capture of its confirmed payable total. A zero-payable Order is payment-ready without a Payment.
+- Payment readiness is not an Order or Order Item lifecycle state, and Payment state does not directly transition or cancel an Order Item.
+- After terminal payment resolution failure and a bounded retry window, commerce workflow may attempt cancellation of eligible Order Items. Order status remains derived from Order Item states.
+- The Buyer may view Payment amount, currency, state, non-sensitive method metadata, and refund summary for the Buyer's own Order through customer authorization.
+- Buyer access does not expose internal Payment Allocations, manufacturer compensation, merchant-side item proceeds, or internal provider reconciliation details.
+- Workspace Membership and the PROJECTS, READY_MADE_PRODUCTS, and LISTINGS scopes do not expose Payment. No PAYMENTS Workspace permission scope exists in MVP.
+
+## Invariants
+
+- A Payment always has one stable identity.
+- A Payment always belongs to exactly one existing Order, and that relationship never changes.
+- A Payment never covers more than one Order.
+- A Payment intended amount is always greater than zero and always equals its Order's confirmed payable total.
+- An accepted authorized amount, when present, is greater than zero and always equals the Payment intended amount.
+- An accepted captured amount, when present, is greater than zero and always equals the Payment intended amount.
+- A Payment always uses exactly one immutable currency equal to its Order currency.
+- A Payment always has exactly one lifecycle state: PENDING, AUTHORIZED, CAPTURED, FAILED, or CANCELLED.
+- CAPTURED, FAILED, and CANCELLED never return to a non-terminal collection state.
+- Intentional partial payment, split tender, and overpayment never occur in MVP.
+- Accepted gross captured amount across an Order's Payments never exceeds the confirmed payable total.
+- The same external economic event is never recognized more than once.
+- Accepted provider, account, and transaction correlation identity never changes for an existing Payment.
+- Every accepted refund fact always has exactly one immutable refund-event identity.
+- An accepted refund fact exists only for a CAPTURED Payment, always has an amount greater than zero, and always uses the Payment currency.
+- Cumulative accepted refund amount never exceeds captured amount.
+- The sum of REVERSAL Payment Allocation amounts correlated with one accepted refund-event identity always equals that accepted refund amount.
+- Accepted authorization, capture, refund, and provider-correlation history is never destructively deleted or rewritten.
+- A CAPTURED Payment always has a complete ORIGINAL Payment Allocation set whose amounts equal its captured amount.
+- A Payment never has a direct Workspace relationship.
+
+## Notes
+
+Payment is not an Order, Order Item, Payment Allocation, Checkout, Payment Attempt, Payment Method, Payment Provider, settlement, payout, Royalty, Workspace, or seller identity. No separate Checkout, Payment Attempt, Payment Method, or Payment Provider entity is introduced in DRAFT 0.1.
+
+Creastrix is the single buyer-facing contractual seller-of-record and merchant-of-record for every MVP Order. This is a current commerce policy rather than a permanent invariant of the whole platform. Its legal, tax, invoicing, consumer-protection, VAT, acquiring, KYC, AML, and PSP feasibility requires production legal and compliance validation.
+
+The core domain does not assume that Creastrix directly performs regulated custody or onward transfer of third-party customer funds. Actual payment collection and future beneficiary payouts are expected to use appropriately licensed payment infrastructure; exact provider architecture is implementation and integration work.
+
+External authorization and local Order confirmation cannot form one cross-system ACID transaction. Durable compensation, reconciliation, idempotency, and infrastructure workflow such as outbox or inbox mechanisms may be used without becoming new core entities solely for this purpose.
+
+Technical concurrency controls, provider adapters, webhook storage, and exact retry and timeout durations remain implementation or future policy concerns. Consumer refund policy, disputes, chargebacks, settlement, accounting treatment, and exact retention duration also remain future legal and domain work.
+
+Payment and its accepted financial history cannot be destructively deleted. Exact retention duration must follow future legal, accounting, privacy, and PSP requirements.
+
+---
+
+Status: DRAFT
+
+Version: 0.1

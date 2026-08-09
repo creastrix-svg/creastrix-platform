@@ -37,6 +37,8 @@ The following specifications are DRAFT. They represent active architecture work 
 - Manufacturer Profile
 - Order
 - Order Item
+- Payment
+- Payment Allocation
 - Shipment
 
 ## Domain Principles
@@ -54,7 +56,7 @@ The following specifications are DRAFT. They represent active architecture work 
 - Organization is a first-class business participant.
 - Organization Membership is a real domain entity.
 - An ACTIVE Organization Membership with the role OWNER is the current source of general organization-level authority when no more specific delegation rule exists.
-- Organization does not by itself determine seller-of-record, merchant identity, economic beneficiary, payment recipient, or payout identity; these remain future Payment and commerce decisions.
+- Organization does not by itself determine seller-of-record, merchant identity, economic beneficiary, payment recipient, or payout identity. Creastrix is the single buyer-facing seller-of-record and merchant-of-record for current MVP Orders.
 - Workspace belongs to exactly one User or Organization.
 - Workspace remains a common operational and access boundary and is not limited to design work.
 - Workspace ownership and Workspace access are separate concepts.
@@ -95,7 +97,7 @@ The following specifications are DRAFT. They represent active architecture work 
 - Every Listing uses one currency in MVP.
 - A Revision-based Listing requires explicit applicable royalty terms before activation; a Ready-Made Product Listing does not create designer royalty automatically.
 - Listing is manufacturer-independent; a Manufacturer Profile for made-to-order commerce is selected through pre-confirmation workflow and assigned to Order Item at confirmation.
-- Seller-of-record remains future work, and historical Order Item snapshots are never rewritten by later Listing changes.
+- Listing and its source do not determine seller-of-record in MVP; Creastrix is the single buyer-facing seller-of-record and merchant-of-record at Order level, and historical Order Item snapshots are never rewritten by later Listing changes.
 - Personalization is a private, reusable buyer-specific configuration with exactly one immutable FINALIZED Revision base.
 - Personalization belongs to exactly one User in MVP and preserves immutable Created By provenance.
 - Personalization has no direct Workspace or permanent Listing relationship, and no PERSONALIZATIONS Workspace permission scope exists.
@@ -123,10 +125,13 @@ The following specifications are DRAFT. They represent active architecture work 
 - Manufacturer Profile is a manufacturing capability identity, not a seller-of-record, payout account, payment recipient, or tax merchant.
 - Order represents one confirmed purchase for exactly one Buyer User, contains one or more Order Items, and uses exactly one currency.
 - Order and its fixed Order Item collection are created atomically only at successful confirmation. No DRAFT Order exists in MVP, and pre-confirmation checkout and Manufacturer acceptance remain workflow rather than current entities.
+- Creastrix is the single buyer-facing contractual seller-of-record and merchant-of-record for every MVP Order, subject to production legal, tax, invoicing, consumer-protection, VAT, acquiring, KYC, AML, and PSP validation.
+- One Order may continue to mix ready-made and made-to-order Items from multiple Workspaces and Manufacturer Profiles because Creastrix provides one buyer-facing seller and merchant context in MVP. Future third-party seller or merchant contexts may require checkout to split selections into separate Orders before confirmation.
 - Order preserves exactly one immutable checkout delivery-destination snapshot in MVP, and later User Profile changes do not rewrite it.
-- An Order may structurally mix ready-made and made-to-order items from multiple Listings, source Workspaces, and Manufacturer Profiles when all items use the same currency and current checkout policy permits it.
 - Order has no Workspace relationship, and no ORDERS Workspace permission scope exists in MVP.
-- Order confirmed merchandise subtotal equals the sum of immutable Order Item line merchandise amounts and is not a final payable total.
+- Order confirmed merchandise subtotal equals the sum of immutable Order Item line merchandise amounts.
+- Order preserves one immutable confirmation-time seller and merchant context and one immutable monetary snapshot containing merchandise subtotal, buyer-facing shipping charge, tax, aggregate discount, confirmed payable total, and currency.
+- The current MVP payable-total rule is merchandise subtotal plus shipping charge plus tax minus aggregate discount; cancellation, refund, or later commercial changes never rewrite the original snapshot.
 - Order aggregate lifecycle is CONFIRMED, COMPLETED, or CANCELLED and is derived canonically from Order Item states.
 - Order Item represents one confirmed purchased line and is the immutable commercial, source, Personalization, royalty-context, and fulfillment-line snapshot boundary.
 - Order Item lifecycle is CONFIRMED, IN_FULFILLMENT, FULFILLED, or CANCELLED. FULFILLED and CANCELLED are terminal.
@@ -138,6 +143,18 @@ The following specifications are DRAFT. They represent active architecture work 
 - An Order Item Personalization snapshot is immutable and authoritative even when the referenced Personalization later changes or is deleted.
 - Order Item preserves immutable Listing, source, source Workspace, commercial context, merchandise amounts, and applicable royalty terms without establishing seller-of-record.
 - Payment state remains separate from Order confirmation and lifecycle.
+- Payment represents one durable buyer-funds collection attempt for exactly one existing Order. An Order may have several Payments over time for retries, but split tender, intentional partial capture, and overpayment are unsupported in MVP.
+- External pre-Order provider authorization remains checkout and provider workflow. Core Payment never exists without Order; successful pre-authorization is recorded as an AUTHORIZED Payment in the same local confirmation transaction as the Order, while failed confirmation requires durable void or release compensation without creating Order or Payment.
+- Payment uses the PENDING, AUTHORIZED, CAPTURED, FAILED, and CANCELLED lifecycle. Provider status is evidence rather than automatic domain authority, and duplicate economic events are recognized only once.
+- For the positive-payable card MVP, full accepted capture of the confirmed payable total is required before fulfillment may start. A zero-payable Order is payment-ready without Payment, and payment readiness is not an Order or Order Item lifecycle state.
+- Payment failure and timeout do not directly mutate Order Item state or ready-made stock. After a bounded resolution window, commerce workflow may cancel eligible Items, and successful applicable ready-made Item cancellation releases stock under existing rules.
+- Payment Allocation is an immutable accounting attribution or reversal of accepted captured buyer funds for one Payment and is not payout, settlement, Royalty, seller identity, or a profit ledger.
+- Payment Allocation kinds are ORIGINAL and REVERSAL. A CAPTURED Payment and its complete ORIGINAL Allocation set are recognized atomically, every captured minor unit is attributed exactly once, and accepted refunds append REVERSAL facts without rewriting originals.
+- Current ORIGINAL Allocation purposes are ITEM_PROCEEDS, MANUFACTURING_COMPENSATION, SHIPPING_CHARGE, and TAX. ITEM_PROCEEDS is merchant-side proceeds rather than automatically recognized platform profit, and no ROYALTY Allocation purpose exists in the current draft.
+- Manufacturer compensation is attributed to the confirmation-time User or Organization Profile Holder context only when explicit accepted economic terms established the amount and beneficiary before Order confirmation. Manufacturer Profile assignment alone never creates compensation or makes the profile a payee.
+- Confirmed aggregate discount is merchandise-level in MVP, never exceeds confirmed merchandise subtotal, and is attributed deterministically across authoritative Order Item line amounts. Discount is borne by Creastrix merchant economics by default and does not reduce confirmed Manufacturer compensation.
+- Payment Allocation beneficiary context may identify PLATFORM, USER, or ORGANIZATION and preserves immutable historical identity where applicable. It identifies the party associated with captured-funds attribution without proving that an amount has been earned, become due, become payout-eligible, or been transferred.
+- Payout is a separate PLANNED domain for future transfers, KYC, reserves, aggregation, and payout failure or retry behavior.
 - Cancellation preserves all confirmed snapshots, and partial-quantity cancellation is unsupported in MVP.
 - Later Listing, source, Personalization, Workspace access, Designer verification, Manufacturer Profile, or royalty-term changes never rewrite confirmed commerce.
 - Order owns one immutable confirmed delivery destination, and every Shipment of that Order uses it without an independent divergent destination.
@@ -152,20 +169,21 @@ The following specifications are DRAFT. They represent active architecture work 
 - Order and Order Item are different entities.
 - One Order may contain multiple Order Items with different fulfillment paths.
 - A made-to-order Order Item has exactly one assigned Manufacturer Profile.
-- Ready-made fulfillment allocates existing stock and does not require a Manufacturer Profile merely because the Order Item is ready-made; detailed seller and fulfillment semantics remain future work.
+- Ready-made fulfillment allocates existing stock and does not require a Manufacturer Profile merely because the Order Item is ready-made; Creastrix is the current MVP buyer-facing seller and merchant, while third-party seller and fulfillment semantics remain future work.
 - Project, Revision, Listing, and Personalization are different concepts.
 - Revision is created for product-defining changes, not text corrections.
 
 ## Product Direction
 
 - The MVP must support ready-made physical products in addition to Project and Revision-based made-to-order products.
-- Creastrix may initially act as the seller of ready-made products.
+- Creastrix acts as the single buyer-facing seller-of-record and merchant-of-record for current MVP Orders.
 - Third-party seller self-service may be introduced later.
 - The architecture should remain extensible for a future seller marketplace without implementing that marketplace now.
 - Creastrix-first selling is platform policy rather than an invariant of Ready-Made Product.
 
 ## Next Steps
 
-1. Review Payment and Payment Allocation architecture, including payable total, payment attempts, seller and payout semantics, and multi-context allocations.
+1. Review and finalize the Payment and Payment Allocation drafts.
 2. Model Royalty accrual and reversal after Payment semantics stabilize.
-3. Continue with Reviews, Notifications, Conversations, and Audit Log as dependencies become clear.
+3. Review Payout when beneficiary transfer requirements are modeled.
+4. Continue with Reviews, Notifications, Conversations, and Audit Log as dependencies become clear.

@@ -31,14 +31,16 @@ These entities have active draft specifications. They represent active architect
 
 - [Workspace](workspace.md) — DRAFT 0.7
 - [Workspace Membership](workspace-membership.md) — DRAFT 0.7
-- [Ready-Made Product](ready-made-product.md) — DRAFT 0.4
+- [Ready-Made Product](ready-made-product.md) — DRAFT 0.5
 - [Project](project.md) — DRAFT 0.5
 - [Revision](revision.md) — DRAFT 0.4
 - [Listing](listing.md) — DRAFT 0.5
 - [Personalization](personalization.md) — DRAFT 0.4
 - [Manufacturer Profile](manufacturer-profile.md) — DRAFT 0.3
-- [Order](order.md) — DRAFT 0.2
-- [Order Item](order-item.md) — DRAFT 0.3
+- [Order](order.md) — DRAFT 0.3
+- [Order Item](order-item.md) — DRAFT 0.4
+- [Payment](payment.md) — DRAFT 0.1
+- [Payment Allocation](payment-allocation.md) — DRAFT 0.1
 - [Shipment](shipment.md) — DRAFT 0.2
 
 ## Planned entities
@@ -47,9 +49,8 @@ These domain concepts are recognized, but do not yet have active specifications.
 
 - Organization Profile
 - Designer Profile
-- Payment
-- Payment Allocation
 - Royalty
+- Payout
 - Designer Review
 - Manufacturer Review
 - Notification

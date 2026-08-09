@@ -51,6 +51,7 @@ A Ready-Made Product:
 - Allocation succeeds atomically at the domain level, available quantity never becomes negative, and the same stock capacity cannot be confirmed for more than one Order Item.
 - A confirmed allocation remains associated with its Order Item until fulfillment or consumption, or until an applicable release.
 - Successful cancellation may release a confirmed allocation when it is no longer required.
+- Payment never directly releases a ready-made stock allocation. Payment-resolution failure may lead commerce workflow to cancel an eligible Order Item, and only successful applicable Order Item cancellation releases the allocation under the existing release rule.
 - Physical units exist before the customer order, and ordinary ready-made fulfillment does not require a new manufacturing process or a Manufacturer assignment because of that order.
 - Pick, pack, label, and shipment handling do not by themselves turn ready-made fulfillment into made-to-order manufacturing.
 - An order requiring fabrication, cutting, engraving, production, or other changes to product-defining physical characteristics is not ordinary Ready-Made Product fulfillment in MVP.
@@ -74,7 +75,7 @@ A Ready-Made Product:
 
 ## Notes
 
-The simple available quantity is an intentional MVP model. Temporary reservation, payment-failure release, returns, restocking, manual adjustment, procurement, and technical concurrency mechanisms remain future integration concerns involving Order, Payment, Inventory, or related domains as applicable. Quantity may later move into an Inventory domain without changing Ready-Made Product identity.
+The simple available quantity is an intentional MVP model. Temporary reservation, returns, restocking, manual adjustment, procurement, and technical concurrency mechanisms remain future integration concerns involving Order, Payment, Inventory, or related domains as applicable. Payment-resolution failure does not mutate stock directly and may release allocation only through successful applicable Order Item cancellation. Quantity may later move into an Inventory domain without changing Ready-Made Product identity.
 
 Every Listing has exactly one immutable commercial source: either a FINALIZED Revision or a Ready-Made Product, never both. A source may have multiple Listings over time, but the Listing specification permits no more than one ACTIVE Listing for the same source in MVP.
 
@@ -94,4 +95,4 @@ Significant creation, lifecycle, and quantity events may later be recorded throu
 
 Status: DRAFT
 
-Version: 0.4
+Version: 0.5
