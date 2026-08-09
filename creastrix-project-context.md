@@ -25,7 +25,7 @@ protecting creator ownership and customer trust.
 
 ## Current Draft Domain Specifications
 
-The following specifications are DRAFT and are not yet part of the validated domain model:
+The following specifications are DRAFT. They represent active architecture work and are not independently approved.
 
 - Workspace
 - Workspace Membership

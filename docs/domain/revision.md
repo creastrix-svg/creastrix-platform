@@ -27,7 +27,7 @@ A Revision:
 - may reference zero or one Base Revision;
 - may be targeted by zero or more Listings when FINALIZED;
 - may be the immutable technical base for zero or more Personalizations when FINALIZED;
-- may be referenced by Audit Log events.
+- may later be referenced by Audit Log events.
 
 ## Business Rules
 
@@ -77,7 +77,7 @@ Revision is not a Project Draft, and no separate Project Draft entity exists.
 
 Descriptive, catalog, marketing, photographic, and other non-product-defining content belongs outside immutable Revision product data and will be modeled by appropriate future domain entities.
 
-Significant Revision creation and finalization events are recorded through future Audit Log behavior. Whether a separate Finalized By relationship is needed remains unresolved.
+Significant Revision creation and finalization events may later be recorded through Audit Log behavior. Whether a separate Finalized By relationship is needed remains unresolved.
 
 Detailed Listing, Royalty, and Order Item rules remain outside Revision. Revision does not calculate or store actual Royalty allocation, and later changes to the surrounding Project or Workspace context must not retroactively rewrite immutable historical commercial snapshots.
 
@@ -93,4 +93,4 @@ DRAFT abandonment or discard behavior, additional DRAFT statuses, multiple-Revis
 
 Status: DRAFT
 
-Version: 0.3
+Version: 0.4

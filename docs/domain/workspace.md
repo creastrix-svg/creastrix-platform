@@ -25,7 +25,7 @@ A Workspace:
 - belongs to exactly one owner, which is either one User or one Organization;
 - contains zero or more Projects;
 - contains zero or more Ready-Made Products;
-- has zero or more Workspace Memberships;
+- has one or more Workspace Memberships;
 - is administered by at least one ACTIVE Workspace Membership with the role ADMIN;
 - exists independently from Organization Memberships.
 
@@ -34,6 +34,7 @@ A Workspace:
 - A Workspace owner must be either a User or an Organization, but cannot be both.
 - A Workspace owner cannot be changed in MVP.
 - A Workspace cannot exist without an owner.
+- Workspace creation and creation of its initial ACTIVE ADMIN Workspace Membership are atomic.
 - When a User-owned Workspace is created, the owner receives an ACTIVE Workspace Membership with the role ADMIN.
 - In a User-owned Workspace, the User owner must remain an ACTIVE ADMIN for as long as the User remains the Workspace owner in MVP.
 - The User owner's Workspace Membership cannot be removed, suspended, or changed from ADMIN through normal Workspace Membership administration while ownership remains unchanged.
@@ -78,10 +79,10 @@ A Workspace is not conceptually limited to design work and does not require DESI
 
 Projects and Ready-Made Products are the currently specified resource relationships. No relationship to another future domain entity is implied by the broader Workspace boundary.
 
-The zero-or-more relationship describes the Workspace Membership collection independently, while every valid Workspace must satisfy the invariant requiring at least one active administrator.
+Workspace creation and its initial ACTIVE ADMIN Membership are atomic, so every valid Workspace has one or more Workspace Memberships.
 
 ---
 
 Status: DRAFT
 
-Version: 0.5
+Version: 0.6

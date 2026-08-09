@@ -25,7 +25,7 @@ A Project:
 - has exactly one Created By User;
 - has one or more Revisions;
 - may be commercialized indirectly through Listings targeting FINALIZED Revisions;
-- may be referenced by Audit Log events.
+- may later be referenced by Audit Log events.
 
 ## Business Rules
 
@@ -67,11 +67,11 @@ A Project is not a production file, Revision, Listing, Personalization, or Works
 
 Detailed Revision lifecycle, finalization, numbering, provenance, and immutable product-data rules belong to the Revision specification.
 
-Significant Project creation, lifecycle, and Workspace-movement events are recorded through Audit Log.
+Significant Project creation, lifecycle, and Workspace-movement events may later be recorded through Audit Log behavior.
 
 Different FINALIZED Revisions are different Listing commercial sources and may each have an ACTIVE Listing simultaneously. Detailed Listing lifecycle and orderability rules belong to the Listing specification.
 
-Royalty allocation and immutable commercial snapshots belong to the Listing and future Order Item and Royalty specifications. Required historical commercial records must not be retroactively rewritten by later Project lifecycle or Workspace changes.
+Royalty terms and immutable commercial snapshots belong to the Listing and Order Item specifications; actual Royalty allocation remains future Royalty work. Required historical commercial records must not be retroactively rewritten by later Project lifecycle or Workspace changes.
 
 Creative authorship is not modeled by Created By and will require separate future domain decisions if introduced.
 
@@ -85,4 +85,4 @@ PROJECTS is the permission scope for the Project and Revision domain area. Exact
 
 Status: DRAFT
 
-Version: 0.3
+Version: 0.4

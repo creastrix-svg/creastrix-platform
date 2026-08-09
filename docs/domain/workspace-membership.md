@@ -92,7 +92,7 @@ The currently defined Workspace permission scopes are:
 - READY_MADE_PRODUCTS for Ready-Made Product management, including simple MVP available quantity;
 - LISTINGS for Listing commercial management.
 
-Exact operation-level authorization may be refined by individual domain specifications, whose lifecycle rules and invariants remain authoritative. Future Order, finance, Warehouse, and Inventory concerns require their own domain decisions and are not included in the current scopes automatically.
+Exact operation-level authorization may be refined by individual domain specifications, whose lifecycle rules and invariants remain authoritative. Order management and finance are outside the current Workspace permission scopes. Warehouse and Inventory remain future domain concerns. None of these areas is automatically granted by the current scopes.
 
 Domain specialization is expressed through permission scopes rather than additional domain-specific Workspace roles.
 
@@ -106,4 +106,4 @@ The policy for external Users in Organization-owned Workspaces remains future wo
 
 Status: DRAFT
 
-Version: 0.5
+Version: 0.6

@@ -36,7 +36,7 @@ A Ready-Made Product:
 - Created By identifies only the User who created the Ready-Made Product record in Creastrix and does not determine ownership, commercial context, seller, manufacturer, supplier, importer, brand ownership, creative authorship, royalty rights, or Listing publication authority.
 - Deactivation of the Created By User does not rewrite the Created By relationship.
 - A Ready-Made Product has the lifecycle state ACTIVE or ARCHIVED and may transition from ACTIVE to ARCHIVED or from ARCHIVED to ACTIVE.
-- An ACTIVE Ready-Made Product is operational and may participate in future commerce subject to Listing and other domain rules, but ACTIVE does not mean published or in stock.
+- An ACTIVE Ready-Made Product is operational and may participate in commerce subject to Listing, Order, and other applicable domain rules, but ACTIVE does not mean published or in stock.
 - An ARCHIVED Ready-Made Product is not intended for new commercial use, retains required historical references, and may return to ACTIVE.
 - A Ready-Made Product exists independently from Listing, may exist without a Listing, and is never published directly.
 - A new Listing may be created for a Ready-Made Product only while the product is ACTIVE, and no more than one Listing for that product may be ACTIVE at the same time in MVP.
@@ -74,7 +74,7 @@ A Ready-Made Product:
 
 ## Notes
 
-The simple available quantity is an intentional MVP model. Temporary reservation, payment-failure release, returns, restocking, manual adjustment, procurement, and technical concurrency mechanisms remain future Order or Inventory integration concerns. Quantity may later move into an Inventory domain without changing Ready-Made Product identity.
+The simple available quantity is an intentional MVP model. Temporary reservation, payment-failure release, returns, restocking, manual adjustment, procurement, and technical concurrency mechanisms remain future integration concerns involving Order, Payment, Inventory, or related domains as applicable. Quantity may later move into an Inventory domain without changing Ready-Made Product identity.
 
 Every Listing has exactly one immutable commercial source: either a FINALIZED Revision or a Ready-Made Product, never both. A source may have multiple Listings over time, but the Listing specification permits no more than one ACTIVE Listing for the same source in MVP.
 
@@ -94,4 +94,4 @@ Significant creation, lifecycle, and quantity events may later be recorded throu
 
 Status: DRAFT
 
-Version: 0.3
+Version: 0.4

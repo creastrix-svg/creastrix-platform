@@ -19,15 +19,16 @@ A User is responsible for:
 
 ## Relationships
 
-A User may:
+A User:
 
-- own zero or more Workspaces;
-- be a member of zero or more Workspaces;
-- belong to zero or more Organizations;
-- own zero or more Personalizations;
-- be the Buyer of zero or more Orders;
-- be associated with zero or one Designer Profile;
-- hold zero or one personal Manufacturer Profile.
+- has exactly one User Profile;
+- may own zero or more Workspaces;
+- may be a member of zero or more Workspaces;
+- may belong to zero or more Organizations;
+- may own zero or more Personalizations;
+- may be the Buyer of zero or more Orders;
+- may be associated with zero or one Designer Profile;
+- may hold zero or one personal Manufacturer Profile.
 
 ## Business Rules
 
@@ -40,7 +41,7 @@ A User may:
 - The owning User and Created By User are the same when a Personalization is created in MVP, and Personalization ownership cannot be transferred between Users in MVP.
 - Personalization ownership represents platform control of a private saved object and does not establish legal or intellectual-property ownership.
 - A User may act under a personal account or on behalf of an Organization, depending on the current context.
-- A User may publish a Listing targeting a FINALIZED Revision only when acting in a context backed by an associated verified Designer Profile.
+- A User may publish a Listing targeting a FINALIZED Revision only when acting in a context backed by an associated Designer Profile that satisfies the future applicable verification rules.
 - Eligibility to publish Listings for other commercial source types is defined by the corresponding domain rules.
 - A User may accept made-to-order manufacturing work only when acting in a context backed by a VERIFIED Manufacturer Profile and satisfying the authorization rules of that Profile Holder context.
 - In a personal manufacturing context, the Manufacturer Profile is held by the User. In an Organization manufacturing context, the Manufacturer Profile is held by the Organization and the User must be authorized to act on behalf of that Organization.
@@ -67,4 +68,4 @@ Being the Buyer of an Order represents the customer context of a confirmed purch
 ---
 
 Status: APPROVED
-Version: 1.6
+Version: 1.7

@@ -47,7 +47,7 @@ A Listing:
 - A PAUSED Listing is temporarily disabled for new commerce, is not orderable, retains its commercial settings and history, and may return to ACTIVE.
 - An ARCHIVED Listing is permanently closed for new commerce in MVP, retains historical references, and does not return to ACTIVE.
 - Activating a Listing requires effective LISTINGS authorization, a source that permits commerce, valid current pricing information, applicable business eligibility, and any required royalty terms.
-- Activating a Listing sourced by a FINALIZED Revision requires an acting context backed by a verified Designer Profile and explicitly defined applicable royalty terms, which may be zero only when applicable business rules permit.
+- Activating a Listing sourced by a FINALIZED Revision requires an acting context backed by a Designer Profile that satisfies the future applicable verification rules, together with explicitly defined applicable royalty terms, which may be zero only when applicable business rules permit.
 - A Listing sourced by a FINALIZED Revision may commercially offer Personalization only when that Revision defines technical personalization capability.
 - A Listing determines whether and under what current commercial restrictions Revision-defined personalization capability is offered. It may narrow but never expand the Revision's technical personalization constraints.
 - Initial buyer creation of a Personalization requires a suitable ACTIVE Listing targeting its FINALIZED Revision base and does not require the buyer to have LISTINGS authorization.
@@ -108,4 +108,4 @@ Significant creation, activation, pause, archive, pricing, and royalty-term even
 
 Status: DRAFT
 
-Version: 0.4
+Version: 0.5

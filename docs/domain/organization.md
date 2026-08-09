@@ -24,19 +24,19 @@ An Organization is responsible for:
 
 ## Relationships
 
-An Organization may:
+An Organization:
 
-- own zero or more Workspaces;
-- have zero or more Organization Memberships;
-- be associated with zero or one Designer Profile;
-- hold zero or one Manufacturer Profile;
-- be the Effective Business Rights Holder for zero or more Projects through owned Workspaces.
+- may own zero or more Workspaces;
+- has one or more Organization Memberships;
+- may be associated with zero or one Designer Profile;
+- may hold zero or one Manufacturer Profile;
+- may be the Effective Business Rights Holder for zero or more Projects through owned Workspaces.
 
 ## Business Rules
 
-- An Organization may have one or more active Organization Memberships with the role OWNER.
-- The creator of an Organization receives an active Organization Membership with the role OWNER.
-- The last active OWNER cannot leave the Organization, be removed, be suspended, or be assigned another role until another active OWNER exists.
+- An Organization must have one or more ACTIVE Organization Memberships with the role OWNER.
+- Organization creation atomically creates an ACTIVE Organization Membership with the role OWNER for the creator.
+- The last ACTIVE OWNER Membership cannot be removed, changed from OWNER, or transitioned out of ACTIVE until another ACTIVE OWNER Membership exists.
 - An Organization cannot exist without at least one Organization Membership.
 - An Organization-held Manufacturer Profile represents the Organization's specialized manufacturing-capability identity.
 - Authorized Users may manage an Organization-held Manufacturer Profile or accept made-to-order manufacturing work through it only when acting on behalf of the Organization under Organization rules.
@@ -44,7 +44,7 @@ An Organization may:
 
 ## Invariants
 
-- An Organization always has at least one active Organization Membership with the role OWNER.
+- An Organization always has at least one ACTIVE Organization Membership with the role OWNER.
 - Every Organization Membership of an Organization belongs to that Organization only.
 - An Organization cannot hold more than one Manufacturer Profile in MVP.
 
@@ -61,4 +61,4 @@ Project business rights are derived from Workspace ownership in MVP; an Organiza
 ---
 
 Status: APPROVED
-Version: 1.2
+Version: 1.3

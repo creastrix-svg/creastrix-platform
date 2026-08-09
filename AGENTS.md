@@ -58,6 +58,11 @@ Future ideas such as blockchain, AI improvements, new business models or additio
 
 - Follow `docs/domain/entity-template.md` when creating entity specifications.
 - New domain entities require discussion before creation.
+- Specification status applies independently to each specification.
+- Cross-status references do not promote or approve the referenced specification.
+- APPROVED specifications are the source of truth for their approved entity decisions.
+- DRAFT specifications represent current active architecture work and must be inspected and preserved unless the task explicitly revises them.
+- If a DRAFT or PLANNED dependency changes incompatibly with an APPROVED specification, explicitly review and version the affected APPROVED specification before accepting the change.
 - Keep approved entities and their responsibilities consistent across documents.
 - Distinguish business rules from invariants and implementation notes.
 - Update project context only when a decision or project state has actually changed and the user has approved it.

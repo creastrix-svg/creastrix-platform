@@ -31,6 +31,12 @@ An Organization Membership:
 - An Organization may have multiple Organization Memberships.
 - A User cannot have more than one Organization Membership within the same Organization.
 - An Organization Membership role determines permissions only within the Organization context.
+- OWNER is the only organizational role whose domain semantics are defined by this specification version.
+- An ACTIVE Organization Membership with the role OWNER contributes to the Organization's required ACTIVE OWNER invariant.
+- Additional organizational roles and their permissions require explicit future specification before use.
+- ACTIVE is the only Organization Membership status whose semantics are defined and required by this specification version.
+- Only an ACTIVE Organization Membership with the role OWNER satisfies the Organization owner-preservation requirement.
+- Additional status values and lifecycle transitions require explicit future specification before use.
 - Organization Membership does not automatically create a Workspace Membership, assign a Workspace role, grant any Workspace permission scope, or provide Workspace resource access.
 
 ## Invariants
@@ -46,8 +52,6 @@ An Organization Membership:
 
 Organization Membership represents the business relationship between a User and an Organization rather than a simple association.
 
-Roles and membership statuses are currently implemented as enumerations and may evolve into dedicated domain concepts in future versions.
-
 A User's permissions within an Organization are determined by the assigned organizational role.
 
 Workspace access is governed independently by Workspace Membership status, role, and permission scopes.
@@ -55,4 +59,4 @@ Workspace access is governed independently by Workspace Membership status, role,
 ---
 
 Status: APPROVED
-Version: 1.1
+Version: 1.2
