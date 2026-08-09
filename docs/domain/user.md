@@ -26,7 +26,7 @@ A User may:
 - belong to zero or more Organizations;
 - own zero or more Personalizations;
 - be associated with zero or one Designer Profile;
-- be associated with zero or one Manufacturer Profile.
+- hold zero or one personal Manufacturer Profile.
 
 ## Business Rules
 
@@ -41,7 +41,8 @@ A User may:
 - A User may act under a personal account or on behalf of an Organization, depending on the current context.
 - A User may publish a Listing targeting a FINALIZED Revision only when acting in a context backed by an associated verified Designer Profile.
 - Eligibility to publish Listings for other commercial source types is defined by the corresponding domain rules.
-- A User may accept manufacturing orders only when acting in a context backed by an associated verified Manufacturer Profile.
+- A User may accept made-to-order manufacturing work only when acting in a context backed by a VERIFIED Manufacturer Profile and satisfying the authorization rules of that Profile Holder context.
+- In a personal manufacturing context, the Manufacturer Profile is held by the User. In an Organization manufacturing context, the Manufacturer Profile is held by the Organization and the User must be authorized to act on behalf of that Organization.
 
 ## Invariants
 
@@ -49,14 +50,16 @@ A User may:
 - A User may own multiple Workspaces.
 - A User may belong to multiple Organizations.
 - A User cannot have more than one Designer Profile.
-- A User cannot have more than one Manufacturer Profile.
+- A User cannot hold more than one personal Manufacturer Profile in MVP.
 - A User cannot exist without exactly one User Profile.
 
 ## Notes
 
 Authentication and identity data belong to User, while personal information belongs to User Profile.
 
+A User may act through Organization-held Manufacturer Profiles when authorized. Those profiles are independent from the User's personal Manufacturer Profile and do not count against its cardinality.
+
 ---
 
 Status: APPROVED
-Version: 1.4
+Version: 1.5

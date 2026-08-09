@@ -20,8 +20,9 @@ These entities have active draft specifications and are not yet part of the appr
 - [Ready-Made Product](ready-made-product.md) — DRAFT 0.2
 - [Project](project.md) — DRAFT 0.3
 - [Revision](revision.md) — DRAFT 0.3
-- [Listing](listing.md) — DRAFT 0.2
-- [Personalization](personalization.md) — DRAFT 0.1
+- [Listing](listing.md) — DRAFT 0.3
+- [Personalization](personalization.md) — DRAFT 0.2
+- [Manufacturer Profile](manufacturer-profile.md) — DRAFT 0.1
 
 ## Planned entities
 
@@ -29,7 +30,6 @@ These entities represent planned domain areas and are not yet approved specifica
 
 - Organization Profile
 - Designer Profile
-- Manufacturer Profile
 - Order
 - Order Item
 - Shipment

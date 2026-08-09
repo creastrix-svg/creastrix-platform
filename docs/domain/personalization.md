@@ -25,7 +25,7 @@ A Personalization:
 - has exactly one immutable Created By User;
 - is based on exactly one immutable FINALIZED Revision;
 - may later be used by zero or more Order Items;
-- has no direct relationship to a Workspace, Listing, Ready-Made Product, or Manufacturer in MVP.
+- has no direct relationship to a Workspace, Listing, Ready-Made Product, or Manufacturer Profile in MVP.
 
 ## Business Rules
 
@@ -49,7 +49,8 @@ A Personalization:
 - Project and Listing lifecycle changes do not mutate Personalization. They may affect whether it can currently be purchased.
 - Personalization does not use Ready-Made Product as its technical base in MVP and does not represent ordinary ready-made fulfillment information.
 - Buyer-selected values may provide inputs to future price calculation, while final calculated price and currency belong to the future Order Item snapshot.
-- Personalization does not select a Manufacturer and does not own final sale price, Listing pricing terms, currency, tax, shipping price, or royalty terms.
+- Personalization does not select or own a Manufacturer Profile and does not own final sale price, Listing pricing terms, currency, tax, shipping price, or royalty terms.
+- Manufacturer Profile selection, assignment, and item-specific manufacturing feasibility belong to the future made-to-order Order Item and fulfillment workflow.
 - Discard or deletion of a saved Personalization remains subject to future retention rules and never changes historical Order Item snapshots.
 
 ## Invariants
@@ -62,7 +63,7 @@ A Personalization:
 - A Personalization always has exactly one immutable FINALIZED Revision base.
 - A Personalization never directly belongs to a Workspace or Listing in MVP.
 - A Personalization never uses a Ready-Made Product as its technical base in MVP.
-- A Personalization never has a Manufacturer relationship in MVP.
+- A Personalization never has a Manufacturer Profile relationship in MVP.
 - A Personalization has no lifecycle state in MVP.
 - A Personalization is never published or converted to a Revision automatically.
 - Later Personalization changes never rewrite immutable historical Order Item snapshots.
@@ -73,14 +74,14 @@ Personalization is not a Project, Revision, public design variant, Listing, Read
 
 Physical output may differ between buyers without creating a new Revision when buyer-specific values remain within the predefined constraints of the same FINALIZED Revision. A reusable design change or a change to personalization zones, parameter structure, ranges, construction, shared geometry, manufacturing files, or structural and safety assumptions requires a new Revision.
 
-Lightweight validation may occur while editing, authoritative purchase validation occurs before future Order Item confirmation, and Manufacturer-specific feasibility validation may occur later before production. Detailed timing remains future Order and fulfillment work.
+Lightweight validation may occur while editing, authoritative purchase validation occurs before future Order Item confirmation, and feasibility validation for an assigned Manufacturer Profile may occur later before production. Detailed timing remains future Order and fulfillment work.
 
 Generated SVG, geometry, text layout, image composition, decorative pattern, or other manufacturing-oriented output may remain mutable artifacts of the Personalization workflow. Whether those artifacts are persisted or regenerated remains unresolved, while a future Order Item must preserve or reference the reproducible output actually used for production.
 
-Hard versus soft deletion, retention, Organization-owned or shared Personalizations, support-assisted creation, copy or adaptation to another Revision, media and file architecture, buyer-content intellectual-property rules, Manufacturer-specific feasibility, and hybrid Ready-Made Product customization remain future concerns.
+Hard versus soft deletion, retention, Organization-owned or shared Personalizations, support-assisted creation, copy or adaptation to another Revision, media and file architecture, buyer-content intellectual-property rules, feasibility for an assigned Manufacturer Profile, and hybrid Ready-Made Product customization remain future concerns.
 
 ---
 
 Status: DRAFT
 
-Version: 0.1
+Version: 0.2

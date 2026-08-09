@@ -34,6 +34,7 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - Revision
 - Listing
 - Personalization
+- Manufacturer Profile
 
 ## Domain Principles
 
@@ -86,7 +87,7 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - A Ready-Made Product Listing uses a fixed unit sale price, while a Revision-based Listing may use base or display pricing before the final Order Item price is determined.
 - Every Listing uses one currency in MVP.
 - A Revision-based Listing requires explicit applicable royalty terms before activation; a Ready-Made Product Listing does not create designer royalty automatically.
-- Listing is manufacturer-independent; a Manufacturer for made-to-order commerce is selected later for Order Item.
+- Listing is manufacturer-independent; a Manufacturer Profile for made-to-order commerce is selected later for Order Item.
 - Seller-of-record remains future work, and historical Order Item snapshots are never rewritten by later Listing changes.
 - Personalization is a private, reusable buyer-specific configuration with exactly one immutable FINALIZED Revision base.
 - Personalization belongs to exactly one User in MVP and preserves immutable Created By provenance.
@@ -99,15 +100,27 @@ The following specifications are DRAFT and are not yet part of the validated dom
 - AI-assisted generation and generated artifacts remain workflow inside Personalization and do not change Created By.
 - Personalization never mutates or automatically becomes a Revision.
 - Ordinary Ready-Made Product fulfillment does not use Personalization in MVP.
-- Final price, currency, royalty terms, and Manufacturer selection remain outside Personalization and are snapshotted later through Order Item.
+- Final price, currency, royalty terms, and Manufacturer Profile selection remain outside Personalization and are snapshotted later through Order Item.
 - Royalty rules originate from Listing, and historical commercial context is snapshotted later in Order Item.
+- Manufacturer Profile is the stable manufacturing-capability identity of exactly one Profile Holder, which is either one User or one Organization, never both.
+- A Manufacturer Profile Holder is immutable in MVP, and a User or Organization may hold no more than one Manufacturer Profile. A User's personal profile remains independent from Organization-held profiles through which that User may be authorized to act.
+- Manufacturer Profile has exactly one immutable Created By User as historical provenance.
+- Manufacturer Profile eligibility status is UNVERIFIED, VERIFIED, or SUSPENDED. Only a VERIFIED profile may be considered for new made-to-order work.
+- VERIFIED status is necessary but does not establish item-specific suitability, available capacity, pricing, or Manufacturer acceptance.
+- Manufacturer Profile may describe generic declared manufacturing capabilities without defining detailed machines, technologies, facilities, or capacity in MVP.
+- An Organization-held Manufacturer Profile is managed and used by authorized Users acting on behalf of the Organization. Organization Membership alone does not automatically grant that authority.
+- Manufacturer Profile has no mandatory Workspace relationship. Workspace Membership and the PROJECTS, READY_MADE_PRODUCTS, and LISTINGS scopes do not grant Manufacturer Profile management, verification, or work-acceptance authority.
+- A future made-to-order Order Item has exactly one assigned Manufacturer Profile. Manufacturer is domain shorthand for that assigned profile; no separate Manufacturer entity exists in MVP.
+- Actual Manufacturer acceptance belongs to the future Order Item workflow. Later Manufacturer Profile status changes never rewrite historical assignments or automatically cancel existing Order Items.
+- Ordinary Ready-Made Product fulfillment does not require a Manufacturer Profile.
+- Manufacturer Profile is a manufacturing capability identity, not a seller-of-record, payout account, payment recipient, or tax merchant.
 
 ## Product Rules
 
 - Order and Order Item are different entities.
 - One Order may contain multiple Order Items with different fulfillment paths.
-- A made-to-order Order Item has exactly one manufacturer.
-- Ready-made fulfillment allocates existing stock and does not require a Manufacturer merely because the Order Item is ready-made; detailed seller and fulfillment semantics remain future work.
+- A made-to-order Order Item has exactly one assigned Manufacturer Profile.
+- Ready-made fulfillment allocates existing stock and does not require a Manufacturer Profile merely because the Order Item is ready-made; detailed seller and fulfillment semantics remain future work.
 - Project, Revision, Listing, and Personalization are different concepts.
 - Revision is created for product-defining changes, not text corrections.
 
@@ -121,7 +134,7 @@ The following specifications are DRAFT and are not yet part of the validated dom
 
 ## Next Steps
 
-1. Review and finalize the Personalization draft.
-2. Model Order and Order Item together, including immutable commercial, pricing, Personalization, royalty, and fulfillment snapshots.
-3. Define made-to-order Manufacturer selection and ready-made stock allocation timing.
+1. Review and finalize the Manufacturer Profile draft.
+2. Return to Order and Order Item together using Manufacturer Profile as the made-to-order assignment identity.
+3. Finalize Manufacturer acceptance, Order confirmation, stock allocation, and cancellation boundaries.
 4. Continue with Shipment, Payment, Payment Allocation, and Royalty once Order semantics are stable.

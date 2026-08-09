@@ -69,7 +69,8 @@ A Listing:
 - The final customer price is established and snapshotted in Order Item before order confirmation; the detailed quoting workflow remains future commerce work.
 - Listing commercial presentation and current terms may change while the Listing is DRAFT, ACTIVE, or PAUSED, subject to authorization and business rules. Changes apply prospectively and never rewrite historical Order Item snapshots.
 - A Listing owns public commercial presentation rather than source product identity, product-defining content, manufacturing files, stock mechanics, Workspace ownership, authentication, or fulfillment history.
-- Listing is manufacturer-independent in MVP. A Manufacturer for made-to-order commerce is selected later in the Order or Order Item flow.
+- Listing is manufacturer-independent in MVP. The future assigned Manufacturer identity for made-to-order commerce is a Manufacturer Profile selected and assigned later in the Order or Order Item flow.
+- A VERIFIED Manufacturer Profile is a prerequisite for new made-to-order work but does not by itself establish item-specific suitability, capacity, or acceptance.
 
 ## Invariants
 
@@ -98,7 +99,7 @@ Revision defines immutable technical personalization capability and constraints,
 
 Multi-currency, multiple simultaneously ACTIVE channels, manufacturer-specific offers, detailed quoting, tax and shipping price presentation, royalty representation format, deletion and retention, public URL or slug behavior, and exact visibility of PAUSED, ARCHIVED, or non-orderable Listings remain future concerns.
 
-Actual Royalty accrual is not historical state inside Listing. Future Order Items preserve the applicable Listing, source, final price, currency, royalty, commercial context, Personalization, fulfillment, and Manufacturer snapshots required for historical commerce.
+Actual Royalty accrual is not historical state inside Listing. Future Order Items preserve the applicable Listing, source, final price, currency, royalty, commercial context, Personalization, fulfillment, and Manufacturer Profile snapshots required for historical commerce.
 
 Significant creation, activation, pause, archive, pricing, and royalty-term events may later be recorded through Audit Log behavior.
 
@@ -106,4 +107,4 @@ Significant creation, activation, pause, archive, pricing, and royalty-term even
 
 Status: DRAFT
 
-Version: 0.2
+Version: 0.3
