@@ -53,6 +53,8 @@ The following specifications are DRAFT. They represent active architecture work 
 - User Profile stores personal information.
 - Organization is a first-class business participant.
 - Organization Membership is a real domain entity.
+- An ACTIVE Organization Membership with the role OWNER is the current source of general organization-level authority when no more specific delegation rule exists.
+- Organization does not by itself determine seller-of-record, merchant identity, economic beneficiary, payment recipient, or payout identity; these remain future Payment and commerce decisions.
 - Workspace belongs to exactly one User or Organization.
 - Workspace remains a common operational and access boundary and is not limited to design work.
 - Workspace ownership and Workspace access are separate concepts.
@@ -65,10 +67,12 @@ The following specifications are DRAFT. They represent active architecture work 
 - PROJECTS, READY_MADE_PRODUCTS, and LISTINGS are independent scopes and do not grant access to one another.
 - Future domain areas may introduce additional permission scopes without automatically expanding existing EDITOR or VIEWER access.
 - Organization Membership does not automatically grant Workspace access or Workspace permission scopes.
+- Every Organization-owned Workspace retains at least one User who is both an ACTIVE Organization OWNER and an ACTIVE Workspace ADMIN.
 - Scoped Workspace permissions never grant ownership or business rights.
 - Project belongs to exactly one Workspace.
 - Project has no separate Business Owner in MVP.
 - Project Effective Business Rights Holder derives from the Workspace owner.
+- Moving a Project requires PROJECTS write authorization in both source and target Workspaces; DRAFT or PAUSED Listings additionally require LISTINGS write authorization in both.
 - Ready-Made Product is the stable identity of one independently stocked physical product configuration and belongs to exactly one Workspace.
 - The Workspace owner provides the platform-recognized commercial context in which a Ready-Made Product is managed; this does not prove legal ownership, physical custody, seller-of-record, manufacturer, or supplier status.
 - Ready-Made Product has the ACTIVE and ARCHIVED lifecycle and may transition in either direction.
@@ -111,7 +115,7 @@ The following specifications are DRAFT. They represent active architecture work 
 - Manufacturer Profile eligibility status is UNVERIFIED, VERIFIED, or SUSPENDED. Only a VERIFIED profile may be considered for new made-to-order work.
 - VERIFIED status is necessary but does not establish item-specific suitability, available capacity, pricing, or Manufacturer acceptance.
 - Manufacturer Profile may describe generic declared manufacturing capabilities without defining detailed machines, technologies, facilities, or capacity in MVP.
-- An Organization-held Manufacturer Profile is managed and used by authorized Users acting on behalf of the Organization. Organization Membership alone does not automatically grant that authority.
+- An Organization-held Manufacturer Profile is currently managed and used by an ACTIVE Organization OWNER subject to Manufacturer Profile rules; a future explicit delegation may authorize another actor.
 - Manufacturer Profile has no mandatory Workspace relationship. Workspace Membership and the PROJECTS, READY_MADE_PRODUCTS, and LISTINGS scopes do not grant Manufacturer Profile management, verification, or work-acceptance authority.
 - A made-to-order Order Item has exactly one assigned Manufacturer Profile. Manufacturer is domain shorthand for that assigned profile; no separate Manufacturer entity exists in MVP.
 - Actual Manufacturer acceptance belongs to the Order Item confirmation workflow. Later Manufacturer Profile status changes never rewrite historical assignments or automatically cancel existing Order Items.
@@ -126,8 +130,10 @@ The following specifications are DRAFT. They represent active architecture work 
 - Order aggregate lifecycle is CONFIRMED, COMPLETED, or CANCELLED and is derived canonically from Order Item states.
 - Order Item represents one confirmed purchased line and is the immutable commercial, source, Personalization, royalty-context, and fulfillment-line snapshot boundary.
 - Order Item lifecycle is CONFIRMED, IN_FULFILLMENT, FULFILLED, or CANCELLED. FULFILLED and CANCELLED are terminal.
+- Starting Order Item fulfillment is path-specific: made-to-order uses the assigned Manufacturer Profile context, while ready-made uses internal platform fulfillment authorization.
 - An immutable snapshotted FINALIZED Revision source uses made-to-order fulfillment, while a Ready-Made Product source uses existing-stock fulfillment in MVP.
 - A made-to-order Order Item requires exactly one VERIFIED and item-eligible Manufacturer Profile whose acceptance was obtained before confirmation. Assignment is immutable afterward.
+- Every confirmed made-to-order Order Item preserves an immutable, authoritative confirmation-time fact that required Manufacturer acceptance was obtained.
 - Confirmation of a ready-made Order Item establishes allocation of its full quantity without overselling.
 - An Order Item Personalization snapshot is immutable and authoritative even when the referenced Personalization later changes or is deleted.
 - Order Item preserves immutable Listing, source, source Workspace, commercial context, merchandise amounts, and applicable royalty terms without establishing seller-of-record.
@@ -136,7 +142,7 @@ The following specifications are DRAFT. They represent active architecture work 
 - Later Listing, source, Personalization, Workspace access, Designer verification, Manufacturer Profile, or royalty-term changes never rewrite confirmed commerce.
 - Order owns one immutable confirmed delivery destination, and every Shipment of that Order uses it without an independent divergent destination.
 - Shipment belongs to one Order and groups full-quantity Order Items from that Order. Partial-quantity shipment and Shipment Item are unsupported in MVP.
-- Shipment establishes one immutable fulfillment context: made-to-order context is tied to one Manufacturer Profile through Order Items, ready-made context is platform-controlled, and the paths never mix or switch.
+- Shipment preserves one immutable fulfillment-context snapshot established at creation: made-to-order context captures one Manufacturer Profile identity through Order Items, ready-made context contains an opaque platform-controlled context value, and the paths never mix or switch; the snapshot is an embedded domain value rather than a separate entity.
 - Shipment lifecycle is PREPARING, SHIPPED, DELIVERED, or CANCELLED, and accepted delivery evidence contributes to Order Item fulfillment.
 - Shipment has no Workspace relationship or new Workspace scope and owns no independent destination, money, stock allocation, or manufacturing responsibility.
 - Shipment operation follows fulfillment-context authorization, while provider statuses are evidence rather than automatic domain authority.
@@ -160,7 +166,6 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Next Steps
 
-1. Review and finalize the Shipment draft.
-2. Model Payment and Payment Allocation, including payable total, payment attempts, seller and payout semantics, and multi-context allocations.
-3. Model Royalty accrual and reversal after Payment semantics stabilize.
-4. Continue with Reviews, Notifications, Conversations, and Audit Log as dependencies become clear.
+1. Review Payment and Payment Allocation architecture, including payable total, payment attempts, seller and payout semantics, and multi-context allocations.
+2. Model Royalty accrual and reversal after Payment semantics stabilize.
+3. Continue with Reviews, Notifications, Conversations, and Audit Log as dependencies become clear.

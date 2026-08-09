@@ -29,17 +29,17 @@ If a DRAFT or PLANNED dependency changes incompatibly with an APPROVED specifica
 
 These entities have active draft specifications. They represent active architecture work and are not independently approved.
 
-- [Workspace](workspace.md) — DRAFT 0.6
-- [Workspace Membership](workspace-membership.md) — DRAFT 0.6
+- [Workspace](workspace.md) — DRAFT 0.7
+- [Workspace Membership](workspace-membership.md) — DRAFT 0.7
 - [Ready-Made Product](ready-made-product.md) — DRAFT 0.4
-- [Project](project.md) — DRAFT 0.4
+- [Project](project.md) — DRAFT 0.5
 - [Revision](revision.md) — DRAFT 0.4
 - [Listing](listing.md) — DRAFT 0.5
 - [Personalization](personalization.md) — DRAFT 0.4
-- [Manufacturer Profile](manufacturer-profile.md) — DRAFT 0.2
+- [Manufacturer Profile](manufacturer-profile.md) — DRAFT 0.3
 - [Order](order.md) — DRAFT 0.2
-- [Order Item](order-item.md) — DRAFT 0.2
-- [Shipment](shipment.md) — DRAFT 0.1
+- [Order Item](order-item.md) — DRAFT 0.3
+- [Shipment](shipment.md) — DRAFT 0.2
 
 ## Planned entities
 

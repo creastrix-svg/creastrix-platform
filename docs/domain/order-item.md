@@ -17,7 +17,9 @@ An Order Item is responsible for:
 - preserving optional Personalization traceability and the authoritative purchased Personalization snapshot;
 - establishing confirmed Ready-Made Product stock allocation when applicable;
 - preserving exactly one assigned Manufacturer Profile for made-to-order fulfillment;
+- preserving an immutable, authoritative confirmation-time Manufacturer acceptance fact for made-to-order fulfillment;
 - managing its source-neutral fulfillment and cancellation lifecycle;
+- governing path-specific authorization for formally starting fulfillment;
 - providing a stable boundary for Shipment and future Payment Allocation and Royalty integration.
 
 ## Relationships
@@ -60,7 +62,11 @@ An Order Item:
 - A made-to-order Order Item has exactly one assigned Manufacturer Profile at confirmation.
 - The assigned Manufacturer Profile must be VERIFIED at confirmation, item-specific manufacturing eligibility must succeed, and required Manufacturer acceptance must already have occurred.
 - VERIFIED status alone does not establish item-specific capability, available capacity, pricing, acceptance, lead time, or product compliance.
-- Manufacturer acceptance is a pre-confirmation prerequisite rather than Manufacturer Profile state. The Order Item confirmation history preserves conceptually sufficient evidence that acceptance occurred, while exact evidence and acting-User provenance remain future Audit design.
+- Manufacturer acceptance is a pre-confirmation prerequisite rather than Manufacturer Profile state.
+- Every confirmed made-to-order Order Item preserves an immutable, authoritative confirmation-time business fact that the required Manufacturer acceptance was obtained.
+- The Manufacturer acceptance fact belongs to the Order Item confirmation history and snapshot and remains authoritative even if no Audit Log record exists.
+- A future Audit Log may record acting User, exact timestamp, evidence source, workflow provenance, or detailed acceptance evidence, but it does not replace the Order Item as the authoritative source of truth that Manufacturer acceptance occurred.
+- Later changes to Manufacturer Profile eligibility status, Organization Membership, acting User status, future Audit Log behavior, or Profile Holder permissions never rewrite the historical confirmed Manufacturer acceptance fact.
 - Manufacturer Profile assignment is immutable after confirmation. Later UNVERIFIED or SUSPENDED status does not rewrite the assignment or automatically reassign or cancel the Order Item.
 - If an assigned Manufacturer later fails, the Order Item may be cancelled when applicable rules permit. Replacement requires a future separate purchasing workflow rather than mutation of the confirmed assignment or Order Item collection.
 - A ready-made Order Item has no assigned Manufacturer Profile merely because of ordinary existing-stock fulfillment.
@@ -77,6 +83,12 @@ An Order Item:
 - CONFIRMED means the immutable commercial snapshot exists and fulfillment has not yet begun.
 - IN_FULFILLMENT means the applicable source-specific fulfillment obligations are being performed.
 - FULFILLED means all applicable fulfillment obligations for the Order Item are complete.
+- Transition from CONFIRMED to IN_FULFILLMENT means that applicable fulfillment execution has formally started. It is not caused merely by Payment state, Shipment creation, Listing lifecycle, or source lifecycle.
+- For a made-to-order Order Item, transition from CONFIRMED to IN_FULFILLMENT requires authorization within the Item's immutable assigned Manufacturer Profile context.
+- Made-to-order fulfillment may be started by an authorized User acting through that Manufacturer Profile holder context or by explicitly authorized platform automation or an internal platform process acting within the same context.
+- For a User-held Manufacturer Profile, the holder User provides the holder context. For an Organization-held Manufacturer Profile, current User authorization resolves through an ACTIVE Organization Membership with the role OWNER unless a future explicit delegation rule authorizes another actor.
+- For a ready-made Order Item, transition from CONFIRMED to IN_FULFILLMENT uses explicitly authorized internal platform fulfillment through platform automation, an internal platform process, or an internal authorized User workflow.
+- Ready-made fulfillment-start authority is not inferred from the source Workspace owner, Workspace Membership, the READY_MADE_PRODUCTS, LISTINGS, or PROJECTS scopes, or Buyer status. Third-party ready-made fulfillment remains future work.
 - For the current physical-delivery MVP, a non-CANCELLED Shipment covering the full Order Item quantity must reach DELIVERED before the Item may transition to FULFILLED, and all other applicable fulfillment obligations must also be complete.
 - Shipment DELIVERED is delivery evidence and is not a universal permanent synonym for Order Item FULFILLED.
 - CANCELLED means the item will not be fulfilled and its historical commercial snapshot remains preserved.
@@ -107,11 +119,14 @@ An Order Item:
 - The purchase-time commercial, source, Workspace, and royalty context never changes after confirmation.
 - When Personalization is used, the authoritative purchased Personalization snapshot never changes after confirmation.
 - A made-to-order Order Item always has exactly one assigned Manufacturer Profile.
+- A confirmed made-to-order Order Item always preserves an immutable, authoritative confirmation-time fact that required Manufacturer acceptance was obtained.
 - An ordinary ready-made Order Item never has an assigned Manufacturer Profile merely for stock fulfillment.
 - Manufacturer Profile assignment never changes after confirmation.
+- The historical confirmed Manufacturer acceptance fact never changes after confirmation.
 - An Order Item included in a Shipment is always covered in its full quantity.
 - An Order Item is never covered by more than one non-CANCELLED Shipment in MVP.
 - An Order Item always has exactly one lifecycle state: CONFIRMED, IN_FULFILLMENT, FULFILLED, or CANCELLED.
+- Every transition from CONFIRMED to IN_FULFILLMENT satisfies the applicable path-specific authorization rules.
 - FULFILLED and CANCELLED are terminal states.
 - Later source, profile, access, or commercial changes never rewrite the immutable confirmed snapshot.
 
@@ -131,4 +146,4 @@ Seller-of-record, final payable totals, taxes, shipping amounts, discounts, paym
 
 Status: DRAFT
 
-Version: 0.2
+Version: 0.3

@@ -44,8 +44,9 @@ A Manufacturer Profile:
 - VERIFIED status is necessary but does not establish item-specific capability, available capacity, acceptance, price, lead time, or product compliance.
 - A Manufacturer Profile may describe declared manufacturing capabilities for future manufacturer discovery and item-specific eligibility, but those declarations do not guarantee suitability for a particular Order Item.
 - A User-held Manufacturer Profile is managed through authorization of its holder User.
-- An Organization-held Manufacturer Profile is managed by authorized Users acting on behalf of the Organization under Organization rules.
-- Organization Membership alone does not automatically authorize Manufacturer Profile management or acceptance of manufacturing work.
+- An Organization-held Manufacturer Profile may be created, managed, or used to accept made-to-order manufacturing work by a User with an ACTIVE Organization Membership with the role OWNER in the Profile Holder Organization, subject to applicable Manufacturer Profile rules.
+- A future explicitly specified domain delegation rule may authorize another actor to operate an Organization-held Manufacturer Profile.
+- Generic Organization Membership is insufficient by itself for Manufacturer Profile creation, management, or acceptance of manufacturing work; current User authority requires the explicitly defined ACTIVE OWNER context unless a future domain delegation rule provides otherwise.
 - Workspace Membership and the PROJECTS, READY_MADE_PRODUCTS, and LISTINGS scopes do not automatically authorize Manufacturer Profile management, verification, or acceptance of manufacturing work.
 - A made-to-order Order Item has exactly one assigned Manufacturer Profile at confirmation.
 - The assigned Manufacturer Profile must be VERIFIED at confirmation, while item-specific eligibility and required Manufacturer acceptance must also succeed.
@@ -77,7 +78,7 @@ Profile verification, item-specific manufacturing eligibility, available capacit
 
 Detailed technologies, machines, materials, dimensions, capacity, lead times, certifications, facilities, service regions, and verification evidence remain future modeling. No separate capability entity is introduced in this specification.
 
-The exact Organization permission matrix, voluntary profile closure, deletion before first historical use, retention periods, and post-confirmation failure or replacement workflow remain future concerns.
+Future domain-specific delegation to non-OWNER Users, voluntary profile closure, deletion before first historical use, retention periods, and post-confirmation failure or replacement workflow remain future concerns.
 
 Manufacturer Profile is a domain capability identity, not a Workspace, factory, facility, supplier, seller, seller-of-record, tax merchant, payout account, bank account, payment recipient, Order, Order Item, or manufacturing job.
 
@@ -93,4 +94,4 @@ Manufacturer Profile does not depend on Organization Profile or Designer Profile
 
 Status: DRAFT
 
-Version: 0.2
+Version: 0.3

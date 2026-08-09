@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A Shipment represents one physical-delivery execution record for the full quantities of one or more Order Items from one fulfillment context to the delivery destination of one Order.
+A Shipment represents one physical-delivery execution record for the full quantities of one or more Order Items grouped under one immutable fulfillment-context snapshot and sent to the delivery destination of one Order.
 
 A Shipment may exist before physical dispatch while PREPARING.
 
@@ -12,7 +12,7 @@ A Shipment is responsible for:
 
 - representing a stable delivery-execution identity;
 - preserving its immutable Order relationship;
-- establishing and preserving one immutable fulfillment context;
+- establishing and preserving one immutable fulfillment-context snapshot;
 - grouping one or more full-quantity Order Items from that Order;
 - using the immutable confirmed delivery destination of its Order;
 - managing the PREPARING, SHIPPED, DELIVERED, and CANCELLED lifecycle;
@@ -34,15 +34,15 @@ A Shipment:
 - Every Shipment belongs to exactly one Order, and that relationship never changes.
 - One Order may have zero or more Shipments.
 - A Shipment cannot include Order Items from different Orders in MVP.
-- Every Shipment establishes exactly one immutable fulfillment context at creation.
-- The established fulfillment context never changes during the Shipment lifetime, including while the Shipment is PREPARING. If another context is required, the PREPARING Shipment must be cancelled when appropriate and another Shipment must be created.
-- The fulfillment path established at creation is either made-to-order or ready-made and never switches to the other path.
+- Every Shipment establishes and preserves exactly one immutable fulfillment-context snapshot at creation.
+- The fulfillment-context snapshot never changes during the Shipment lifetime, including while the Shipment is PREPARING, and remains historically and operationally meaningful when PREPARING membership changes. If another context is required, the PREPARING Shipment must be cancelled when appropriate and another Shipment must be created.
+- The fulfillment path captured at creation is either made-to-order or ready-made and never switches to the other path.
 - Every Shipment uses the immutable confirmed delivery destination of its Order.
 - Shipment does not own an independently mutable delivery destination in MVP. Operational provider or label copies do not become a second domain source of truth.
 - User Profile information is not the historical source of truth for a confirmed Order delivery destination.
 - Every Shipment includes one or more Order Items and covers the full quantity of every included Order Item.
 - Partial-quantity shipment is not supported in MVP. No Shipment Item or Shipment Line entity is introduced.
-- At Shipment creation and whenever an Order Item is later added while PREPARING, that Item must already be IN_FULFILLMENT, belong to the Shipment's Order, use that Order's delivery destination, be compatible with the Shipment's immutable fulfillment context and dispatch timing, be covered in its full quantity, not be covered by another non-CANCELLED Shipment, and satisfy all other Shipment grouping rules.
+- At Shipment creation and whenever an Order Item is later added while PREPARING, that Item must already be IN_FULFILLMENT, belong to the Shipment's Order, use that Order's delivery destination, be compatible with the Shipment's immutable fulfillment-context snapshot and dispatch timing, be covered in its full quantity, not be covered by another non-CANCELLED Shipment, and satisfy all other Shipment grouping rules.
 - Shipment creation does not transition an Order Item from CONFIRMED to IN_FULFILLMENT.
 - While a Shipment is PREPARING, its current membership may change subject to all addition, removal, and grouping rules.
 - If an Order Item is removed while the Shipment remains PREPARING, the Item ceases to be a Shipment member and no historical domain relationship to that Shipment is retained. Future Audit Log behavior may record the planning change.
@@ -52,12 +52,13 @@ A Shipment:
 - An Order Item may be current- or frozen-covered by at most one non-CANCELLED Shipment in MVP.
 - An Item removed from a PREPARING Shipment is no longer covered by it and may join another Shipment when all rules pass.
 - A CANCELLED Shipment retains its frozen membership as history but does not prevent a replacement non-CANCELLED Shipment from covering those Items.
-- Order Items may share one Shipment only when they have the same Order, use that Order's delivery destination, have a compatible fulfillment context and dispatch timing, and are covered in their full quantities.
+- Order Items may share one Shipment only when they have the same Order, use that Order's delivery destination, are compatible with the Shipment's immutable fulfillment-context snapshot and dispatch timing, and are covered in their full quantities.
 - Ready-made and made-to-order Order Items cannot be mixed in one Shipment in MVP.
-- A made-to-order Shipment establishes its immutable fulfillment context from the common assigned Manufacturer Profile of the Order Items used to create it. That context is derived through immutable Order Item assignments and is not duplicated as a direct Shipment relationship or mutable Shipment property.
-- Every made-to-order Order Item added later must have the same assigned Manufacturer Profile as the made-to-order fulfillment context established at Shipment creation, even if every original Item has since been removed while PREPARING.
-- A ready-made Shipment establishes one immutable, opaque platform-controlled fulfillment context at creation. Its detailed structure remains future work and does not require a Warehouse, Fulfillment Actor, or Location entity.
-- Every ready-made Order Item added later must remain compatible with that same established platform-controlled fulfillment context. Membership replacement never changes the Shipment to another ready-made operational context.
+- A made-to-order Shipment's immutable fulfillment-context snapshot captures the made-to-order path and the Manufacturer Profile identity defining its execution context. That identity is captured at creation from the common immutable Manufacturer Profile assignments of the creation-time Order Items.
+- The Order Item Manufacturer Profile assignments remain authoritative. The captured Manufacturer Profile identity is immutable historical execution-context data inside the Shipment snapshot, not a second direct Manufacturer Profile relationship or mutable Shipment property.
+- Every made-to-order Order Item added later must have the same assigned Manufacturer Profile as the identity captured in the Shipment fulfillment-context snapshot, even if every creation-time Item has since been removed while the Shipment remains PREPARING.
+- A ready-made Shipment's immutable fulfillment-context snapshot captures the ready-made path and a stable opaque platform-controlled context value sufficient to preserve execution and grouping identity. Its exact representation remains a future implementation detail and does not require a Warehouse, Fulfillment Actor, or Location entity.
+- Every ready-made Order Item added later must remain compatible with the opaque platform-controlled context value captured in that snapshot. Membership replacement never changes the Shipment to another ready-made context value.
 - Ready-made fulfillment does not infer that a source Workspace owner is a shipper, custodian, fulfillment actor, or seller-of-record.
 - A Shipment has exactly one lifecycle state: PREPARING, SHIPPED, DELIVERED, or CANCELLED.
 - PREPARING means the Shipment record exists, physical dispatch has not occurred, current membership may still be adjusted subject to Shipment addition and removal rules, and provider or tracking preparation may occur.
@@ -78,12 +79,12 @@ A Shipment:
 - Provider or tracking metadata may evolve, but later updates never rewrite established dispatch or delivery facts.
 - The Buyer User may access Shipments belonging to the Buyer's own Order through customer authorization.
 - Buyer status by itself does not grant Shipment operational preparation or mutation authority.
-- Made-to-order Shipment operational preparation and mutation require authorization within the Shipment's immutable Manufacturer Profile fulfillment context.
-- Such made-to-order operations may be performed by an authorized User acting through that Manufacturer Profile holder context or by explicitly authorized platform automation or internal platform processes acting within the same fulfillment context.
+- Made-to-order Shipment operational preparation and mutation require authorization within the Manufacturer Profile context identified by the Shipment's immutable fulfillment-context snapshot.
+- Such made-to-order operations may be performed by an authorized User acting through that Manufacturer Profile holder context or by explicitly authorized platform automation or internal platform processes acting within the same Manufacturer Profile context.
 - Ready-made Shipment operational preparation and mutation use internal platform authorization in MVP.
 - Authorized platform automation and internal platform processes do not require a User actor but remain subject to the context-specific rules of the Shipment operation.
 - Workspace ownership, Workspace Membership, Organization Membership, and the PROJECTS, READY_MADE_PRODUCTS, and LISTINGS scopes do not automatically provide Shipment or buyer-destination access or Shipment mutation authority.
-- Shipment has no buyer-facing monetary semantics and does not own shipping price, tax, payment amount, or operational carrier cost in DRAFT 0.1.
+- Shipment has no buyer-facing monetary semantics and does not own shipping price, tax, payment amount, or operational carrier cost in this specification.
 - Shipment does not reserve or allocate stock, change ordered quantity, own manufacturing, or manage Payment state.
 - Shipment does not require a Created By User. It may be created through an authorized User workflow, authorized platform automation, an authorized internal platform process, or a platform-authorized workflow triggered by provider integration. Provider integration does not independently own Shipment creation or mutation authority, and initiator provenance may later belong to Audit Log.
 
@@ -92,16 +93,16 @@ A Shipment:
 - A Shipment always has one stable identity.
 - A Shipment always belongs to exactly one Order.
 - The Order relationship never changes.
-- A Shipment always has exactly one immutable fulfillment context.
-- The fulfillment context never changes during the Shipment lifetime.
+- A Shipment always has exactly one immutable fulfillment-context snapshot.
+- The fulfillment-context snapshot never changes during the Shipment lifetime.
 - A Shipment's fulfillment path never switches between made-to-order and ready-made.
 - A Shipment always has at least one current or frozen Order Item member.
 - Every current or frozen Order Item member belongs to the Shipment's Order.
 - Every current or frozen Order Item member is always covered in its full Order Item quantity.
 - An Order Item is never current- or frozen-covered by more than one non-CANCELLED Shipment in MVP.
 - Ready-made and made-to-order Order Items never share one Shipment in MVP.
-- Every current or frozen made-to-order member always matches the immutable Manufacturer Profile context established at Shipment creation.
-- Every current or frozen ready-made member always matches the immutable platform-controlled fulfillment context established at Shipment creation.
+- Every current or frozen made-to-order member always matches the Manufacturer Profile identity captured in the immutable fulfillment-context snapshot at Shipment creation.
+- Every current or frozen ready-made member always matches the opaque platform-controlled context value captured in the immutable fulfillment-context snapshot at Shipment creation.
 - Every Shipment always uses the immutable confirmed delivery destination of its Order.
 - A Shipment always has exactly one lifecycle state: PREPARING, SHIPPED, DELIVERED, or CANCELLED.
 - DELIVERED and CANCELLED are terminal states.
@@ -113,11 +114,11 @@ A Shipment:
 
 Shipment is not an Order, Order Item, Manufacturer Profile, Warehouse, stock allocation, manufacturing process, Payment, seller identity, or carrier account.
 
-No Shipment Item, Shipment Line, Address, Carrier, Warehouse, Fulfillment Actor, Return, Delivery Attempt, Parcel, Payment, or Inventory entity is introduced by this specification.
+No Fulfillment Context, Shipment Item, Shipment Line, Address, Carrier, Warehouse, Location, Fulfillment Actor, Return, Delivery Attempt, Parcel, Payment, or Inventory entity is introduced by this specification.
 
 The immutable Order delivery destination is the domain source of truth. Operational destination copies used by providers or labels do not create an independent Shipment destination in MVP.
 
-Fulfillment context is a stable domain grouping context rather than a new entity. The made-to-order context is derived from Order Item Manufacturer Profile assignments, while the ready-made context is an opaque platform-controlled context in MVP.
+The immutable fulfillment-context snapshot is an embedded domain value of Shipment in MVP, not a separate domain entity. The made-to-order snapshot contains the captured Manufacturer Profile identity only as immutable execution-context data derived from authoritative Order Item assignments. The ready-made snapshot contains an opaque platform-controlled context value.
 
 Lost shipment, failed delivery, return, reshipment after dispatch, pickup, multiple destinations, partial shipment, parcel-level modeling, and third-party ready-made fulfillment remain future domain work.
 
@@ -129,4 +130,4 @@ Exact dispatch and delivery evidence, provider trust, support authorization, int
 
 Status: DRAFT
 
-Version: 0.1
+Version: 0.2

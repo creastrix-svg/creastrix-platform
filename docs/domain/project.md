@@ -40,7 +40,10 @@ A Project:
 - A DELETED Project is logically soft-deleted, does not permit development or new commercialization, and cannot be restored through normal user actions in MVP.
 - A Project may transition from ACTIVE to ARCHIVED, from ARCHIVED to ACTIVE, from ACTIVE to DELETED, or from ARCHIVED to DELETED.
 - A Project may move between Workspaces only when both Workspaces have the same owner; the move preserves its identity and Revisions.
-- A Project cannot move between Workspaces while any Listing targeting any of its Revisions is ACTIVE. DRAFT or PAUSED Listings do not by themselves block an otherwise permitted same-owner move.
+- Moving a Project requires the acting User to have effective write authorization for PROJECTS operations in both the source Workspace and the target Workspace, in addition to all lifecycle and ownership rules.
+- If at least one DRAFT or PAUSED Listing targets a Revision of the Project, moving the Project additionally requires the acting User to have effective LISTINGS write authorization in both the source Workspace and the target Workspace.
+- A Project cannot move between Workspaces while any Listing targeting any of its Revisions is ACTIVE. DRAFT or PAUSED Listings do not block an otherwise permitted same-owner move when their additional authorization requirement is satisfied.
+- ARCHIVED Listings do not create an additional LISTINGS authorization requirement for a Project move merely because they exist.
 - After a Workspace move, Project access is determined by the Membership status, role, and relevant PROJECTS-scope authorization in the target Workspace and is not inherited automatically from the previous Workspace. Every Listing targeting a Revision of that Project continues to derive its Workspace context from its immutable source and therefore from the target Workspace. Further management of DRAFT or PAUSED Listings requires effective LISTINGS authorization there; ARCHIVED Listings remain closed for new commerce. Required historical Order Item snapshots remain unchanged.
 - Cross-owner Workspace movement is forbidden in MVP.
 - Workspace roles and permission scopes do not change the Effective Business Rights Holder of a Project.
@@ -85,4 +88,4 @@ PROJECTS is the permission scope for the Project and Revision domain area. Exact
 
 Status: DRAFT
 
-Version: 0.4
+Version: 0.5

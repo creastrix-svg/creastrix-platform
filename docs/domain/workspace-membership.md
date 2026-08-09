@@ -33,7 +33,7 @@ A Workspace Membership:
 - A Workspace may have multiple Workspace Memberships.
 - A User cannot have more than one Workspace Membership within the same Workspace.
 - When a User-owned Workspace is created, the owner receives an ACTIVE Workspace Membership with the role ADMIN.
-- When an Organization-owned Workspace is created, the User creating the Workspace on behalf of the Organization receives an ACTIVE Workspace Membership with the role ADMIN.
+- An Organization-owned Workspace may be created only by a User with an ACTIVE Organization Membership with the role OWNER in the owning Organization; that User receives the initial ACTIVE Workspace Membership with the role ADMIN.
 - A Workspace Membership role must be ADMIN, EDITOR, or VIEWER in MVP.
 - OWNER is not a Workspace Membership role; ownership is represented separately by the Workspace owner.
 - A Workspace Membership status must be INVITED, ACTIVE, or SUSPENDED in MVP.
@@ -62,6 +62,9 @@ A Workspace Membership:
 - If a Workspace is User-owned, the Workspace Membership belonging to the User owner cannot be removed, suspended, or changed from ADMIN while ownership remains unchanged in MVP.
 - Protection of the User owner's Workspace Membership applies independently from the last-ACTIVE-ADMIN rule.
 - An Organization-owned Workspace has no equivalent permanent individual-owner Membership; ADMIN Users may change as long as the Workspace retains at least one ACTIVE ADMIN.
+- Every Organization-owned Workspace must always have at least one User who simultaneously has an ACTIVE Organization Membership with the role OWNER in the owning Organization and an ACTIVE Workspace Membership with the role ADMIN in that Workspace.
+- If a Workspace Membership belongs to the last User satisfying both requirements for an Organization-owned Workspace, that Membership cannot be removed, suspended, or changed from ADMIN until that Workspace has another User satisfying both requirements.
+- External Users and non-OWNER Organization Users may hold independently granted Workspace ADMIN Memberships, but they cannot be the sole User satisfying the Organization ACTIVE OWNER and Workspace ACTIVE ADMIN requirement.
 - The last ACTIVE Workspace Membership with the role ADMIN cannot be removed, suspended, or assigned another role until another active administrator exists.
 
 ## Invariants
@@ -79,6 +82,7 @@ A Workspace Membership:
 - Effective access for an EDITOR or VIEWER never extends outside explicitly granted scopes.
 - Introducing a future permission scope never expands the effective access of existing EDITOR or VIEWER Memberships automatically.
 - The User owner of a User-owned Workspace always has an ACTIVE ADMIN Workspace Membership.
+- An Organization-owned Workspace always has at least one User who is both an ACTIVE Organization OWNER and an ACTIVE Workspace ADMIN for that Workspace.
 - Workspace Membership roles and permission scopes never change Workspace ownership, the business rights holder for Projects, the commercial context of Ready-Made Products, or the source-derived Workspace context of Listings.
 - Organization Membership alone never grants a Workspace role, Workspace permission scope, or Workspace resource access.
 
@@ -100,10 +104,10 @@ In MVP, the Membership role applies uniformly across all granted scopes. More gr
 
 INVITED represents pending access and SUSPENDED represents temporarily disabled access. Their allowed transitions and detailed invitation, suspension, and restoration rules remain to be specified.
 
-The policy for external Users in Organization-owned Workspaces remains future work.
+A User may retain an independently granted Workspace Membership after leaving an Organization, subject to future platform policy. Such a User cannot be the sole User satisfying the Organization ACTIVE OWNER and Workspace ACTIVE ADMIN requirement.
 
 ---
 
 Status: DRAFT
 
-Version: 0.6
+Version: 0.7

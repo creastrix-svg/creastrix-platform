@@ -10,7 +10,9 @@ An Organization acts as a single business participant on the Creastrix platform,
 
 An Organization may own Workspaces and thereby hold business rights to Projects in those Workspaces.
 
-Commercial capabilities such as publishing designs, manufacturing items, and participating in marketplace payments are exercised through dedicated platform profiles.
+Specialized capabilities such as design publication and manufacturing are exercised through dedicated profiles where their respective domain rules define them.
+
+Organization participation in commerce does not by itself determine seller-of-record, merchant identity, economic beneficiary, payment recipient, or payout identity.
 
 ## Responsibilities
 
@@ -20,7 +22,7 @@ An Organization is responsible for:
 - owning Workspaces and holding business rights to Projects through those Workspaces;
 - managing Organization Memberships;
 - collaborating through shared Workspaces;
-- participating in commercial activities through dedicated platform profiles.
+- participating in specialized domain activities through dedicated profiles where the applicable domain rules require them.
 
 ## Relationships
 
@@ -37,14 +39,19 @@ An Organization:
 - An Organization must have one or more ACTIVE Organization Memberships with the role OWNER.
 - Organization creation atomically creates an ACTIVE Organization Membership with the role OWNER for the creator.
 - The last ACTIVE OWNER Membership cannot be removed, changed from OWNER, or transitioned out of ACTIVE until another ACTIVE OWNER Membership exists.
+- An ACTIVE Organization Membership with the role OWNER is the current source of general organization-level authority when no more specific domain delegation rule exists.
+- Creating a Workspace owned by an Organization requires the acting User to have an ACTIVE Organization Membership with the role OWNER in that Organization.
+- Every Organization-owned Workspace must always have at least one User who simultaneously has an ACTIVE Organization Membership with the role OWNER in the owning Organization and an ACTIVE Workspace Membership with the role ADMIN in that Workspace.
+- If a User is the last User satisfying both requirements for an Organization-owned Workspace, no operation may remove that User's Workspace Membership, suspend it, change its role from ADMIN, remove that User's Organization Membership, change its role from OWNER, or transition it out of ACTIVE until that Workspace has another User satisfying both requirements. Different Workspaces may be protected by different replacement Users.
 - An Organization cannot exist without at least one Organization Membership.
 - An Organization-held Manufacturer Profile represents the Organization's specialized manufacturing-capability identity.
-- Authorized Users may manage an Organization-held Manufacturer Profile or accept made-to-order manufacturing work through it only when acting on behalf of the Organization under Organization rules.
-- Organization Membership alone does not automatically authorize Manufacturer Profile management or acceptance of manufacturing work.
+- In MVP, an Organization-held Manufacturer Profile may be created, managed, or used to accept made-to-order manufacturing work by a User with an ACTIVE Organization Membership with the role OWNER in the Organization, subject to Manufacturer Profile rules.
+- Generic Organization Membership is insufficient by itself for Manufacturer Profile management or acceptance of manufacturing work; a future explicitly specified domain delegation rule may authorize another actor.
 
 ## Invariants
 
 - An Organization always has at least one ACTIVE Organization Membership with the role OWNER.
+- Every Workspace owned by an Organization always has at least one User who is both an ACTIVE Organization OWNER and an ACTIVE Workspace ADMIN for that Workspace.
 - Every Organization Membership of an Organization belongs to that Organization only.
 - An Organization cannot hold more than one Manufacturer Profile in MVP.
 
@@ -52,13 +59,15 @@ An Organization:
 
 An Organization is a first-class business participant of the platform and may own domain objects independently from individual Users.
 
-Business capabilities are exercised through dedicated platform profiles rather than directly by the Organization.
+Specialized capabilities use dedicated profiles only where their respective domain rules define them.
 
-The exact Organization role and permission rules for Manufacturer Profile management and acceptance of manufacturing work remain future Organization authorization work.
+Organization does not by itself determine seller-of-record, merchant identity, economic beneficiary, payment recipient, or payout identity. Those remain future Payment and commerce architecture decisions.
+
+Additional Organization roles, permissions, and domain-specific delegation beyond current ACTIVE OWNER authority remain future Organization authorization work.
 
 Project business rights are derived from Workspace ownership in MVP; an Organization does not act as a separate direct Project Business Owner.
 
 ---
 
 Status: APPROVED
-Version: 1.3
+Version: 1.4
