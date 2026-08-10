@@ -53,8 +53,10 @@ A Ready-Made Product:
 - If the full Order Item quantity cannot be allocated, Order confirmation fails and no partial confirmed Order is created.
 - Allocation succeeds atomically at the domain level, available quantity never becomes negative, and the same stock capacity cannot be confirmed for more than one Order Item.
 - A confirmed allocation remains associated with its Order Item until fulfillment or consumption, or until an applicable release.
-- Successful cancellation may release a confirmed allocation when it is no longer required.
-- Payment never directly releases a ready-made stock allocation. Payment-resolution failure may lead commerce workflow to cancel an eligible Order Item, and only successful applicable Order Item cancellation releases the allocation under the existing release rule.
+- Successful eligible Order Item cancellation before physical dispatch may release a confirmed allocation only when the applicable release rule permits the physical capacity to return to available quantity.
+- Cancellation after physical dispatch through terminal non-delivery resolution never releases the original allocation and never increases available quantity. Once dispatched, the allocated physical unit has left the ordinary available stock pool, and Shipment UNDELIVERED does not prove that it is again available for sale.
+- Return-to-sender or other UNDELIVERED evidence does not itself restore stock because it does not prove physical receipt, inspection, sellable condition, or restocking acceptance. Any future receipt, inspection, restock, or manual stock-adjustment workflow requires separate explicit rules.
+- Payment never directly releases a ready-made stock allocation. Payment-resolution failure may lead commerce workflow to cancel an eligible Order Item, but allocation release still requires the separate applicable pre-dispatch release gate; cancellation status alone is not sufficient.
 - Physical units exist before the customer order, and ordinary ready-made fulfillment does not require a new manufacturing process or a Manufacturer assignment because of that order.
 - Pick, pack, label, and shipment handling do not by themselves turn ready-made fulfillment into made-to-order manufacturing.
 - An order requiring fabrication, cutting, engraving, production, or other changes to product-defining physical characteristics is not ordinary Ready-Made Product fulfillment in MVP.
@@ -72,6 +74,7 @@ A Ready-Made Product:
 - A Ready-Made Product is never destructively deleted in MVP.
 - Available quantity is always a non-negative integer.
 - The same available stock capacity is never confirmed for more than one Order Item.
+- Post-dispatch terminal non-delivery cancellation never restores the original confirmed allocation to available quantity.
 - A Ready-Made Product lifecycle remains independent from its stock availability.
 - A Ready-Made Product remains independent from Project and Revision lifecycles.
 - The platform-recognized commercial context of a Ready-Made Product is always derived from the owner of its Workspace in MVP.
@@ -79,7 +82,7 @@ A Ready-Made Product:
 
 ## Notes
 
-The simple available quantity is an intentional MVP model. Temporary reservation, returns, restocking, manual adjustment, procurement, and technical concurrency mechanisms remain future integration concerns involving Order, Payment, Inventory, or related domains as applicable. Payment-resolution failure does not mutate stock directly and may release allocation only through successful applicable Order Item cancellation. Quantity may later move into an Inventory domain without changing Ready-Made Product identity.
+The simple available quantity is an intentional MVP model. Eligible pre-dispatch Order Item cancellation may release allocation under the applicable release rule; post-dispatch terminal non-delivery cancellation never does. UNDELIVERED or return-to-sender evidence alone is not restock. Returns, physical receipt, inspection, restocking, manual adjustment, procurement, and technical concurrency mechanisms remain future integration concerns involving Order, Payment, Inventory, or related domains as applicable. Payment-resolution failure does not mutate stock directly. Quantity may later move into an Inventory domain without changing Ready-Made Product identity.
 
 Every Listing has exactly one immutable commercial source: either a FINALIZED Revision or a Ready-Made Product, never both. A source may have multiple Listings over time, but the Listing specification permits no more than one ACTIVE Listing for the same source in MVP.
 
@@ -97,10 +100,12 @@ Destructive deletion means physical or domain removal of the stable Ready-Made P
 
 Future relational persistence must prevent destructive cascade deletion that would break Listing source or historical Order Item references. Exact database constraints remain implementation work.
 
+Future executable implementation must prove that eligible pre-dispatch cancellation can release allocation while post-dispatch terminal non-delivery cancellation cannot increase available quantity, including under concurrent cancellation and stock-release attempts. Exact locking, transaction-isolation, version-check, and persistence mechanisms remain implementation validation.
+
 Significant creation, lifecycle, and quantity events may later be recorded through Audit Log behavior.
 
 ---
 
 Status: DRAFT
 
-Version: 0.6
+Version: 0.7

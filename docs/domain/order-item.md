@@ -24,6 +24,7 @@ An Order Item is responsible for:
 - preserving an immutable, authoritative confirmation-time Manufacturer acceptance fact for made-to-order fulfillment;
 - preserving the confirmed manufacturer compensation and beneficiary basis for made-to-order Payment Allocation;
 - managing its source-neutral fulfillment and cancellation lifecycle;
+- governing the narrow authorized terminal non-delivery cancellation path after physical dispatch;
 - governing path-specific authorization for formally starting fulfillment;
 - providing a stable boundary for Shipment, Payment Allocation, and Royalty integration.
 
@@ -126,7 +127,8 @@ An Order Item:
 - Ready-made confirmation establishes a confirmed allocation of the full Order Item quantity against its Ready-Made Product.
 - Ready-made allocation succeeds only when the full quantity is currently available. Allocation is atomic at the domain level, available quantity never becomes negative, and the same stock capacity cannot be confirmed more than once.
 - A confirmed ready-made allocation remains associated with the Order Item until fulfillment or consumption, or until an applicable release.
-- Successful cancellation may release a ready-made allocation when it is no longer required.
+- Successful eligible cancellation before physical dispatch may release a ready-made allocation only when the applicable allocation-release rule permits that physical capacity to return to available quantity.
+- Cancellation after physical dispatch through terminal non-delivery resolution never releases the original ready-made allocation and never increases Ready-Made Product available quantity. Dispatch means the allocated unit left the ordinary available stock pool, while Shipment UNDELIVERED does not prove that it is again physically received, inspected, sellable, or accepted for restock.
 - Ready-Made Product stock allocation remains an Order Item responsibility. Shipment does not reserve or allocate stock, change ordered quantity, or create Inventory state.
 - An Order Item may be added to a Shipment only after the Item is in the IN_FULFILLMENT state.
 - Shipment creation does not transition an Order Item from CONFIRMED to IN_FULFILLMENT.
@@ -147,14 +149,22 @@ An Order Item:
 - CANCELLED means the item will not be fulfilled and its historical commercial snapshot remains preserved.
 - The allowed normal fulfillment transitions are CONFIRMED to IN_FULFILLMENT and IN_FULFILLMENT to FULFILLED.
 - A CONFIRMED Order Item may transition to CANCELLED. An IN_FULFILLMENT Order Item may transition to CANCELLED before physical dispatch only when applicable cancellation and production rules permit it.
-- Once the non-CANCELLED Shipment covering an Order Item is SHIPPED, ordinary MVP Order Item cancellation is not permitted. Returns, delivery failure, and other post-dispatch resolution remain future work.
+- Once the non-CANCELLED Shipment covering an Order Item is SHIPPED, ordinary MVP Order Item cancellation remains forbidden.
+- The only C2 post-dispatch exception permits an IN_FULFILLMENT Order Item to transition to CANCELLED when its frozen covering non-CANCELLED Shipment is already UNDELIVERED, definitive terminal non-delivery evidence was accepted, an explicitly authorized platform or commerce terminal non-delivery resolution accepts the cancellation, and every other applicable resolution rule passes.
+- Authority for this terminal resolution is not inferred from Buyer status, Manufacturer Profile Holder status, Workspace ownership or Membership, Organization OWNER status, or source-management scopes. Exact support and operations permissions remain future authorization refinement, and no new core authority entity or Workspace scope is introduced.
+- Shipment transition to UNDELIVERED does not automatically cancel the Order Item. Until the separate authorized resolution succeeds, the Item remains IN_FULFILLMENT.
+- Buyer request, Buyer delay report, unknown provider outcome, a Shipment that remains SHIPPED, refund request or acceptance, completed manufacturing, or finance-operator intent is insufficient for post-dispatch cancellation.
 - FULFILLED and CANCELLED are terminal states.
 - Cancellation applies to the complete Order Item in MVP. Partial-quantity cancellation is not supported.
 - A FULFILLED Order Item cannot be cancelled.
-- Cancellation preserves the Order Item identity, relationships, merchandise amounts, commercial and source snapshot, Manufacturer Profile assignment, Personalization snapshot, and royalty context.
+- Cancellation preserves the Order Item identity, Order membership, purchased Listing, merchandise amounts, discount share, commercial and source snapshot, Personalization and publication snapshots, royalty context, Manufacturer Profile assignment, Manufacturer acceptance, Manufacturer compensation basis, and every frozen historical Shipment relationship.
+- An Item cancelled through terminal non-delivery resolution remains a frozen historical member of its UNDELIVERED Shipment. It is not removed or treated as if dispatch never occurred.
+- Reshipment and replacement after dispatch are unsupported in MVP. Because UNDELIVERED remains a non-CANCELLED Shipment, its frozen member cannot be placed into a second non-CANCELLED Shipment under the existing coverage invariant.
 - Payment failure or timeout does not directly mutate Order Item state. After a bounded payment-resolution window, commerce workflow may attempt cancellation when the existing Item cancellation rules permit it.
 - Cancellation of any Order Item in a positive-payable Order before that Order's first accepted Payment capture permanently closes the Order to further buyer payment collection under current MVP Order and Payment rules. The cancellation itself does not directly mutate Payment state, the immutable Order Item collection, or the confirmed Order payable snapshot.
 - Payment refund is separate from Order Item cancellation. Cancellation before capture may require no refund, cancellation after capture may create a refund obligation, and an accepted refund does not itself change Order Item lifecycle.
+- Shipment UNDELIVERED and terminal non-delivery cancellation do not themselves create or accept a Payment refund. If post-capture cancellation creates a buyer refund obligation, refund execution and acceptance remain a separate authorized Payment workflow under existing rules.
+- An accepted Payment refund does not set Shipment UNDELIVERED, cancel the Order Item, release ready-made stock, or create a replacement Shipment.
 - Partial refund does not create partial Item cancellation, and neither cancellation nor refund rewrites original merchandise amounts, confirmed discount share, Manufacturer compensation basis, or the Order payable snapshot.
 - ORIGINAL Payment Allocations may use the Order Item as their charge subject only after capture of a Payment of the Order is accepted. Payment Allocation does not become an Order Item lifecycle state.
 - An Order Item preserves the applicable Listing royalty configuration, calculated amount, beneficiary and rights context at confirmation. It is the authoritative Royalty calculation snapshot but is not the accrued Royalty ledger.
@@ -165,7 +175,9 @@ An Order Item:
 - Designer Profile publication eligibility is not revalidated at Royalty recognition. Later Designer Profile verification or status changes do not rewrite the confirmed royalty snapshot or prevent recognition after qualifying capture.
 - A ready-made Order Item preserves that no designer royalty applies and never creates a Royalty in the current MVP.
 - Order Item cancellation alone does not reverse Royalty. Accepted refund economics may create append-only Royalty reversals according to refunded royalty basis attributable to the Item.
+- A made-to-order Item cancelled through terminal non-delivery remains CANCELLED rather than FULFILLED. Its Manufacturer assignment, acceptance, and compensation snapshots remain unchanged, but the current Payout FULFILLED release-candidate prerequisite is not satisfied merely because manufacturing or dispatch occurred.
 - Later Listing, Project, Revision context, Ready-Made Product, Personalization, Workspace access, Designer verification, Manufacturer Profile, beneficiary, or royalty-configuration changes never rewrite the immutable confirmed commercial snapshot.
+- Shipment delivery or terminal non-delivery transition and dependent Order Item fulfillment or cancellation resolution require current-state revalidation and domain-consistent serialization. A FULFILLED transition and terminal non-delivery cancellation cannot both commit for the same Item.
 
 ## Invariants
 
@@ -209,9 +221,12 @@ An Order Item:
 - The historical confirmed Manufacturer acceptance fact never changes after confirmation.
 - An Order Item included in a Shipment is always covered in its full quantity.
 - An Order Item is never covered by more than one non-CANCELLED Shipment in MVP.
+- An Order Item covered by an UNDELIVERED Shipment remains historically covered by it and cannot be reshipped through another non-CANCELLED Shipment in MVP.
 - An Order Item always has exactly one lifecycle state: CONFIRMED, IN_FULFILLMENT, FULFILLED, or CANCELLED.
 - Every transition from CONFIRMED to IN_FULFILLMENT satisfies the applicable path-specific authorization rules.
 - Every transition from CONFIRMED to IN_FULFILLMENT satisfies the Order's applicable payment-readiness rule.
+- Post-dispatch terminal non-delivery cancellation occurs only from IN_FULFILLMENT, only after the covering Shipment is UNDELIVERED, and only through an authorized resolution that satisfies every applicable rule.
+- A ready-made Order Item cancelled through post-dispatch terminal non-delivery never returns its original allocation to available quantity.
 - FULFILLED and CANCELLED are terminal states.
 - Cancellation of an Order Item in a positive-payable Order before that Order's first accepted Payment capture always closes the Order to further buyer payment collection in MVP.
 - Later source, profile, access, or commercial changes never rewrite the immutable confirmed snapshot.
@@ -226,6 +241,10 @@ Order Item does not own Inventory, and no Inventory or Reservation entity is int
 
 Shipment provides delivery evidence toward the FULFILLED transition, while Shipment lifecycle states are not duplicated in the Order Item lifecycle. Manufacturing, Payment, Payment Allocation, and refund substates also remain outside the Order Item lifecycle.
 
+Ordinary cancellation after physical dispatch remains forbidden. UNDELIVERED provides only the narrow authorized terminal non-delivery exception; it does not auto-cancel, refund, replace, reship, or restock. Ready-made allocation release remains path-specific: eligible pre-dispatch cancellation may release capacity, while post-dispatch terminal non-delivery cancellation never restores the dispatched allocation to available quantity.
+
+Replacement or reshipment would require new stock consumption for ready-made fulfillment or a new manufacturing and compensation decision for made-to-order fulfillment, so both remain separate future architecture. C2 does not determine carrier, Manufacturer, or platform liability, post-loss Manufacturer compensation, or insurance recovery.
+
 Royalty accrual and append-only reversal history belong to Royalty. Royalty recognition after accepted capture does not mean the amount has been earned, become payable or payout-eligible, or been transferred. Earning, release, and Payout rules remain future work. Payment Allocation explains captured funds without becoming the Royalty ledger or being rewritten by Royalty.
 
 Accepted royalty-rights validation context is an embedded immutable part of the Revision-based Order Item confirmation snapshot rather than a relationship to another entity. It preserves the accepted decision needed for historical traceability without copying full legal evidence or becoming a calculation source.
@@ -236,8 +255,10 @@ The Order preserves the current Creastrix seller-of-record and merchant-of-recor
 
 Future relational persistence must prevent destructive cascade deletion from Listing or source entities into confirmed Order Items. If future approved Personalization deletion physically removes a live Personalization, persistence may sever only the optional traceability relationship while retaining the complete immutable snapshot and Order Item identity. Exact schema and foreign-key mechanisms remain implementation work.
 
+Future executable implementation must serialize DELIVERED/FULFILLED and UNDELIVERED/CANCELLED paths, require current UNDELIVERED coverage for the post-dispatch exception, reject cancellation of FULFILLED Items, preserve historical Shipment membership, prevent a second non-CANCELLED Shipment, preserve pre-dispatch release behavior, enforce no ready-made release after dispatch, and keep refund acceptance separate. Exact persistence and concurrency mechanisms remain implementation validation.
+
 ---
 
 Status: DRAFT
 
-Version: 0.9
+Version: 0.10

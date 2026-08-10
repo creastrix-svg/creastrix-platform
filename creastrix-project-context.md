@@ -91,7 +91,7 @@ The following specifications are DRAFT. They represent active architecture work 
 - The Workspace owner provides the platform-recognized commercial context in which a Ready-Made Product is managed; this does not prove legal ownership, physical custody, seller-of-record, manufacturer, or supplier status.
 - Ready-Made Product has the ACTIVE and ARCHIVED lifecycle and may transition in either direction.
 - Ready-Made Product cannot be destructively deleted in MVP. ARCHIVED is its retained non-active state, while exact future deletion and retention policy remains separate work.
-- Ready-Made Product uses simple non-negative available quantity in MVP; an allocation may be confirmed only when sufficient quantity is available at confirmation, and the same available stock capacity cannot be confirmed for more than one Order Item. Lifecycle remains independent from stock availability.
+- Ready-Made Product uses simple non-negative available quantity in MVP; an allocation may be confirmed only when sufficient quantity is available at confirmation, and the same available stock capacity cannot be confirmed for more than one Order Item. Eligible pre-dispatch cancellation may release allocation under the applicable release rule, while post-dispatch terminal non-delivery cancellation never restores the dispatched allocation to available quantity. Lifecycle remains independent from stock availability.
 - One independently stocked physical configuration is one Ready-Made Product in MVP; no Product Variant entity exists.
 - Ready-Made Product exists independently from Listing and is never published directly.
 - Ready-Made Product does not require a Manufacturer Profile.
@@ -239,9 +239,17 @@ The following specifications are DRAFT. They represent active architecture work 
 - Order owns one immutable confirmed delivery destination, and every Shipment of that Order uses it without an independent divergent destination.
 - Shipment belongs to one Order and groups full-quantity Order Items from that Order. Partial-quantity shipment and Shipment Item are unsupported in MVP.
 - Shipment preserves one immutable fulfillment-context snapshot established at creation: made-to-order context captures one Manufacturer Profile identity through Order Items, ready-made context contains an opaque platform-controlled context value, and the paths never mix or switch; the snapshot is an embedded domain value rather than a separate entity.
-- Shipment lifecycle is PREPARING, SHIPPED, DELIVERED, or CANCELLED, and accepted delivery evidence contributes to Order Item fulfillment.
+- Shipment lifecycle is PREPARING, SHIPPED, DELIVERED, UNDELIVERED, or CANCELLED. UNDELIVERED is a terminal state reachable only from SHIPPED after platform acceptance of sufficiently definitive evidence that the dispatched Shipment did not and will not reach the immutable Order destination.
+- Delay, tracking silence, first failed attempt, unsupported Buyer report, or ambiguous provider outcome leaves Shipment SHIPPED. Provider evidence is input rather than automatic domain truth.
+- UNDELIVERED preserves dispatch, frozen membership, fulfillment context, destination, and evidence history and does not automatically cancel an Order Item, accept a refund, release stock, or change financial history.
+- Ordinary Order Item cancellation after SHIPPED remains forbidden. The only C2 exception permits a separately authorized terminal non-delivery resolution to move an IN_FULFILLMENT Item to CANCELLED after its frozen covering Shipment is UNDELIVERED and all applicable rules pass.
+- Reshipment and replacement after dispatch are unsupported in MVP. UNDELIVERED remains non-CANCELLED, so its frozen Order Items cannot join a second non-CANCELLED Shipment.
+- Ready-made post-dispatch terminal non-delivery cancellation never releases the original allocation or increases available quantity. Return-to-sender evidence is not automatic restock; receipt, inspection, restocking, and manual adjustment remain separate future work.
+- Made-to-order terminal non-delivery cancellation preserves Manufacturer Profile assignment, acceptance, compensation basis, and all historical snapshots. A CANCELLED Item does not satisfy the current Payout FULFILLED release-candidate prerequisite.
+- C2 introduces no Delivery Failure, Shipment Event, replacement, return, inventory, claim, or other core entity and no new Workspace scope.
 - Shipment has no Workspace relationship or new Workspace scope and owns no independent destination, money, stock allocation, or manufacturing responsibility.
 - Shipment operation follows fulfillment-context authorization, while provider statuses are evidence rather than automatic domain authority.
+- Corrective documentation change sets A1, A2, B1, B2, C1, and C2 are complete. Executable implementation must now translate each domain invariant into an enforcement mechanism and adversarial executable test rather than treating another prose review as correctness proof.
 
 ## Product Rules
 
@@ -262,6 +270,6 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Next Steps
 
-1. Add terminal non-delivery resolution without reshipment and protect ready-made stock from incorrect release after post-dispatch loss (C2 / F-06).
-2. Start the Ready-Made purchase/payment implementation vertical slice with remaining domain work continuing in parallel.
+1. Start the Ready-Made purchase/payment executable vertical slice, translating domain invariants into relational constraints, transactional enforcement and adversarial integration/concurrency tests.
+2. Continue remaining non-blocking domain work in parallel as required by the implementation slice.
 3. Before any functional Payout implementation milestone, separately define and approve the first concrete versioned Payout release policy.

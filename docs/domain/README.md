@@ -31,7 +31,7 @@ These entities have active draft specifications. They represent active architect
 
 - [Workspace](workspace.md) — DRAFT 0.8
 - [Workspace Membership](workspace-membership.md) — DRAFT 0.8
-- [Ready-Made Product](ready-made-product.md) — DRAFT 0.6
+- [Ready-Made Product](ready-made-product.md) — DRAFT 0.7
 - [Project](project.md) — DRAFT 0.6
 - [Revision](revision.md) — DRAFT 0.5
 - [Designer Profile](designer-profile.md) — DRAFT 0.2
@@ -40,12 +40,12 @@ These entities have active draft specifications. They represent active architect
 - [Personalization](personalization.md) — DRAFT 0.5
 - [Manufacturer Profile](manufacturer-profile.md) — DRAFT 0.3
 - [Order](order.md) — DRAFT 0.5
-- [Order Item](order-item.md) — DRAFT 0.9
+- [Order Item](order-item.md) — DRAFT 0.10
 - [Payment](payment.md) — DRAFT 0.4
 - [Payment Allocation](payment-allocation.md) — DRAFT 0.2
 - [Royalty](royalty.md) — DRAFT 0.2
 - [Payout](payout.md) — DRAFT 0.4
-- [Shipment](shipment.md) — DRAFT 0.2
+- [Shipment](shipment.md) — DRAFT 0.3
 
 ## Planned entities
 
