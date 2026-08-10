@@ -39,9 +39,9 @@ These entities have active draft specifications. They represent active architect
 - [Listing](listing.md) — DRAFT 0.8
 - [Personalization](personalization.md) — DRAFT 0.4
 - [Manufacturer Profile](manufacturer-profile.md) — DRAFT 0.3
-- [Order](order.md) — DRAFT 0.4
+- [Order](order.md) — DRAFT 0.5
 - [Order Item](order-item.md) — DRAFT 0.8
-- [Payment](payment.md) — DRAFT 0.3
+- [Payment](payment.md) — DRAFT 0.4
 - [Payment Allocation](payment-allocation.md) — DRAFT 0.2
 - [Royalty](royalty.md) — DRAFT 0.2
 - [Payout](payout.md) — DRAFT 0.3

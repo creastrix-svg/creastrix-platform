@@ -179,7 +179,13 @@ The following specifications are DRAFT. They represent active architecture work 
 - Order Item preserves immutable Listing, source, source Workspace, commercial context, merchandise amounts, and applicable royalty terms without establishing seller-of-record.
 - Payment state remains separate from Order confirmation and lifecycle.
 - Payment represents one durable buyer-funds collection attempt for exactly one existing Order. An Order may have several Payments over time for retries, but split tender, intentional partial capture, and overpayment are unsupported in MVP.
-- External pre-Order provider authorization remains checkout and provider workflow. Core Payment never exists without Order; successful pre-authorization is recorded as an AUTHORIZED Payment in the same local confirmation transaction as the Order, while failed confirmation requires durable void or release compensation without creating Order or Payment.
+- Before the first external pre-Order authorization command, payment and checkout integration workflow durably preserves a submission commitment containing stable confirmation-attempt and provider identities, provider correlation context, Buyer, amount and currency, and sufficient frozen prospective purchase intent. The commitment is workflow or integration persistence rather than a core entity.
+- Unknown authorization outcome is reconciled through the same stable provider submission identity; an unrelated second authorization and unsafe blind retry are forbidden.
+- Accepted pre-Order authorization may be consumed into at most one confirmed Order and one AUTHORIZED Payment. Successful local confirmation atomically creates the Order, Items, applicable ready-made stock allocations, immutable snapshots and Payment and records durable one-time consumption correlation.
+- The confirmed purchase must match the commitment's frozen Buyer, selected commercial configurations and quantities, applicable Personalization and delivery intent, amount, currency, and other materially purchase-defining inputs while all current domain prerequisites are revalidated normally.
+- A crash after successful local commit resolves to the existing consumed Order and Payment. When local commit outcome is unknown, local persistence is reconciled before compensation so an authorization already consumed by a committed purchase is never voided merely because the caller missed the response.
+- Accepted authorization not consumed because local confirmation failed enters durable economically idempotent void or release workflow using one stable compensation identity and is never reused for a changed or later Order.
+- Core Payment still cannot exist without Order. Pre-Order direct capture is unsupported in the current MVP, and no Checkout, Authorization, Payment Intent, Collection Intent, Compensation, or other pre-Order core entity is introduced.
 - Payment uses the PENDING, AUTHORIZED, CAPTURED, FAILED, and CANCELLED lifecycle. Provider status is evidence rather than automatic domain authority, and duplicate economic events are recognized only once.
 - For the positive-payable card MVP, full accepted capture of the confirmed payable total is required before fulfillment may start. A zero-payable Order is payment-ready without Payment, and payment readiness is not an Order or Order Item lifecycle state.
 - Payment failure and timeout do not directly mutate Order Item state or ready-made stock. After a bounded resolution window, commerce workflow may cancel eligible Items, and successful applicable ready-made Item cancellation releases stock under existing rules.
@@ -245,6 +251,6 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Next Steps
 
-1. Harden external money boundaries: durable pre-Order provider authorization commitment and explicit fail-closed Payout release-policy behavior (B1/B2 / F-02/F-03).
+1. Explicitly harden fail-closed Payout release-policy behavior (B2 / F-03).
 2. Add historical deletion protection and terminal non-delivery resolution without reshipment (C1/C2 / F-05/F-06).
 3. Start the Ready-Made purchase/payment implementation vertical slice with remaining domain work continuing in parallel.

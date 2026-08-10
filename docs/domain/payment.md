@@ -15,6 +15,7 @@ A Payment is responsible for:
 - preserving its immutable currency and intended amount;
 - respecting the collection eligibility of its Order;
 - preserving accepted authorization and capture facts where applicable;
+- preserving immutable accepted provider correlation transferred from pre-Order workflow when confirmation creates it as AUTHORIZED;
 - correlating the collection attempt with external provider evidence;
 - preserving append-only accepted refund facts, their immutable economic instruction snapshots, and the cumulative refund condition derived from them;
 - providing the immutable basis for durable and economically idempotent provider-refund execution and reconciliation;
@@ -36,11 +37,33 @@ A Payment:
 - A core Payment in MVP always belongs to a positive-payable Order and represents an attempt to collect that Order's full immutable confirmed payable total. Its intended amount is greater than zero and always equals the Order's confirmed payable total.
 - A Payment may be created, authorized, or accepted as CAPTURED only while its Order remains eligible for buyer payment collection under current Order rules.
 - An Order may have zero or more Payments over time. A zero-payable Order does not create a zero-value Payment merely to represent payment readiness and may validly have no Payment.
-- In the normal positive-payable card flow, external provider authorization may be obtained before the Order exists, but that external interaction is checkout and provider workflow rather than a core Payment.
-- When pre-Order authorization succeeds, the Order, all Order Items, applicable ready-made stock allocations, immutable Order monetary snapshots, and an AUTHORIZED Payment are created together in one local confirmation transaction.
-- If external authorization fails before Order confirmation, no Order and no core Payment are created.
-- If external authorization succeeds but local Order confirmation fails, no Order and no core Payment are created. The external authorization must be durably and idempotently voided or released through compensation and reconciliation workflow.
+- In the normal positive-payable card flow, external provider authorization may be obtained before the Order exists only through payment and checkout integration workflow backed by a durable pre-Order authorization submission commitment.
+- The pre-Order authorization submission commitment is workflow or integration persistence rather than a core domain entity. It is not Payment, Order, Checkout, Payment Attempt, Payment Method, Payment Provider, Authorization, Payment Intent, Collection Intent, Compensation, or Idempotency Key and may exist before Order and Payment.
+- Before the first external authorization command for one confirmation attempt, the platform must durably preserve a stable platform confirmation-attempt identity, stable provider submission or idempotency identity, provider and account or routing context sufficient for correlation, Buyer User identity, intended amount, currency, and sufficient frozen prospective confirmation-intent context. The provider command may be sent only after that durable commitment succeeds.
+- Frozen prospective confirmation-intent context contains or identifies enough immutable intent to bind the authorization to the intended Buyer, selected commercial items or configurations and quantities, applicable Personalization intent, delivery-destination intent, prospective monetary total and currency, and other materially purchase-defining confirmation inputs.
+- Exact commitment storage may use normalized workflow values, stable references, or another immutable representation or fingerprint. It does not duplicate a complete future Order, does not require cryptographic hashing as a domain rule, and does not introduce a Cart or Checkout entity.
+- An accepted pre-Order authorization may be used for confirmation only when the resulting purchase still matches the frozen prospective confirmation subject and accepted provider amount and currency. A material purchase-defining change prevents consumption even when amount and currency happen to remain equal.
+- Accepted authorization remains bound to the stable confirmation-attempt identity of its commitment and cannot be attached or replayed through another confirmation attempt even when the prospective subject, amount, and currency appear identical.
+- The commitment does not freeze or reserve mutable source entities. Listing orderability, stock, rights, Manufacturer Profile eligibility and acceptance, Personalization validity, User actionability, pricing, and every other applicable confirmation prerequisite are revalidated normally at Order confirmation.
+- One pre-Order provider submission identity represents at most one external economic authorization attempt. Duplicate client requests for the same confirmation-attempt identity and an economically unknown provider outcome use the same unchanged submission identity for idempotent retry, query, or reconciliation and never start an unrelated replacement authorization.
+- Pre-Order authorization may be enabled only with a provider integration that supports sufficiently safe economic idempotency, lookup, or reconciliation for an unknown outcome. Blind independent retry is forbidden when the same economic authorization cannot be safely determined or retried.
+- Provider responses and webhooks remain evidence rather than automatic domain truth. Before accepted authorization can support confirmation, platform workflow validates provider and account correlation, binding to the exact commitment, amount, currency, current validity, and absence of prior or inconsistent consumption or recognition.
+- Provider authorization or reference identity may become known only after a provider response or reconciliation discovers it. Once accepted, its provider, account, submission, and economic-authorization correlation is immutable.
+- When accepted pre-Order authorization and every current confirmation prerequisite succeed, the Order, all Order Items, applicable ready-made stock allocations, immutable Order monetary snapshots, and an AUTHORIZED Payment are created together in one local confirmation transaction. That transaction also durably establishes one-time consumption and correlation between the pre-Order commitment, accepted provider authorization, resulting Payment, and confirmed purchase.
+- Durable pre-Order consumption correlation may remain workflow or integration persistence and does not create a core Payment relationship to a pre-Order object. One accepted authorization economic event or submission commitment can produce at most one core AUTHORIZED Payment and at most one confirmed Order.
+- Repeated client confirmation, provider response, webhook, or reconciliation delivery for an already consumed authorization resolves to the existing committed Order and Payment and never creates another purchase or collection attempt.
+- If local confirmation committed successfully but the process crashes before returning success, durable consumption correlation proves that the authorization already belongs to the existing AUTHORIZED Payment. Recovery returns or resolves to that purchase and must neither create another Order or Payment nor compensate the consumed authorization merely because the caller missed the response.
+- If local transaction outcome is initially unknown after a crash, workflow first reconciles local persistence using the stable confirmation and submission identities. Compensation may begin only after determining that no committed Order and Payment consumed the authorization.
+- If accepted authorization is not consumed because local confirmation definitively fails, no Order, core Payment, partial Item collection, or ready-made stock allocation from that confirmation survives. The authorization cannot be reused for a changed or later Order and must enter durable compensation and reconciliation; a materially changed purchase requires a new validated confirmation attempt and, when positive-payable, a new provider submission identity.
+- Before the first external void or release command, compensation workflow durably preserves a stable compensation-operation identity and correlation targeting the original commitment and accepted provider authorization. Unknown compensation outcome is retried, queried, or reconciled through that same operation rather than an unrelated blind command, and no Compensation entity is introduced.
+- When reliable provider evidence definitively confirms void or release, the external authorization hold is resolved for workflow purposes. Exact compensation status and retention representation remain integration details.
+- A void or release may proceed only when the authorization has not been consumed into a committed Order and Payment. Consumption and compensation for the same accepted authorization must serialize so they cannot both succeed economically.
+- If provider evidence definitively establishes that authorization failed and no external hold or economic authorization exists, no Order or core Payment is created. The commitment may reach a terminal workflow outcome, and a later buyer attempt requires normal revalidation and a new submission identity.
+- While authorization outcome remains unknown, no confirmed Order is created from unaccepted evidence and no unrelated second authorization is started for the same confirmation-attempt identity. Safety takes precedence over immediate liveness.
+- Pre-Order direct capture before a core Payment exists is unsupported in the current MVP. The pre-Order flow is authorization only.
+- A zero-payable Order requires no external authorization, pre-Order authorization submission commitment, or zero-value Payment merely for payment readiness.
 - Once an Order exists, each retry is represented by a new Payment. A retry Payment may begin in PENDING while its final provider result has not yet been accepted, but its intended amount still equals the same immutable Order confirmed payable total rather than only an unpaid difference.
+- For an economic provider command against an existing Payment, that Payment is the durable local attempt and correlation anchor. Integration still establishes a stable provider command or idempotency identity before sending the command, but no separate pre-Order authorization commitment is required.
 - If any Order Item is CANCELLED before the Order's first accepted Payment capture, the Order is permanently closed to further collection in MVP. No new Payment attempt may be started, and no existing PENDING or AUTHORIZED Payment may subsequently be accepted as CAPTURED.
 - After pre-capture cancellation closes the Order to collection, any outstanding external authorization must be durably and idempotently cancelled, voided, or released through payment compensation and reconciliation workflow.
 - When pre-capture Order Item cancellation and capture evidence race, capture may be accepted only if it is accepted before the Item cancellation. Once cancellation is accepted, later capture evidence for the original immutable payable total cannot be accepted as CAPTURED.
@@ -51,7 +74,7 @@ A Payment:
 - A Payment has exactly one immutable currency, and it must equal the currency of its Order.
 - A Payment preserves its intended amount and accepted authorized and captured amounts where applicable. Its intended amount always equals the Order's confirmed payable total.
 - When a Payment has an accepted authorization fact, the accepted authorized amount is greater than zero and equals both the Payment intended amount and the Order confirmed payable total.
-- A Payment may reach CAPTURED through a supported direct-capture flow without a separate accepted authorization fact.
+- A Payment may reach CAPTURED through a supported direct-capture flow without a separate accepted authorization fact only after its Order and durable PENDING Payment already exist. That Payment is the durable local correlation anchor before the external capture command.
 - For every CAPTURED Payment, the accepted captured amount is greater than zero and equals both the Payment intended amount and the Order confirmed payable total.
 - Provider evidence of a partial or otherwise mismatched capture requires exception handling and reconciliation and cannot be accepted as a normal CAPTURED Payment in the current MVP.
 - Across all Payments of one Order, accepted gross captured amount must never exceed the Order's confirmed payable total. Overpayment is forbidden.
@@ -117,6 +140,11 @@ A Payment:
 - Intentional partial payment, split tender, and overpayment never occur in MVP.
 - Accepted gross captured amount across an Order's Payments never exceeds the confirmed payable total.
 - A Payment is never accepted as CAPTURED after its Order has been closed to collection by pre-capture Order Item cancellation.
+- Every external pre-Order authorization command is preceded by successful durable preservation of its stable confirmation-attempt and provider submission commitment.
+- One accepted pre-Order authorization economic event or submission commitment is consumed by at most one core AUTHORIZED Payment and at most one confirmed Order.
+- Every AUTHORIZED Payment created from accepted pre-Order authorization has one durable unique consumption correlation to that authorization and its confirmed purchase.
+- A pre-Order provider submission identity never changes its Buyer, intended amount, currency, or frozen prospective confirmation subject.
+- Compensation for accepted pre-Order authorization never proceeds as resolved against an authorization already consumed into a committed Payment and Order.
 - The same external economic event is never recognized more than once.
 - Accepted provider, account, and transaction correlation identity never changes for an existing Payment.
 - Every accepted refund fact always has exactly one immutable refund-event identity.
@@ -135,13 +163,15 @@ A Payment:
 
 ## Notes
 
-Payment is not an Order, Order Item, Payment Allocation, Checkout, Payment Attempt, Payment Method, Payment Provider, Refund, settlement, payout, Royalty, Workspace, or seller identity. No separate Checkout, Payment Attempt, Payment Method, Payment Provider, Refund, Refund Component, or Refund Allocation Plan entity is introduced in DRAFT 0.3.
+Payment is not an Order, Order Item, Payment Allocation, Checkout, Payment Attempt, Payment Method, Payment Provider, Authorization, Payment Intent, Collection Intent, Compensation, Refund, settlement, payout, Royalty, Workspace, or seller identity. No separate Checkout, Payment Attempt, Payment Method, Payment Provider, Authorization, Payment Intent, Collection Intent, Compensation, Idempotency Key, Refund, Refund Component, or Refund Allocation Plan core entity is introduced in DRAFT 0.4.
 
 Creastrix is the single buyer-facing contractual seller-of-record and merchant-of-record for every MVP Order. This is a current commerce policy rather than a permanent invariant of the whole platform. Its legal, tax, invoicing, consumer-protection, VAT, acquiring, KYC, AML, and PSP feasibility requires production legal and compliance validation.
 
 The core domain does not assume that Creastrix directly performs regulated custody or onward transfer of third-party customer funds. Actual payment collection and future beneficiary payouts are expected to use appropriately licensed payment infrastructure; exact provider architecture is implementation and integration work.
 
-External authorization and local Order confirmation cannot form one cross-system ACID transaction. Durable compensation, reconciliation, idempotency, and infrastructure workflow such as outbox or inbox mechanisms may be used without becoming new core entities solely for this purpose.
+External authorization and local Order confirmation cannot form one cross-system ACID transaction. Correctness depends on durable command identity before the provider call, safe provider economic idempotency or reconciliation, one local atomic Order confirmation, durable one-time consumption correlation, and durable compensation when local confirmation does not commit.
+
+Implementation validation for this boundary requires mechanisms equivalent to durable unique confirmation and provider submission identities, unique one-time consumption, atomic consumption correlation inside Order confirmation, durable compensation command identity, reconciliation of unknown external and local outcomes, and concurrency and crash tests before and after local commit. Exact tables, constraints, locks, isolation levels, and provider API mechanics remain implementation concerns.
 
 External refund execution and local accepted-refund recognition likewise cannot form one cross-system ACID transaction. The durable pre-provider refund commitment is workflow or integration persistence and does not by itself introduce a new core domain entity.
 
@@ -155,4 +185,4 @@ Payment and its accepted financial history cannot be destructively deleted. Exac
 
 Status: DRAFT
 
-Version: 0.3
+Version: 0.4
