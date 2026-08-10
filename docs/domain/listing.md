@@ -16,7 +16,7 @@ A Listing is responsible for:
 - managing current pricing and currency context;
 - controlling commercial activation through its lifecycle;
 - recording the User who created the record;
-- defining applicable royalty terms where required;
+- defining the current applicable royalty configuration and royalty-rights context where required;
 - commercially offering Revision-defined personalization capability where applicable;
 - preserving the boundary between current offer data and historical commerce.
 
@@ -27,6 +27,7 @@ A Listing:
 - has exactly one immutable commercial source, which is either one FINALIZED Revision or one Ready-Made Product;
 - has exactly one immutable Created By User;
 - derives its Workspace context from its commercial source;
+- may preserve a current royalty configuration when sourced by a FINALIZED Revision, must have a valid explicit configuration before activation, and identifies one current User or Organization royalty beneficiary when a configured positive rate requires one;
 - may be referenced by zero or more Order Items;
 - may be referenced by Audit Log events in the future.
 
@@ -46,8 +47,14 @@ A Listing:
 - An ACTIVE Listing has commercial activation enabled and may be publicly presented, but ACTIVE alone does not guarantee effective orderability.
 - A PAUSED Listing is temporarily disabled for new commerce, is not orderable, retains its commercial settings and history, and may return to ACTIVE.
 - An ARCHIVED Listing is permanently closed for new commerce in MVP, retains historical references, and does not return to ACTIVE.
-- Activating a Listing requires effective LISTINGS authorization, a source that permits commerce, valid current pricing information, applicable business eligibility, and any required royalty terms.
-- Activating a Listing sourced by a FINALIZED Revision requires an acting context backed by a Designer Profile that satisfies the future applicable verification rules, together with explicitly defined applicable royalty terms, which may be zero only when applicable business rules permit.
+- Activating or reactivating a Listing requires effective LISTINGS authorization, a source that permits commerce, valid current pricing information, applicable business eligibility, and any required royalty configuration and rights validation.
+- Activating or reactivating a Listing sourced by a FINALIZED Revision requires an acting context backed by a Designer Profile that satisfies the future applicable publication eligibility rules, together with an explicit valid royalty configuration and applicable royalty-rights validation.
+- Designer Profile publication eligibility and Royalty beneficiary identity are separate concerns and must not be collapsed. Designer Profile is not a royalty beneficiary, payout account, payment account, or monetary recipient merely because it enabled publication.
+- A FINALIZED Revision Listing uses exactly one MVP royalty calculation method, PERCENTAGE, with an integer rate from zero through 10,000 basis points inclusive.
+- The royalty calculation basis is NET_ITEM_MERCHANDISE_CONTRIBUTION_V1, and the rounding rule is HALF_UP_MINOR_UNIT_V1. Fixed royalty amounts and generic royalty calculation expressions are unsupported in MVP.
+- A positive royalty rate requires exactly one explicit current royalty beneficiary of type USER or ORGANIZATION, together with the applicable live User or Organization reference, rights identity or context, and source or basis of the royalty right.
+- A zero royalty rate is permitted only when applicable business rules explicitly allow the zero-royalty configuration. Such a configuration does not require a monetary beneficiary but must preserve an explicit zero-royalty decision and context.
+- Royalty beneficiary is established only through validated royalty-rights context. It is not inferred automatically from Project Created By, Revision Created By, Listing Created By, Workspace owner, Project Effective Business Rights Holder, Buyer, Manufacturer Profile, or Designer Profile.
 - A Listing sourced by a FINALIZED Revision may commercially offer Personalization only when that Revision defines technical personalization capability.
 - A Listing determines whether and under what current commercial restrictions Revision-defined personalization capability is offered. It may narrow but never expand the Revision's technical personalization constraints.
 - Initial buyer creation of a Personalization requires a suitable ACTIVE Listing targeting its FINALIZED Revision base and does not require the buyer to have LISTINGS authorization.
@@ -69,6 +76,9 @@ A Listing:
 - The confirmed Order Item unit merchandise price and line merchandise amount are known and snapshotted at Order confirmation; the detailed quoting workflow remains future commerce work.
 - Order confirmation applies current Listing, source, business, pricing, fulfillment, and other applicable orderability rules.
 - Listing commercial presentation and current terms may change while the Listing is DRAFT, ACTIVE, or PAUSED, subject to authorization and business rules. Changes apply prospectively and never rewrite historical Order Item snapshots.
+- Royalty configuration is a narrow commercially sensitive exception and cannot change while a Listing is ACTIVE. Royalty configuration includes method, rate, calculation basis and version, rounding rule, beneficiary, and royalty-rights context or basis.
+- Changing royalty configuration requires transition from ACTIVE to PAUSED when applicable, editing under effective LISTINGS authorization and applicable rights rules, and successful reactivation validation before new commerce. A new Listing is not required merely because royalty rate or beneficiary changes.
+- Royalty configuration changes apply only to future Order confirmations. Existing Order Item royalty snapshots and Royalties remain unchanged.
 - A Listing owns public commercial presentation rather than source product identity, product-defining content, manufacturing files, stock mechanics, Workspace ownership, authentication, or fulfillment history.
 - Listing is manufacturer-independent in MVP. The assigned Manufacturer identity for made-to-order commerce is a Manufacturer Profile selected through pre-confirmation workflow and assigned to Order Item at confirmation.
 - A VERIFIED Manufacturer Profile is a prerequisite for new made-to-order work but does not by itself establish item-specific suitability, capacity, or acceptance.
@@ -86,6 +96,10 @@ A Listing:
 - An ARCHIVED Listing never returns to active commerce in MVP.
 - A commercial source never has more than one ACTIVE Listing at the same time in MVP.
 - A Listing always uses exactly one currency in MVP.
+- An ACTIVE FINALIZED Revision Listing always preserves exactly one valid explicit current royalty configuration using PERCENTAGE, NET_ITEM_MERCHANDISE_CONTRIBUTION_V1, and HALF_UP_MINOR_UNIT_V1.
+- Whenever a FINALIZED Revision Listing has a royalty configuration, its rate is an integer from zero through 10,000 basis points inclusive.
+- Whenever a configured royalty rate is positive, it has exactly one explicit current USER or ORGANIZATION beneficiary, while an explicitly permitted zero-rate configuration may have no monetary beneficiary.
+- Royalty configuration never changes while a Listing is ACTIVE.
 - Listing changes never rewrite immutable historical Order Item snapshots.
 
 ## Notes
@@ -98,9 +112,11 @@ A source may later have canonical or reference media, while Listing owns or sele
 
 Revision defines immutable technical personalization capability and constraints, while a Revision-sourced Listing determines whether and under what narrower current commercial restrictions that capability is offered. Personalization remains a private buyer object without a permanent Listing relationship. Ordinary ready-made commerce does not include customization requiring fabrication or product-defining production work.
 
-Multi-currency, multiple simultaneously ACTIVE channels, manufacturer-specific offers, detailed quoting, tax and shipping price presentation, royalty representation format, deletion and retention, public URL or slug behavior, and exact visibility of PAUSED, ARCHIVED, or non-orderable Listings remain future concerns.
+Multi-currency, multiple simultaneously ACTIVE channels, manufacturer-specific offers, detailed quoting, tax and shipping price presentation, deletion and retention, public URL or slug behavior, and exact visibility of PAUSED, ARCHIVED, or non-orderable Listings remain future concerns.
 
-Actual Royalty accrual is not historical state inside Listing. Order Items preserve the immutable purchased Listing reference and applicable source, merchandise amounts, currency, royalty, commercial context, Personalization, fulfillment, and Manufacturer Profile snapshots required for historical commerce. Current Listing changes never rewrite those confirmed snapshots.
+Actual Royalty accrual is not historical state inside Listing. Order Items preserve the immutable purchased Listing reference and applicable source, merchandise amounts, currency, royalty calculation, beneficiary and rights context, commercial context, Personalization, fulfillment, and Manufacturer Profile snapshots required for historical commerce. Current Listing, Project, Workspace, or Designer Profile changes never rewrite those confirmed snapshots.
+
+Exact storage of royalty-right evidence remains future domain and implementation work. A positive-rate Listing nevertheless requires enough validated rights context to establish its explicit current User or Organization beneficiary before activation or reactivation.
 
 Significant creation, activation, pause, archive, pricing, and royalty-term events may later be recorded through Audit Log behavior.
 
@@ -108,4 +124,4 @@ Significant creation, activation, pause, archive, pricing, and royalty-term even
 
 Status: DRAFT
 
-Version: 0.5
+Version: 0.6

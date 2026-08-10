@@ -13,6 +13,7 @@ A Payment is responsible for:
 - preserving its immutable relationship with one Order;
 - managing the PENDING, AUTHORIZED, CAPTURED, FAILED, and CANCELLED collection lifecycle;
 - preserving its immutable currency and intended amount;
+- respecting the collection eligibility of its Order;
 - preserving accepted authorization and capture facts where applicable;
 - correlating the collection attempt with external provider evidence;
 - preserving append-only accepted refund facts and the cumulative refund condition derived from them;
@@ -32,12 +33,16 @@ A Payment:
 
 - A core Payment cannot exist without an Order in MVP, and one Payment never covers more than one Order.
 - A core Payment in MVP always belongs to a positive-payable Order and represents an attempt to collect that Order's full immutable confirmed payable total. Its intended amount is greater than zero and always equals the Order's confirmed payable total.
+- A Payment may be created, authorized, or accepted as CAPTURED only while its Order remains eligible for buyer payment collection under current Order rules.
 - An Order may have zero or more Payments over time. A zero-payable Order does not create a zero-value Payment merely to represent payment readiness and may validly have no Payment.
 - In the normal positive-payable card flow, external provider authorization may be obtained before the Order exists, but that external interaction is checkout and provider workflow rather than a core Payment.
 - When pre-Order authorization succeeds, the Order, all Order Items, applicable ready-made stock allocations, immutable Order monetary snapshots, and an AUTHORIZED Payment are created together in one local confirmation transaction.
 - If external authorization fails before Order confirmation, no Order and no core Payment are created.
 - If external authorization succeeds but local Order confirmation fails, no Order and no core Payment are created. The external authorization must be durably and idempotently voided or released through compensation and reconciliation workflow.
 - Once an Order exists, each retry is represented by a new Payment. A retry Payment may begin in PENDING while its final provider result has not yet been accepted, but its intended amount still equals the same immutable Order confirmed payable total rather than only an unpaid difference.
+- If any Order Item is CANCELLED before the Order's first accepted Payment capture, the Order is permanently closed to further collection in MVP. No new Payment attempt may be started, and no existing PENDING or AUTHORIZED Payment may subsequently be accepted as CAPTURED.
+- After pre-capture cancellation closes the Order to collection, any outstanding external authorization must be durably and idempotently cancelled, voided, or released through payment compensation and reconciliation workflow.
+- When pre-capture Order Item cancellation and capture evidence race, capture may be accepted only if it is accepted before the Item cancellation. Once cancellation is accepted, later capture evidence for the original immutable payable total cannot be accepted as CAPTURED.
 - A FAILED or CANCELLED Payment never returns to PENDING.
 - At most one PENDING or AUTHORIZED Payment may be active for an Order at one time in MVP.
 - After one Payment has been fully CAPTURED for the Order's confirmed payable total, no additional collection attempt may be started. A later refund does not automatically reopen collection.
@@ -65,7 +70,7 @@ A Payment:
 - The same external economic authorization, capture, cancellation, void, or refund must not be recognized more than once.
 - Payment may preserve non-sensitive historical method metadata such as method type, masked display data, a provider token or reference, and card brand or last digits where legally and operationally permitted.
 - Raw card number, CVV, and complete payment credentials are never Payment domain data.
-- No Refund entity exists in DRAFT 0.1. A Payment preserves append-only accepted refund facts or value records, including one immutable platform-accepted refund-event identity, provider refund reference where applicable, amount, currency, accepted timestamp, and appropriate reason and evidence context.
+- No Refund entity exists in this specification version. A Payment preserves append-only accepted refund facts or value records, including one immutable platform-accepted refund-event identity, provider refund reference where applicable, amount, currency, accepted timestamp, and appropriate reason and evidence context.
 - An accepted refund fact may exist only for a CAPTURED Payment. No accepted refund fact may be attached to a PENDING, AUTHORIZED, FAILED, or CANCELLED Payment.
 - Every accepted refund amount is greater than zero and uses the Payment currency. Foreign-exchange refund inside Payment is unsupported in MVP.
 - The immutable refund-event identity provides stable correlation for idempotency, reconciliation, and the complete REVERSAL Payment Allocation set associated with that accepted refund. Exact storage fields remain implementation detail.
@@ -92,6 +97,7 @@ A Payment:
 - CAPTURED, FAILED, and CANCELLED never return to a non-terminal collection state.
 - Intentional partial payment, split tender, and overpayment never occur in MVP.
 - Accepted gross captured amount across an Order's Payments never exceeds the confirmed payable total.
+- A Payment is never accepted as CAPTURED after its Order has been closed to collection by pre-capture Order Item cancellation.
 - The same external economic event is never recognized more than once.
 - Accepted provider, account, and transaction correlation identity never changes for an existing Payment.
 - Every accepted refund fact always has exactly one immutable refund-event identity.
@@ -104,13 +110,15 @@ A Payment:
 
 ## Notes
 
-Payment is not an Order, Order Item, Payment Allocation, Checkout, Payment Attempt, Payment Method, Payment Provider, settlement, payout, Royalty, Workspace, or seller identity. No separate Checkout, Payment Attempt, Payment Method, or Payment Provider entity is introduced in DRAFT 0.1.
+Payment is not an Order, Order Item, Payment Allocation, Checkout, Payment Attempt, Payment Method, Payment Provider, settlement, payout, Royalty, Workspace, or seller identity. No separate Checkout, Payment Attempt, Payment Method, or Payment Provider entity is introduced in DRAFT 0.2.
 
 Creastrix is the single buyer-facing contractual seller-of-record and merchant-of-record for every MVP Order. This is a current commerce policy rather than a permanent invariant of the whole platform. Its legal, tax, invoicing, consumer-protection, VAT, acquiring, KYC, AML, and PSP feasibility requires production legal and compliance validation.
 
 The core domain does not assume that Creastrix directly performs regulated custody or onward transfer of third-party customer funds. Actual payment collection and future beneficiary payouts are expected to use appropriately licensed payment infrastructure; exact provider architecture is implementation and integration work.
 
 External authorization and local Order confirmation cannot form one cross-system ACID transaction. Durable compensation, reconciliation, idempotency, and infrastructure workflow such as outbox or inbox mechanisms may be used without becoming new core entities solely for this purpose.
+
+Order collection eligibility is an operational domain condition derived from Order and Order Item history rather than a Payment lifecycle state. Closing an Order to collection does not rewrite its Payment history, immutable payable snapshot, or Order lifecycle.
 
 Technical concurrency controls, provider adapters, webhook storage, and exact retry and timeout durations remain implementation or future policy concerns. Consumer refund policy, disputes, chargebacks, settlement, accounting treatment, and exact retention duration also remain future legal and domain work.
 
@@ -120,4 +128,4 @@ Payment and its accepted financial history cannot be destructively deleted. Exac
 
 Status: DRAFT
 
-Version: 0.1
+Version: 0.2

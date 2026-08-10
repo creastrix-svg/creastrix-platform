@@ -39,6 +39,7 @@ The following specifications are DRAFT. They represent active architecture work 
 - Order Item
 - Payment
 - Payment Allocation
+- Royalty
 - Shipment
 
 ## Domain Principles
@@ -148,12 +149,20 @@ The following specifications are DRAFT. They represent active architecture work 
 - Payment uses the PENDING, AUTHORIZED, CAPTURED, FAILED, and CANCELLED lifecycle. Provider status is evidence rather than automatic domain authority, and duplicate economic events are recognized only once.
 - For the positive-payable card MVP, full accepted capture of the confirmed payable total is required before fulfillment may start. A zero-payable Order is payment-ready without Payment, and payment readiness is not an Order or Order Item lifecycle state.
 - Payment failure and timeout do not directly mutate Order Item state or ready-made stock. After a bounded resolution window, commerce workflow may cancel eligible Items, and successful applicable ready-made Item cancellation releases stock under existing rules.
+- If any Order Item is cancelled before the first accepted Payment capture for a positive-payable Order, that immutable Order is permanently closed to further buyer payment collection in MVP; remaining desired selections require a new Order.
 - Payment Allocation is an immutable accounting attribution or reversal of accepted captured buyer funds for one Payment and is not payout, settlement, Royalty, seller identity, or a profit ledger.
 - Payment Allocation kinds are ORIGINAL and REVERSAL. A CAPTURED Payment and its complete ORIGINAL Allocation set are recognized atomically, every captured minor unit is attributed exactly once, and accepted refunds append REVERSAL facts without rewriting originals.
 - Current ORIGINAL Allocation purposes are ITEM_PROCEEDS, MANUFACTURING_COMPENSATION, SHIPPING_CHARGE, and TAX. ITEM_PROCEEDS is merchant-side proceeds rather than automatically recognized platform profit, and no ROYALTY Allocation purpose exists in the current draft.
 - Manufacturer compensation is attributed to the confirmation-time User or Organization Profile Holder context only when explicit accepted economic terms established the amount and beneficiary before Order confirmation. Manufacturer Profile assignment alone never creates compensation or makes the profile a payee.
-- Confirmed aggregate discount is merchandise-level in MVP, never exceeds confirmed merchandise subtotal, and is attributed deterministically across authoritative Order Item line amounts. Discount is borne by Creastrix merchant economics by default and does not reduce confirmed Manufacturer compensation.
+- Confirmed aggregate discount is merchandise-level in MVP, never exceeds confirmed merchandise subtotal, and is attributed deterministically across authoritative Order Item line amounts. It reduces Royalty basis, does not reduce confirmed Manufacturer compensation, and is otherwise borne within Creastrix merchant economics.
 - Payment Allocation beneficiary context may identify PLATFORM, USER, or ORGANIZATION and preserves immutable historical identity where applicable. It identifies the party associated with captured-funds attribution without proving that an amount has been earned, become due, become payout-eligible, or been transferred.
+- Royalty is a separate captured-payment-triggered financial accrual domain. It does not change Payment Allocation conservation or imply that an amount has been earned, become payout-eligible, or been paid.
+- Designer Profile enables publication eligibility but is not a Royalty beneficiary, payout account, or monetary identity.
+- A positive MVP Royalty has exactly one USER or ORGANIZATION beneficiary established by validated royalty-rights context; Created By, Workspace ownership, Project business rights, Buyer, Manufacturer Profile, and Designer Profile do not determine it automatically.
+- MVP Royalty uses a percentage rate in basis points against net item merchandise contribution after confirmed discount, with deterministic half-up rounding at the authoritative Order Item line level.
+- Royalty calculation terms, basis, beneficiary context, currency, and original amount freeze in the Order Item snapshot at confirmation. Manufacturer compensation and Royalty remain independent, but their combined confirmed amounts cannot exceed net item merchandise contribution.
+- A qualifying positive Royalty is recognized durably and idempotently after accepted full Payment capture. Temporary Royalty-processing failure does not change CAPTURED Payment state, and reconciliation ensures exactly-once business recognition.
+- Accepted refunds create append-only Royalty reversal facts based on cumulative refunded royalty basis attributed to the Order Item; cancellation alone does not reverse Royalty.
 - Payout is a separate PLANNED domain for future transfers, KYC, reserves, aggregation, and payout failure or retry behavior.
 - Cancellation preserves all confirmed snapshots, and partial-quantity cancellation is unsupported in MVP.
 - Later Listing, source, Personalization, Workspace access, Designer verification, Manufacturer Profile, or royalty-term changes never rewrite confirmed commerce.
@@ -183,7 +192,7 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Next Steps
 
-1. Review and finalize the Payment and Payment Allocation drafts.
-2. Model Royalty accrual and reversal after Payment semantics stabilize.
+1. Review and finalize the Royalty draft.
+2. Model Designer Profile.
 3. Review Payout when beneficiary transfer requirements are modeled.
 4. Continue with Reviews, Notifications, Conversations, and Audit Log as dependencies become clear.

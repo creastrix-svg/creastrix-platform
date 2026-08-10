@@ -15,6 +15,7 @@ An Order Item is responsible for:
 - preserving an immutable purchase-time commercial and source snapshot;
 - recording positive integer quantity, currency, unit merchandise price, and line merchandise amount;
 - preserving its immutable confirmed discount share for captured-funds attribution;
+- preserving its immutable confirmation-time royalty configuration, calculation, beneficiary, and rights context when Revision-based;
 - preserving optional Personalization traceability and the authoritative purchased Personalization snapshot;
 - establishing confirmed Ready-Made Product stock allocation when applicable;
 - preserving exactly one assigned Manufacturer Profile for made-to-order fulfillment;
@@ -22,7 +23,7 @@ An Order Item is responsible for:
 - preserving the confirmed manufacturer compensation and beneficiary basis for made-to-order Payment Allocation;
 - managing its source-neutral fulfillment and cancellation lifecycle;
 - governing path-specific authorization for formally starting fulfillment;
-- providing a stable boundary for Shipment, Payment Allocation, and future Royalty integration.
+- providing a stable boundary for Shipment, Payment Allocation, and Royalty integration.
 
 ## Relationships
 
@@ -35,7 +36,7 @@ An Order Item:
 - has no assigned Manufacturer Profile merely for ordinary Ready-Made Product fulfillment;
 - may be a current or frozen member of zero or more Shipments over time, subject to at most one non-CANCELLED Shipment at a time;
 - may be the charge subject of zero or more Payment Allocations through captured Payments of its Order;
-- may later participate in Royalty records;
+- has zero or one Royalty when it is Revision-based, has a positive calculated royalty amount, and the applicable Payment capture is accepted;
 - has no direct Workspace relationship.
 
 ## Business Rules
@@ -61,6 +62,16 @@ An Order Item:
 - Each Order Item preserves its immutable confirmed discount share for allocation calculation and history. The share reduces net item merchandise contribution but never rewrites unit merchandise price or line merchandise amount.
 - Every confirmed item discount share is non-negative and does not exceed the authoritative line merchandise amount. The complete sum of confirmed item discount shares equals the Order's aggregate confirmed discount total.
 - Net item merchandise contribution equals authoritative line merchandise amount minus the confirmed item discount share, is always non-negative, and is never recomputed from unit merchandise price multiplied by quantity.
+- Every Revision-based Order Item preserves an explicit immutable royalty decision and calculation context from its purchased Listing at confirmation.
+- The MVP royalty method is PERCENTAGE, represented by an integer rate from zero through 10,000 basis points inclusive. The calculation basis is NET_ITEM_MERCHANDISE_CONTRIBUTION_V1, and the rounding rule is HALF_UP_MINOR_UNIT_V1.
+- Royalty basis amount equals authoritative line merchandise amount minus confirmed item discount share and therefore equals net item merchandise contribution. Buyer-facing merchandise discount reduces the royalty basis in MVP.
+- Calculated original royalty amount is determined once at the authoritative line level by applying the rate basis points to royalty basis minor units, dividing by 10,000, and rounding half up to the currency minor unit under HALF_UP_MINOR_UNIT_V1.
+- Royalty is never calculated per unit or recomputed from unit merchandise price multiplied by quantity. Quantity is already represented in the authoritative line merchandise amount.
+- The Revision-based royalty snapshot preserves method, rate basis points, calculation basis identifier and version, authoritative royalty basis amount, rounding rule version, calculated original royalty amount, currency, beneficiary presence or absence, beneficiary context when present, royalty-right source or basis, and existing Listing and Revision traceability.
+- A positive royalty rate requires exactly one confirmed beneficiary of type USER or ORGANIZATION, the applicable live User or Organization reference, an immutable historical beneficiary identity snapshot, and the source or basis of the royalty right.
+- A zero royalty rate may omit a monetary beneficiary only when applicable Listing and business rules explicitly permit that zero-royalty configuration. The explicit zero-royalty decision and calculation context remain preserved.
+- A positive rate whose calculated original royalty amount rounds to zero still preserves its required beneficiary and complete calculation context, but it does not create a zero-value Royalty after capture.
+- Royalty currency always equals Order Item and Order currency. Percentage royalty terms have no independent currency, and foreign exchange inside Royalty is unsupported in MVP.
 - Confirmation requires the Listing and source to permit purchase, fixed quantity and merchandise amounts, the applicable commercial and royalty context, and all source-specific prerequisites.
 - Personalization is optional and may be used only for an applicable FINALIZED Revision-sourced Order Item in MVP.
 - When Personalization is used, it must belong to the Buyer User of the Order, use the applicable FINALIZED Revision base, and pass current required validation before confirmation.
@@ -75,8 +86,8 @@ An Order Item:
 - The Manufacturer compensation beneficiary is the confirmation-time User or Organization Profile Holder context of the assigned Manufacturer Profile. The Manufacturer Profile itself is never the beneficiary or payment recipient.
 - Manufacturer Profile assignment alone does not create a Manufacturer compensation right. The compensation amount and beneficiary context must have been explicitly established in accepted commercial and manufacturing terms before Order confirmation.
 - The Order Item compensation basis does not by itself prove that Manufacturer compensation has been earned, become due or payable, become eligible for withdrawal or payout, or been transferred. A MANUFACTURING_COMPENSATION Payment Allocation at capture records captured-funds attribution toward that basis and does not prove those later conditions either.
-- Buyer-facing Order discount is borne by Creastrix merchant economics by default and does not reduce an already confirmed Manufacturer compensation amount in MVP.
-- Order confirmation must reject a made-to-order economic configuration when its net item merchandise contribution after discount attribution cannot support the explicit confirmed Manufacturer compensation amount. No subsidy or external funding model exists in MVP.
+- Buyer-facing Order discount reduces the royalty basis under the current MVP rule, does not reduce an already confirmed Manufacturer compensation amount, and is otherwise borne within Creastrix merchant economics.
+- Order confirmation must reject a made-to-order economic configuration when the sum of explicit confirmed Manufacturer compensation and confirmed calculated original royalty amount exceeds net item merchandise contribution. Equivalently, the calculated Royalty amount cannot exceed the ITEM_PROCEEDS amount that would remain after Manufacturer compensation. No subsidy or external funding model exists in MVP.
 - The Manufacturer acceptance fact belongs to the Order Item confirmation history and snapshot and remains authoritative even if no Audit Log record exists.
 - A future Audit Log may record acting User, exact timestamp, evidence source, workflow provenance, or detailed acceptance evidence, but it does not replace the Order Item as the authoritative source of truth that Manufacturer acceptance occurred.
 - Later changes to Manufacturer Profile eligibility status, Organization Membership, acting User status, future Audit Log behavior, or Profile Holder permissions never rewrite the historical confirmed Manufacturer acceptance fact.
@@ -114,12 +125,18 @@ An Order Item:
 - A FULFILLED Order Item cannot be cancelled.
 - Cancellation preserves the Order Item identity, relationships, merchandise amounts, commercial and source snapshot, Manufacturer Profile assignment, Personalization snapshot, and royalty context.
 - Payment failure or timeout does not directly mutate Order Item state. After a bounded payment-resolution window, commerce workflow may attempt cancellation when the existing Item cancellation rules permit it.
+- Cancellation of any Order Item in a positive-payable Order before that Order's first accepted Payment capture permanently closes the Order to further buyer payment collection under current MVP Order and Payment rules. The cancellation itself does not directly mutate Payment state, the immutable Order Item collection, or the confirmed Order payable snapshot.
 - Payment refund is separate from Order Item cancellation. Cancellation before capture may require no refund, cancellation after capture may create a refund obligation, and an accepted refund does not itself change Order Item lifecycle.
 - Partial refund does not create partial Item cancellation, and neither cancellation nor refund rewrites original merchandise amounts, confirmed discount share, Manufacturer compensation basis, or the Order payable snapshot.
 - ORIGINAL Payment Allocations may use the Order Item as their charge subject only after capture of a Payment of the Order is accepted. Payment Allocation does not become an Order Item lifecycle state.
-- An Order Item preserves the applicable Listing royalty terms and context at confirmation. It is not the authoritative accrued Royalty ledger.
-- A ready-made Order Item may explicitly preserve that no designer royalty applied.
-- Later Listing, Project, Revision context, Ready-Made Product, Personalization, Workspace access, Designer verification, Manufacturer Profile, or royalty-term changes never rewrite the immutable confirmed commercial snapshot.
+- An Order Item preserves the applicable Listing royalty configuration, calculated amount, beneficiary and rights context at confirmation. It is the authoritative Royalty calculation snapshot but is not the accrued Royalty ledger.
+- Accepted full Payment capture is the mandatory idempotent trigger for recognizing exactly one Royalty for a qualifying Revision-based Order Item whose calculated original royalty amount is positive. Royalty recognition is separately durable and reconcilable and does not redefine the atomic Payment CAPTURED and ORIGINAL Payment Allocation boundary.
+- A temporary Royalty-processing failure after capture does not change Payment state. Reconciliation must eventually recognize the missing Royalty exactly once.
+- Royalty original amount is copied from the immutable Order Item snapshot and is never recalculated from current Listing or other mutable domain state.
+- Designer Profile publication eligibility is not revalidated at Royalty recognition. Later Designer Profile verification or status changes do not rewrite the confirmed royalty snapshot or prevent recognition after qualifying capture.
+- A ready-made Order Item preserves that no designer royalty applies and never creates a Royalty in the current MVP.
+- Order Item cancellation alone does not reverse Royalty. Accepted refund economics may create append-only Royalty reversals according to refunded royalty basis attributable to the Item.
+- Later Listing, Project, Revision context, Ready-Made Product, Personalization, Workspace access, Designer verification, Manufacturer Profile, beneficiary, or royalty-configuration changes never rewrite the immutable confirmed commercial snapshot.
 
 ## Invariants
 
@@ -136,6 +153,12 @@ An Order Item:
 - The confirmed discount share is always non-negative, never exceeds the authoritative line merchandise amount, never changes after confirmation, and never rewrites the line merchandise amount.
 - The sum of all confirmed item discount shares in an Order always equals that Order's aggregate confirmed discount total.
 - Net item merchandise contribution is always non-negative.
+- Every Revision-based Order Item always preserves exactly one immutable royalty decision and calculation context using PERCENTAGE, NET_ITEM_MERCHANDISE_CONTRIBUTION_V1, and HALF_UP_MINOR_UNIT_V1.
+- A Revision-based royalty rate is always an integer from zero through 10,000 basis points inclusive.
+- Royalty basis amount always equals net item merchandise contribution, and calculated original royalty amount always equals the HALF_UP_MINOR_UNIT_V1 line-level result of applying the immutable rate to that basis.
+- A positive royalty rate always preserves exactly one immutable USER or ORGANIZATION beneficiary context. An explicitly permitted zero rate may preserve no monetary beneficiary.
+- Confirmed Manufacturer compensation plus calculated original royalty amount never exceeds net item merchandise contribution.
+- A Revision-based Order Item never has more than one Royalty in MVP, and a Ready-Made Product Order Item never has a Royalty in the current MVP.
 - The purchase-time commercial, source, Workspace, and royalty context never changes after confirmation.
 - When Personalization is used, the authoritative purchased Personalization snapshot never changes after confirmation.
 - A made-to-order Order Item always has exactly one assigned Manufacturer Profile.
@@ -150,6 +173,7 @@ An Order Item:
 - Every transition from CONFIRMED to IN_FULFILLMENT satisfies the applicable path-specific authorization rules.
 - Every transition from CONFIRMED to IN_FULFILLMENT satisfies the Order's applicable payment-readiness rule.
 - FULFILLED and CANCELLED are terminal states.
+- Cancellation of an Order Item in a positive-payable Order before that Order's first accepted Payment capture always closes the Order to further buyer payment collection in MVP.
 - Later source, profile, access, or commercial changes never rewrite the immutable confirmed snapshot.
 
 ## Notes
@@ -160,7 +184,7 @@ Order Item does not own Inventory, and no Inventory or Reservation entity is int
 
 Shipment provides delivery evidence toward the FULFILLED transition, while Shipment lifecycle states are not duplicated in the Order Item lifecycle. Manufacturing, Payment, Payment Allocation, and refund substates also remain outside the Order Item lifecycle.
 
-Actual Royalty accrual, amount, earning or release condition, reversal, and payout belong to future Royalty and Payout work. Payment Allocation explains captured funds without becoming the Royalty ledger, proof that compensation has been earned or become payable, or proof of payout.
+Royalty accrual and append-only reversal history belong to Royalty. Royalty recognition after accepted capture does not mean the amount has been earned, become payable or payout-eligible, or been transferred. Earning, release, and Payout rules remain future work. Payment Allocation explains captured funds without becoming the Royalty ledger or being rewritten by Royalty.
 
 The Order preserves the current Creastrix seller-of-record and merchant-of-record context and its final payable snapshot. Detailed tax, payment-fee, refund-policy, and replacement-commerce rules remain future domain concerns.
 
@@ -168,4 +192,4 @@ The Order preserves the current Creastrix seller-of-record and merchant-of-recor
 
 Status: DRAFT
 
-Version: 0.4
+Version: 0.5

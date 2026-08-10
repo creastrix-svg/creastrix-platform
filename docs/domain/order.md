@@ -19,6 +19,7 @@ An Order is responsible for:
 - exposing the confirmed merchandise subtotal derived from its Order Items;
 - preserving immutable shipping-charge, tax, discount, and confirmed payable-total amounts;
 - relating the purchase to its durable Payment attempts;
+- defining whether the immutable purchase remains eligible for buyer payment collection;
 - providing the payment-readiness boundary for fulfillment;
 - representing aggregate lifecycle state derived from its Order Items;
 - providing a stable boundary for other commerce integration.
@@ -60,6 +61,12 @@ An Order:
 - In the normal positive-payable card flow, external provider authorization may occur before confirmation. When that authorization is accepted, the Order, all Order Items, applicable ready-made stock allocations, immutable confirmation snapshots, and an AUTHORIZED Payment are created together in one local confirmation transaction.
 - Order confirmation does not mean that payment is settled or captured, shipment has started, or fulfillment is complete.
 - Payment lifecycle remains separate from Order lifecycle. An Order may temporarily exist without a successful Payment, and a zero-payable Order may validly have no Payment.
+- A positive-payable Order remains eligible for buyer payment collection only while its immutable Order Item collection and current Order rules permit collection of its full confirmed payable total.
+- If any Order Item is CANCELLED before the Order's first accepted Payment capture, the Order becomes permanently closed to further buyer payment collection in MVP.
+- After pre-capture Order Item cancellation closes an Order to collection, no new Payment attempt may be started and no existing PENDING or AUTHORIZED Payment may subsequently be accepted as CAPTURED. Any outstanding external authorization must be cancelled, voided, or released through durable payment compensation workflow.
+- Remaining non-cancelled selections from an Order closed to collection require a new Order if the Buyer still wants to purchase them. The original Order Item collection and confirmed payable snapshot remain unchanged.
+- Collection eligibility is an operational commerce condition and is not an Order lifecycle state. Order lifecycle remains derived only from Order Item states.
+- When pre-capture Order Item cancellation and Payment capture evidence race, the platform may accept only a domain-consistent ordering. Once cancellation is accepted first, later capture of the original payable total is forbidden; when full capture is accepted first, normal post-capture cancellation and refund rules apply.
 - For the positive-payable card MVP, payment readiness requires full accepted capture of the confirmed payable total before any Order Item may start fulfillment. A zero-payable Order is payment-ready without a Payment.
 - Payment readiness is an operational prerequisite rather than an Order lifecycle state. Payment failure or timeout does not directly change Order status; eligible Order Items may later be cancelled through commerce workflow, and Order status remains derived from those Item states.
 - The confirmed merchandise subtotal is the sum of the immutable line merchandise amounts of all Order Items in the Order.
@@ -94,6 +101,8 @@ An Order:
 - An Order always preserves one immutable confirmation-time monetary snapshot containing merchandise subtotal, shipping charge total, tax total, aggregate discount total, payable total, and currency.
 - The aggregate discount total never exceeds the confirmed merchandise subtotal in the current MVP.
 - The confirmed payable total always satisfies the current versioned MVP confirmation rule and is never negative.
+- An Order with any Order Item cancelled before its first accepted Payment capture is never eligible for further buyer payment collection in MVP.
+- An Order closed to collection never accepts a later Payment capture against its original immutable payable total.
 - Payment lifecycle and payment readiness never become Order lifecycle states.
 - An Order always has exactly one aggregate lifecycle state: CONFIRMED, COMPLETED, or CANCELLED.
 - The aggregate lifecycle state always corresponds to the canonical states of the Order Items.
@@ -111,6 +120,8 @@ Shipment grouping and delivery evidence belong to the Shipment specification.
 
 Detailed tax jurisdiction and item-level breakdown, payment fees, settlement, consumer refund policy, disputes, chargebacks, and future seller models remain future domain concerns. Shipping-specific, tax-specific, mixed-purpose, and externally funded discount models also require future explicit domain work. Payment attempts and accepted refund facts belong to Payment, while Payment Allocations explain captured funds.
 
+Closing an unpaid Order to collection after any pre-capture Item cancellation preserves the current full-collection Payment model without mutating the original payable snapshot or supporting partial collection. Exact concurrency controls and external authorization compensation mechanisms remain implementation concerns.
+
 No Address entity is introduced in MVP. Address correction, rerouting, and multiple delivery destinations require future explicit domain work.
 
 Order contains no Created By relationship in MVP. Its Buyer User relationship identifies the customer context of the confirmed purchase without asserting legal ownership.
@@ -119,4 +130,4 @@ Order contains no Created By relationship in MVP. Its Buyer User relationship id
 
 Status: DRAFT
 
-Version: 0.3
+Version: 0.4
