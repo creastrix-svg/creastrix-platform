@@ -44,7 +44,7 @@ These entities have active draft specifications. They represent active architect
 - [Payment](payment.md) — DRAFT 0.4
 - [Payment Allocation](payment-allocation.md) — DRAFT 0.2
 - [Royalty](royalty.md) — DRAFT 0.2
-- [Payout](payout.md) — DRAFT 0.3
+- [Payout](payout.md) — DRAFT 0.4
 - [Shipment](shipment.md) — DRAFT 0.2
 
 ## Planned entities

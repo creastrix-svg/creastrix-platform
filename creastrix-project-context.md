@@ -208,12 +208,17 @@ The following specifications are DRAFT. They represent active architecture work 
 - Payout freezes one currency, one beneficiary context, one non-sensitive destination snapshot, and one or more embedded source portions. No Payout Profile, Payout Account, Payout Source, Payout Item, Balance, Hold, or Reserve entity exists in the current draft.
 - Current Payout sources are an ORIGINAL MANUFACTURING_COMPENSATION Payment Allocation and Royalty. Sources from multiple Orders and both source types may be aggregated only for the same beneficiary and currency.
 - Payout uses full-source portions only. A FULFILLED Order Item makes an associated source a release candidate, while current release or hold policy, compliance and provider capability, destination validity, positive outstanding amount, and absence of conflicting reservation or consumption determine payout eligibility.
+- Payout release-policy evaluation is an independent mandatory prerequisite at prospective source selection and Payout creation and again before PENDING-to-PROCESSING submission. Every source requires an explicit successful result under one identified recognized, approved, versioned, and applicable policy basis; missing, ambiguous, unavailable, unknown, indeterminate, or negative evaluation fails closed and makes payout-available amount zero.
+- If any selected source fails that policy gate or another prerequisite, the complete proposed aggregate Payout creation attempt fails atomically without portions or reservations. A later different source set is a new prospective selection attempt and undergoes complete validation again.
+- Every source portion snapshots the exact release-policy basis and version under which it passed. A newer version alone does not invalidate an older snapshot that remains recognized, approved, and applicable; a revoked, unapproved, or inapplicable snapshot blocks submission without rewriting portions or switching policy versions.
 - PENDING and PROCESSING Payouts reserve every included source amount. Creation of the PENDING Payout, its portions, and all source reservations is atomic; retries are new Payouts.
-- Payout lifecycle is PENDING, PROCESSING, SUCCEEDED, FAILED, or CANCELLED. Ambiguous or partial provider outcomes remain PROCESSING with reservations active.
+- Payout lifecycle is PENDING, PROCESSING, SUCCEEDED, FAILED, or CANCELLED. Policy and all other source gates are revalidated inside the local PENDING-to-PROCESSING commitment, no provider command is sent before that commitment succeeds, and later policy changes never rewrite PROCESSING or SUCCEEDED history. Ambiguous or partial provider outcomes remain PROCESSING with reservations active.
 - Source reversal and PENDING Payout submission use one serialized ordering. PENDING to PROCESSING is a durable submission commitment that atomically revalidates all sources; if reversal commits first, the stale Payout is cancelled and cannot be submitted.
 - Outbound Payout execution is economically idempotent: one Payout can cause at most one outbound economic transfer, and lost provider responses are reconciled through the same stable submission identity rather than an independent transfer.
 - Reversal during PROCESSING or after SUCCEEDED never rewrites the attempt; derived recovery exposure may result.
 - Recovery, provider-return treatment, and any balance domain remain future production policy and architecture work and must preserve immutable Payout history.
+- A concrete approved, versioned Payout release policy is a hard prerequisite before any functional Payout implementation milestone. `PAYOUT_RELEASE_POLICY_V1` is only a working name for a future first candidate and is not yet defined or approved; its inputs, timing, and legal semantics require separate architecture, legal, compliance, finance, and product work.
+- This fail-closed documentation hardening completes corrective change set B2 / F-03 without defining the concrete release policy or implementing Payout.
 - The approved deterministic MVP Refund Allocation Selection Policy is PLATFORM_FIRST_WITH_ROYALTY_NO_SUBSIDY_SAFETY_FLOOR_V1. It translates immutable buyer-facing refund components into exact Payment Allocation REVERSALS independently from mutable Listing, Profile, Manufacturer Profile, or Workspace state.
 - No economically unscoped accepted refund exists in MVP. Allowed embedded refund component types are ITEM_MERCHANDISE for one exact Order Item, Order-level SHIPPING, and Order-level TAX; their positive Payment-currency amounts sum exactly to the accepted refund amount.
 - An accepted Payment refund preserves its immutable normalized component snapshot and policy version. The accepted fact, snapshot, and complete positive REVERSAL set are recognized atomically, and the REVERSALS sum exactly to both component total and accepted refund amount without creating a Refund or Refund Component entity.
@@ -251,6 +256,6 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Next Steps
 
-1. Explicitly harden fail-closed Payout release-policy behavior (B2 / F-03).
-2. Add historical deletion protection and terminal non-delivery resolution without reshipment (C1/C2 / F-05/F-06).
-3. Start the Ready-Made purchase/payment implementation vertical slice with remaining domain work continuing in parallel.
+1. Add historical deletion protection and terminal non-delivery resolution without reshipment (C1/C2 / F-05/F-06).
+2. Start the Ready-Made purchase/payment implementation vertical slice with remaining domain work continuing in parallel.
+3. Before any functional Payout implementation milestone, separately define and approve the first concrete versioned Payout release policy.
