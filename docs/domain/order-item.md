@@ -39,6 +39,7 @@ An Order Item:
 - may be a current or frozen member of zero or more Shipments over time, subject to at most one non-CANCELLED Shipment at a time;
 - may be the charge subject of zero or more Payment Allocations through captured Payments of its Order;
 - has zero or one Royalty when it is Revision-based, has a positive calculated royalty amount, and the applicable Payment capture is accepted;
+- has zero or one Designer Review when it qualifies under Designer Review rules;
 - has no direct Workspace relationship.
 
 ## Business Rules
@@ -60,6 +61,12 @@ An Order Item:
 - A Ready-Made Product Order Item has no Designer Profile publication context merely because its source is ready-made.
 - The current public display/studio name of a Designer Profile may change prospectively, but a later rename never changes the confirmation-time name in an immutable Order Item publication-context snapshot.
 - Later Designer Profile status, other presentation, Profile Holder authority, or design-specific publication-rights changes never rewrite the immutable publication-context snapshot.
+- Only a Revision-based Order Item that has reached FULFILLED may qualify for a Designer Review. CONFIRMED, IN_FULFILLMENT, CANCELLED, and Ready-Made Product Order Items do not qualify in the current MVP.
+- When a Designer Review exists, its immutable Reviewer User must equal the Buyer User of this Order Item's Order, and its immutable target Designer Profile must equal the Publication Designer Profile identity preserved by this Order Item's publication-context snapshot.
+- One Order Item may have at most one Designer Review even when its quantity is greater than one. A WITHDRAWN Review continues to occupy that one-review slot.
+- The direct Designer Review relationship provides purchase-backed eligibility and traceability but never grants public access to the Order Item, its Order, or private Personalization data.
+- Once a Revision-based Order Item legitimately reaches FULFILLED, a later partial or full refund does not remove its Designer Review eligibility or rewrite an existing Review's history.
+- Designer Review content, lifecycle, moderation, visibility, and mutation authority remain responsibilities of Designer Review rather than Order Item.
 - Order Item quantity must be a positive integer.
 - Quantity greater than one represents multiple units of the same confirmed purchased configuration. Different Personalizations or other purchased configurations require separate Order Items.
 - Every Order Item uses the currency of its Order.
@@ -172,6 +179,9 @@ An Order Item:
 - A positive royalty rate always preserves exactly one immutable USER or ORGANIZATION beneficiary context. An explicitly permitted zero rate may preserve no monetary beneficiary.
 - Confirmed Manufacturer compensation plus calculated original royalty amount never exceeds net item merchandise contribution.
 - A Revision-based Order Item never has more than one Royalty in MVP, and a Ready-Made Product Order Item never has a Royalty in the current MVP.
+- An Order Item never has more than one Designer Review in MVP.
+- Whenever an Order Item has a Designer Review, the Item is Revision-based, has reached FULFILLED, and its immutable publication-context Designer Profile identity equals the Review target.
+- A Ready-Made Product Order Item never has a Designer Review in the current MVP.
 - The purchase-time commercial, source, Workspace, and royalty context never changes after confirmation.
 - When Personalization is used, the authoritative purchased Personalization snapshot never changes after confirmation.
 - A made-to-order Order Item always has exactly one assigned Manufacturer Profile.
@@ -199,7 +209,7 @@ Shipment provides delivery evidence toward the FULFILLED transition, while Shipm
 
 Royalty accrual and append-only reversal history belong to Royalty. Royalty recognition after accepted capture does not mean the amount has been earned, become payable or payout-eligible, or been transferred. Earning, release, and Payout rules remain future work. Payment Allocation explains captured funds without becoming the Royalty ledger or being rewritten by Royalty.
 
-Designer Profile publication context is separate from Royalty beneficiary context, Project business rights, authorship, intellectual-property ownership, seller identity, and Manufacturer Profile capability. A future Designer Review may identify the publication profile from the immutable Order Item snapshot without changing the current Order Item model or introducing review rules here.
+Designer Profile publication context is separate from Royalty beneficiary context, Project business rights, authorship, intellectual-property ownership, seller identity, and Manufacturer Profile capability. Designer Review identifies its target publication profile and Reviewer eligibility from the immutable Order and Order Item context while keeping Review content, lifecycle, moderation, visibility, and authority outside Order Item.
 
 The Order preserves the current Creastrix seller-of-record and merchant-of-record context and its final payable snapshot. Detailed tax, payment-fee, refund-policy, and replacement-commerce rules remain future domain concerns.
 
@@ -207,4 +217,4 @@ The Order preserves the current Creastrix seller-of-record and merchant-of-recor
 
 Status: DRAFT
 
-Version: 0.6
+Version: 0.7

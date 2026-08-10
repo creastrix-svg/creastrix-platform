@@ -16,6 +16,7 @@ A Designer Profile is responsible for:
 - recording its profile-level publication eligibility status;
 - recording the User who created the profile record;
 - providing a stable publication identity for Revision-based Listings;
+- providing a stable target identity for purchase-backed Designer Reviews;
 - remaining stable for required historical publication traceability.
 
 ## Relationships
@@ -26,6 +27,7 @@ A Designer Profile:
 - has exactly one immutable Created By User;
 - may be the immutable Publication Designer Profile of zero or more Revision-based Listings;
 - may be identified in the immutable publication-context snapshots of zero or more Revision-based Order Items;
+- may be the immutable target of zero or more Designer Reviews;
 - has no mandatory Workspace relationship;
 - has no direct Project, Revision, Royalty, Payment, Payout, or Manufacturer Profile relationship.
 
@@ -65,9 +67,14 @@ A Designer Profile:
 - Loss of Designer Profile eligibility or design-specific publication rights does not change Listing lifecycle automatically, but makes an ACTIVE Revision-based Listing effectively non-orderable for new purchases while the loss continues.
 - Effective orderability may recover when the same Designer Profile and design-specific rights become eligible again and every other current Listing requirement passes.
 - Order confirmation preserves the required immutable publication-context snapshot through Order Item. Later status or presentation changes never rewrite confirmed Order Items, existing Royalties, or other historical commerce.
+- A Designer Review targets the stable Designer Profile identity selected from the immutable publication-context snapshot of its qualifying Order Item.
+- Later public display or studio name changes, eligibility-status changes, or Holder authority changes never retarget or rewrite existing Designer Reviews.
+- Profile Holder authority does not grant authority to edit, hide, withdraw, delete, or republish a buyer Designer Review merely because it targets the held profile.
+- Current average rating and review count are derived only from PUBLISHED Designer Reviews. HIDDEN and WITHDRAWN Reviews are excluded, and Designer Profile does not own authoritative stored rating aggregate fields.
 - The Designer Profile and its Holder do not automatically determine Workspace ownership, Project or Revision ownership, Project business rights, legal authorship, copyright or intellectual-property ownership, royalty beneficiary, payout identity, seller identity, or manufacturing capability.
 - A Designer Profile referenced by any existing Revision-based Listing cannot be destructively deleted, whether that Listing is DRAFT, ACTIVE, PAUSED, or ARCHIVED.
 - A Designer Profile required by a confirmed Order Item historical publication snapshot cannot be destructively deleted.
+- A Designer Profile referenced by any Designer Review cannot be destructively deleted.
 
 ## Invariants
 
@@ -83,6 +90,7 @@ A Designer Profile:
 - Only a VERIFIED Designer Profile can support new Revision-based Listing activation, reactivation, or Order confirmation.
 - Every Revision-based Listing published through a Designer Profile retains the same Publication Designer Profile throughout its lifetime.
 - Designer Profile changes never rewrite immutable historical publication or commercial snapshots.
+- Designer Profile changes never retarget or rewrite existing Designer Reviews.
 
 ## Notes
 
@@ -96,7 +104,7 @@ Designer Profile and Manufacturer Profile are independent capabilities. A User o
 
 Creastrix may publish its own original designs through a normal Organization-held Designer Profile belonging to the Creastrix Organization. No PLATFORM Designer Profile or PLATFORM Profile Holder type is introduced.
 
-Future Designer Review may use the stable Designer Profile identity preserved by historical Order Item publication context, but review eligibility, lifecycle, aggregation, and moderation remain future work.
+Designer Review uses the stable Designer Profile identity preserved by a qualifying fulfilled Revision-based Order Item's historical publication context. Review eligibility, lifecycle, moderation, privacy, authority, and PUBLISHED-only aggregation belong to the Designer Review specification and do not grant mutation authority to the Profile Holder.
 
 Internal verification evidence is not automatically public. Exact moderation reasons, verification evidence, voluntary closure, deletion of a never-used UNVERIFIED profile, and retention duration remain future policy and implementation work.
 
@@ -104,4 +112,4 @@ Internal verification evidence is not automatically public. Exact moderation rea
 
 Status: DRAFT
 
-Version: 0.1
+Version: 0.2

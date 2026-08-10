@@ -34,12 +34,13 @@ These entities have active draft specifications. They represent active architect
 - [Ready-Made Product](ready-made-product.md) — DRAFT 0.5
 - [Project](project.md) — DRAFT 0.5
 - [Revision](revision.md) — DRAFT 0.4
-- [Designer Profile](designer-profile.md) — DRAFT 0.1
+- [Designer Profile](designer-profile.md) — DRAFT 0.2
+- [Designer Review](designer-review.md) — DRAFT 0.1
 - [Listing](listing.md) — DRAFT 0.7
 - [Personalization](personalization.md) — DRAFT 0.4
 - [Manufacturer Profile](manufacturer-profile.md) — DRAFT 0.3
 - [Order](order.md) — DRAFT 0.4
-- [Order Item](order-item.md) — DRAFT 0.6
+- [Order Item](order-item.md) — DRAFT 0.7
 - [Payment](payment.md) — DRAFT 0.3
 - [Payment Allocation](payment-allocation.md) — DRAFT 0.2
 - [Royalty](royalty.md) — DRAFT 0.2
@@ -51,7 +52,6 @@ These entities have active draft specifications. They represent active architect
 These domain concepts are recognized, but do not yet have active specifications.
 
 - Organization Profile
-- Designer Review
 - Manufacturer Review
 - Notification
 - Conversation

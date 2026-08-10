@@ -33,6 +33,7 @@ The following specifications are DRAFT. They represent active architecture work 
 - Project
 - Revision
 - Designer Profile
+- Designer Review
 - Listing
 - Personalization
 - Manufacturer Profile
@@ -98,6 +99,14 @@ The following specifications are DRAFT. They represent active architecture work 
 - Designer Profile has no mandatory Workspace relationship and is independent from Project ownership, Project business rights, legal authorship, intellectual-property ownership, Manufacturer Profile capability, and Royalty beneficiary identity.
 - Loss of Designer Profile or design-specific rights eligibility leaves Listing lifecycle unchanged but makes an ACTIVE Revision-based Listing non-orderable while the loss continues.
 - A Revision-based Order Item preserves an immutable historical publication-context snapshot without creating a second authoritative live Designer Profile relationship.
+- Designer Review is a dedicated purchase-backed evaluation of the Designer Profile publication identity preserved by exactly one qualifying FULFILLED Revision-based Order Item.
+- A Designer Review has exactly one immutable Reviewer User equal to the Buyer User of the qualifying Order, exactly one immutable qualifying Order Item, and exactly one immutable target Designer Profile derived from that Item's publication-context snapshot.
+- One Order Item may have at most one Designer Review even when quantity is greater than one, and a WITHDRAWN Review continues to occupy that slot. Another distinct qualifying Order Item may support another Review of the same Designer Profile.
+- Designer Review uses one required integer rating from one through five and an optional meaningful textual body. It has the PUBLISHED, HIDDEN, and terminal WITHDRAWN lifecycle, with moderation controlling hide and republish and the Reviewer controlling withdrawal.
+- Once an Item legitimately reaches FULFILLED, later partial or full refund does not remove Designer Review eligibility or rewrite Review history. Designer Review remains independent from Payment, Refund Allocation, Manufacturer compensation, Royalty, and Payout.
+- Only PUBLISHED Designer Reviews contribute to derived Designer Profile average rating and review count. Designer Profile does not own authoritative rating aggregate fields.
+- Designer Review DRAFT 0.1 preserves no public Reviewer name or User Profile snapshot. Public presentation uses only safe non-identifying or explicitly approved attribution and never exposes private Order, Payment, delivery, fulfillment, or Personalization data through the qualifying Item relationship.
+- Designer Review is not a generic Review and does not evaluate Manufacturer Profile. Future Manufacturer Review remains a separate domain because its qualifying relationship, target, eligibility, and meaning differ.
 - Listing represents the commercial and public offer of exactly one immutable commercial source: a FINALIZED Revision or a Ready-Made Product, never both.
 - Listing Workspace context is derived from its commercial source, and source write permission is not required merely to manage Listing commercial data.
 - LISTINGS authorization and business eligibility are separate requirements.
@@ -222,6 +231,6 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Next Steps
 
-1. Perform final focused commerce/financial consistency review after Refund Allocation Selection Policy integration.
-2. Resolve remaining production legal/tax/returns/recovery gates as needed for implementation.
-3. Continue with Reviews, Notifications, Conversations, and Audit Log as dependencies become clear.
+1. Review and finalize Designer Review DRAFT.
+2. Model Manufacturer Review as a separate domain using its own purchase and fulfillment eligibility.
+3. Continue with Notifications, Conversations, and Audit Log as dependencies become clear.
