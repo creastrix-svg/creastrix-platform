@@ -14,6 +14,7 @@ A Royalty is responsible for:
 - preserving one immutable User or Organization beneficiary and historical beneficiary context;
 - preserving the immutable original amount, currency, and confirmation-time calculation and rights context;
 - preserving append-only Royalty reversal facts correlated with accepted Payment refund events;
+- ensuring that applicable accepted refund economics are durably and idempotently reconciled into cumulative Royalty reversal state;
 - exposing the outstanding Royalty amount derived from the immutable original and cumulative reversal amounts;
 - keeping royalty accrual and reversal history separate from Payment Allocation, earning, Payout, settlement, and transfer.
 
@@ -50,9 +51,21 @@ A Royalty:
 - For one Royalty and one accepted refund-event identity, at most one positive Royalty reversal fact may exist. Replaying or reconciling the same refund event must not reverse the Royalty twice.
 - For one accepted refund event, refunded royalty-basis amount is determined from accepted Payment Allocation REVERSAL facts for the same Order Item whose referenced ORIGINAL purposes are ITEM_PROCEEDS or MANUFACTURING_COMPENSATION. SHIPPING_CHARGE and TAX are excluded.
 - Royalty does not require permanent direct relationships to the Payment Allocations used as refund attribution evidence and never rewrites ORIGINAL or REVERSAL Payment Allocations.
-- Cumulative refunded royalty-basis amount is the sum of refunded royalty-basis amounts attributed to the Order Item across accepted refund events and must remain between zero and the immutable original Royalty basis amount.
-- Target cumulative Royalty reversal equals the lesser of the original Royalty amount and the HALF_UP_MINOR_UNIT_V1 result of cumulative refunded royalty-basis amount multiplied by the immutable rate basis points and divided by 10,000.
-- A new reversal amount equals target cumulative Royalty reversal minus already recorded cumulative Royalty reversal. A result of zero creates no reversal fact.
+- Applicable accepted refund events for one Royalty and its originating Payment have one canonical order: ascending immutable platform-accepted timestamp, with immutable refund-event identity as the stable tie-breaker. The order is derived only from immutable accepted refund facts.
+- For an applicable accepted refund event `E`, `basis_before(E)` is the sum of applicable refunded royalty-basis amounts from canonically earlier accepted refund events, and `basis_after(E)` equals `basis_before(E)` plus the refunded royalty-basis amount attributable to `E`.
+- `target_before(E)` and `target_after(E)` are calculated from `basis_before(E)` and `basis_after(E)` respectively by applying the Royalty's immutable rate basis points and HALF_UP_MINOR_UNIT_V1 rule and capping the result at the original Royalty amount.
+- `event_reversal_delta(E)` equals `target_after(E) - target_before(E)` and is always non-negative.
+- If `event_reversal_delta(E)` is positive, durable and idempotent reconciliation eventually records exactly one positive Royalty reversal fact for `E` whose reversal amount equals that event-specific delta. If the delta is zero, no reversal fact is created for `E`.
+- Operational reconciliation may discover or process accepted refund events in any safe order, but each event's economic reversal amount is determined only by its immutable canonical prefix position. Aggregate reconciliation lag must never be attributed to whichever refund event is processed first, and several outstanding refund events must never be collapsed into one event's reversal fact.
+- Authoritative cumulative refunded royalty-basis amount is derived from all currently accepted Payment Allocation REVERSAL facts for the same Order Item whose referenced ORIGINAL purposes are ITEM_PROCEEDS or MANUFACTURING_COMPENSATION. It must remain between zero and the immutable original Royalty basis amount.
+- Authoritative cumulative Royalty reversal target equals the lesser of the original Royalty amount and the HALF_UP_MINOR_UNIT_V1 result of authoritative cumulative refunded royalty-basis amount multiplied by the immutable rate basis points and divided by 10,000.
+- The sum of all canonical event-specific reversal deltas for currently accepted applicable refund events equals the authoritative cumulative Royalty reversal target.
+- Recorded cumulative Royalty reversal must never exceed the authoritative cumulative Royalty reversal target.
+- Durable and idempotent Royalty reversal processing must eventually make recorded cumulative Royalty reversal equal the authoritative cumulative Royalty reversal target. Retry and reconciliation continue until the Royalty state catches up, and the same economic refund effect cannot be applied twice.
+- A temporary Royalty reversal processing failure does not roll back or rewrite the accepted Payment refund or any accepted Payment Allocation REVERSAL. The Royalty remains temporarily reconciliation-incomplete until recorded cumulative Royalty reversal equals the authoritative cumulative Royalty reversal target.
+- An individual accepted refund event may produce no positive new Royalty reversal because of cumulative rounding. Reconciliation completeness is determined by equality between recorded cumulative Royalty reversal and the authoritative cumulative Royalty reversal target rather than by requiring one positive reversal fact per refund event.
+- A Royalty is reconciliation-complete for Payout only when recorded cumulative Royalty reversal equals the authoritative cumulative Royalty reversal target derived from all applicable accepted Payment Allocation REVERSAL facts.
+- A reconciliation-incomplete Royalty cannot be used to create a Payout or to commit an existing Payout from PENDING to PROCESSING.
 - Order Item cancellation alone never reverses Royalty. Cancellation before capture creates no Royalty; cancellation after capture leaves Royalty unchanged until an accepted refund produces applicable refunded royalty basis.
 - A Royalty and its accepted economic history cannot be destructively deleted.
 
@@ -66,8 +79,13 @@ A Royalty:
 - A Royalty always uses the currency of its Order Item, Order, and originating Payment.
 - A Royalty never has a stored lifecycle state.
 - Every Royalty reversal amount is positive and correlates to exactly one accepted refund-event identity of the originating Payment.
+- Every recorded Royalty reversal amount equals the canonical event-specific reversal delta for its accepted refund-event identity.
 - The pair of Royalty and accepted refund-event identity never produces more than one positive reversal fact.
-- Cumulative refunded royalty-basis amount never exceeds the immutable original royalty-basis amount.
+- Authoritative cumulative refunded royalty-basis amount never exceeds the immutable original royalty-basis amount.
+- Canonical event-specific reversal deltas always telescope to the authoritative cumulative Royalty reversal target.
+- Recorded cumulative Royalty reversal never exceeds the authoritative cumulative Royalty reversal target derived from applicable accepted Payment Allocation REVERSAL facts.
+- A Royalty may be selected when creating a Payout only if it is reconciliation-complete at that creation decision boundary.
+- A Royalty may support a PENDING-to-PROCESSING Payout transition only if it is reconciliation-complete at that submission decision boundary.
 - Cumulative Royalty reversal never exceeds the original Royalty amount.
 - Outstanding Royalty amount is never negative.
 - Original Royalty data and accepted reversal history are never destructively deleted or rewritten.
@@ -83,6 +101,8 @@ Payment CAPTURED and the complete ORIGINAL Payment Allocation set retain their e
 
 Exact refund selection policy remains separate production and business work. Royalty consumes the accepted item-level refund attribution expressed by Payment Allocation REVERSAL facts without owning or redefining that selection policy.
 
+The exact persistence and indexing mechanisms used to evaluate canonical refund-event ordering remain implementation details and do not change the event-specific economic attribution rules.
+
 Future earning and release rules may consider fulfillment, delivery, cancellation and refund state, dispute windows, compliance, and contractual rules. Future Payout may consider outstanding Royalty, separate earning or release eligibility, KYC, reserves, and payout destination, but none of those conditions are decided here.
 
 Chargebacks, disputes, recovery after a future payout, multiple beneficiaries, layered royalty rights, ready-made royalties, exact rights-evidence storage, accounting classification, tax treatment, retention duration, and pseudonymization remain future work.
@@ -91,4 +111,4 @@ Chargebacks, disputes, recovery after a future payout, multiple beneficiaries, l
 
 Status: DRAFT
 
-Version: 0.1
+Version: 0.2
