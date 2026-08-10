@@ -125,6 +125,12 @@ The following specifications are DRAFT. They represent active architecture work 
 - A Ready-Made Product Listing uses a fixed unit sale price, while a Revision-based Listing may use base or display pricing before confirmed Order Item merchandise amounts are determined.
 - Every Listing uses one currency in MVP.
 - A Revision-based Listing requires explicit applicable royalty terms before activation; a Ready-Made Product Listing does not create designer royalty automatically.
+- For a Revision-based Listing, effective LISTINGS write authorization, authority through its immutable Publication Designer Profile, valid design-specific publication rights for that exact Revision and profile, and accepted royalty-rights validation for the exact current royalty configuration are four independent axes. None substitutes for another.
+- LISTINGS authorization permits proposing and editing royalty configuration when lifecycle rules allow, but only an authorized platform royalty-rights validation workflow may establish accepted validation. Accepted validation is embedded Listing domain context rather than a separate entity.
+- Accepted royalty-rights validation is bound to one Listing and its exact current royalty validation subject, including the immutable Revision and Publication Designer Profile context, calculation terms, positive-rate beneficiary or explicit zero-rate decision, royalty-rights source or basis, and validation policy version.
+- Revision-based Listing activation, reactivation, effective orderability, and Order confirmation fail closed when matching accepted validation is absent, stale, mismatched, or no longer applicable, including for an explicitly permitted zero-rate configuration.
+- A material royalty-subject change makes prior accepted validation inapplicable. An ACTIVE Listing whose validation expires or is revoked remains ACTIVE but non-orderable; revalidating the exact unchanged subject may restore orderability without changing its royalty configuration or lifecycle.
+- A confirmed Revision-based Order Item freezes the matching accepted validation context for historical traceability while its existing immutable royalty snapshot remains the sole monetary calculation truth. Later Listing or validation changes never rewrite confirmed commerce or existing Royalty history.
 - Listing is manufacturer-independent; a Manufacturer Profile for made-to-order commerce is selected through pre-confirmation workflow and assigned to Order Item at confirmation.
 - Listing and its source do not determine seller-of-record in MVP; Creastrix is the single buyer-facing seller-of-record and merchant-of-record at Order level, and historical Order Item snapshots are never rewritten by later Listing changes.
 - Personalization is a private, reusable buyer-specific configuration with exactly one immutable FINALIZED Revision base.
@@ -239,7 +245,6 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Next Steps
 
-1. Define and harden the independent royalty-rights validation boundary for Revision-based Listings (A2 / F-04).
-2. Harden external money boundaries: durable pre-Order provider authorization commitment and explicit fail-closed Payout release-policy behavior (B1/B2 / F-02/F-03).
-3. Add historical deletion protection and terminal non-delivery resolution without reshipment (C1/C2 / F-05/F-06).
-4. Start the Ready-Made purchase/payment implementation vertical slice with remaining domain work continuing in parallel.
+1. Harden external money boundaries: durable pre-Order provider authorization commitment and explicit fail-closed Payout release-policy behavior (B1/B2 / F-02/F-03).
+2. Add historical deletion protection and terminal non-delivery resolution without reshipment (C1/C2 / F-05/F-06).
+3. Start the Ready-Made purchase/payment implementation vertical slice with remaining domain work continuing in parallel.

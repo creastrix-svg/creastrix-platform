@@ -17,6 +17,7 @@ An Order Item is responsible for:
 - preserving its immutable confirmed discount share for captured-funds attribution;
 - preserving its immutable confirmation-time publication context when Revision-based;
 - preserving its immutable confirmation-time royalty configuration, calculation, beneficiary, and rights context when Revision-based;
+- preserving immutable confirmation-time accepted royalty-rights validation context for the exact purchased royalty configuration when Revision-based;
 - preserving optional Personalization traceability and the authoritative purchased Personalization snapshot;
 - establishing confirmed Ready-Made Product stock allocation when applicable;
 - preserving exactly one assigned Manufacturer Profile for made-to-order fulfillment;
@@ -55,7 +56,7 @@ An Order Item:
 - The purchase-time commercial context does not identify the Workspace owner automatically as seller, merchant, tax merchant, or payout recipient.
 - Every Revision-based Order Item preserves an immutable publication-context snapshot derived from its purchased Listing at confirmation.
 - The Revision-based publication snapshot preserves the immutable Publication Designer Profile identity, Profile Holder type and identity, the valid non-empty public display/studio name copied from that profile's current publication identity at confirmation, the confirmation-time facts that required profile publication eligibility and design-specific publication-rights validation passed, and sufficient rights-context or source basis for historical traceability.
-- Order confirmation for a Revision-based Item requires the purchased Listing's immutable Publication Designer Profile to remain VERIFIED and the applicable current design-specific publication rights to remain valid.
+- Order confirmation for a Revision-based Item requires the purchased Listing's immutable Publication Designer Profile to remain VERIFIED, the applicable current design-specific publication rights to remain valid, and currently applicable accepted royalty-rights validation to match the Listing's exact current royalty validation subject.
 - The publication-context snapshot does not copy the full Designer Profile, bio, portfolio, media, or mutable current status. It does not establish authorship, intellectual-property ownership, Project business rights, Royalty beneficiary identity, payout identity, seller identity, or manufacturing authority.
 - The purchased Listing remains the authoritative entity relationship through which the Publication Designer Profile was selected. Preserving its identity in the Order Item snapshot provides historical autonomy without creating another mutable ownership or publication relationship.
 - A Ready-Made Product Order Item has no Designer Profile publication context merely because its source is ready-made.
@@ -85,6 +86,13 @@ An Order Item:
 - Calculated original royalty amount is determined once at the authoritative line level by applying the rate basis points to royalty basis minor units, dividing by 10,000, and rounding half up to the currency minor unit under HALF_UP_MINOR_UNIT_V1.
 - Royalty is never calculated per unit or recomputed from unit merchandise price multiplied by quantity. Quantity is already represented in the authoritative line merchandise amount.
 - The Revision-based royalty snapshot preserves method, rate basis points, calculation basis identifier and version, authoritative royalty basis amount, rounding rule version, calculated original royalty amount, currency, beneficiary presence or absence, beneficiary context when present, royalty-right source or basis, and existing Listing and Revision traceability.
+- Before confirming a Revision-based Order Item, the platform revalidates that the purchased Listing has currently applicable accepted royalty-rights validation whose exact validated subject matches the current royalty configuration used for purchase.
+- Order confirmation fails and no Order Item is created when that accepted validation is absent, stale, mismatched, or no longer applicable. This check is additional to Designer Profile eligibility, design-specific publication rights, pricing, Manufacturer acceptance, and every other applicable confirmation requirement.
+- Every confirmed Revision-based Order Item preserves an immutable confirmation-time accepted royalty-rights validation snapshot containing the accepted validation or decision identity, acceptance timestamp, validation policy or rules version, the exact validated subject or sufficient immutable representation of it, correspondence to the positive-rate beneficiary or explicit zero-rate decision, sufficient royalty-rights source or basis context for historical traceability, and the confirmation-time fact that the accepted validation matched the purchased Listing's current royalty configuration.
+- The accepted validation snapshot is evidence and context that the exact purchased royalty terms passed platform royalty-rights validation at confirmation. The existing Order Item royalty snapshot remains the sole authoritative source for rate, basis, rounding, calculated original Royalty amount, beneficiary, and rights basis.
+- Royalty amounts are never recalculated from accepted validation context, and the validation snapshot does not create a second source of monetary calculation truth.
+- A Ready-Made Product Order Item has no royalty-rights validation snapshot merely because of its source type.
+- Full external legal or evidence documents are not duplicated in Order Item, and the embedded accepted validation snapshot does not introduce a validation or rights entity.
 - A positive royalty rate requires exactly one confirmed beneficiary of type USER or ORGANIZATION, the applicable live User or Organization reference, an immutable historical beneficiary identity snapshot, and the source or basis of the royalty right.
 - A zero royalty rate may omit a monetary beneficiary only when applicable Listing and business rules explicitly permit that zero-royalty configuration. The explicit zero-royalty decision and calculation context remain preserved.
 - A positive rate whose calculated original royalty amount rounds to zero still preserves its required beneficiary and complete calculation context, but it does not create a zero-value Royalty after capture.
@@ -150,6 +158,7 @@ An Order Item:
 - Accepted full Payment capture is the mandatory idempotent trigger for recognizing exactly one Royalty for a qualifying Revision-based Order Item whose calculated original royalty amount is positive. Royalty recognition is separately durable and reconcilable and does not redefine the atomic Payment CAPTURED and ORIGINAL Payment Allocation boundary.
 - A temporary Royalty-processing failure after capture does not change Payment state. Reconciliation must eventually recognize the missing Royalty exactly once.
 - Royalty original amount is copied from the immutable Order Item snapshot and is never recalculated from current Listing or other mutable domain state.
+- Later Listing royalty-configuration changes, replacement or renewed validation, validation revocation or expiry, beneficiary account-status changes, Designer Profile changes, or Workspace changes never rewrite the confirmation-time accepted validation snapshot, the authoritative royalty snapshot, an existing Royalty, or Royalty reversal history.
 - Designer Profile publication eligibility is not revalidated at Royalty recognition. Later Designer Profile verification or status changes do not rewrite the confirmed royalty snapshot or prevent recognition after qualifying capture.
 - A ready-made Order Item preserves that no designer royalty applies and never creates a Royalty in the current MVP.
 - Order Item cancellation alone does not reverse Royalty. Accepted refund economics may create append-only Royalty reversals according to refunded royalty basis attributable to the Item.
@@ -171,6 +180,9 @@ An Order Item:
 - The sum of all confirmed item discount shares in an Order always equals that Order's aggregate confirmed discount total.
 - Net item merchandise contribution is always non-negative.
 - Every Revision-based Order Item always preserves exactly one immutable royalty decision and calculation context using PERCENTAGE, NET_ITEM_MERCHANDISE_CONTRIBUTION_V1, and HALF_UP_MINOR_UNIT_V1.
+- Every Revision-based Order Item always preserves exactly one immutable accepted royalty-rights validation snapshot that matched the purchased Listing's exact royalty validation subject at confirmation.
+- A Ready-Made Product Order Item never has a royalty-rights validation snapshot merely because of its source type.
+- An accepted royalty-rights validation snapshot never changes after Order confirmation and never replaces the authoritative monetary royalty snapshot.
 - Every Revision-based Order Item always preserves exactly one immutable publication-context snapshot identifying the Publication Designer Profile and its confirmation-time Holder and validation context.
 - Every Revision-based Order Item publication-context snapshot always preserves the valid non-empty public display/studio name used by its Publication Designer Profile at confirmation.
 - A Ready-Made Product Order Item never has a Designer Profile publication-context snapshot merely because of its source type.
@@ -209,6 +221,8 @@ Shipment provides delivery evidence toward the FULFILLED transition, while Shipm
 
 Royalty accrual and append-only reversal history belong to Royalty. Royalty recognition after accepted capture does not mean the amount has been earned, become payable or payout-eligible, or been transferred. Earning, release, and Payout rules remain future work. Payment Allocation explains captured funds without becoming the Royalty ledger or being rewritten by Royalty.
 
+Accepted royalty-rights validation context is an embedded immutable part of the Revision-based Order Item confirmation snapshot rather than a relationship to another entity. It preserves the accepted decision needed for historical traceability without copying full legal evidence or becoming a calculation source.
+
 Designer Profile publication context is separate from Royalty beneficiary context, Project business rights, authorship, intellectual-property ownership, seller identity, and Manufacturer Profile capability. Designer Review identifies its target publication profile and Reviewer eligibility from the immutable Order and Order Item context while keeping Review content, lifecycle, moderation, visibility, and authority outside Order Item.
 
 The Order preserves the current Creastrix seller-of-record and merchant-of-record context and its final payable snapshot. Detailed tax, payment-fee, refund-policy, and replacement-commerce rules remain future domain concerns.
@@ -217,4 +231,4 @@ The Order preserves the current Creastrix seller-of-record and merchant-of-recor
 
 Status: DRAFT
 
-Version: 0.7
+Version: 0.8
