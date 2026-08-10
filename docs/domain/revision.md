@@ -38,10 +38,14 @@ A Revision:
 - A Project may contain multiple DRAFT Revisions and multiple FINALIZED Revisions simultaneously and does not have one mandatory current Revision.
 - Finalization is an explicit transition from DRAFT to FINALIZED; no reverse transition exists in MVP.
 - Finalization makes product-defining content immutable and assigns the Revision a human-readable revision number.
+- A FINALIZED Revision cannot be destructively deleted in MVP. Its stable identity and finalized product-defining content remain retained regardless of whether it currently has a Listing, Personalization, Order Item snapshot, Base Revision reference, or active commerce.
+- This global FINALIZED retention rule protects Listing source relationships, Personalization bases, Base Revision provenance, historical Order Item source traceability, and finalized product-defining content without requiring per-reference deletion counters.
+- C1 does not define destructive deletion, discard, soft-discard, autosave cleanup, or retention behavior for an unused DRAFT Revision. Any future DRAFT cleanup rule must separately preserve Project invariants, including that every Project always has at least one Revision.
 - A human-readable revision number is unique within its Project, remains immutable, represents finalization order, and does not imply lineage. Gapless numbering is not required as a business rule.
 - A FINALIZED Revision may be targeted by Listings, but finalization does not create a Listing and does not make the Revision automatically published or manufacturing-approved.
 - A DRAFT Revision may be created without a Base Revision or may reference one Base Revision for provenance.
 - A Base Revision does not establish a mandatory linear revision chain, and multiple-base merge is not supported in MVP.
+- A Base Revision reference cannot become dangling through valid MVP deletion because every Base Revision is FINALIZED and FINALIZED Revisions cannot be destructively deleted.
 - Created By identifies only the User who created the Revision record or work variant in Creastrix.
 - Created By, participation in editing, and PROJECTS-scope authorization do not determine creative authorship, ownership, business rights, royalty rights, or publication authority within the Creastrix domain model.
 - Revision creation and finalization require effective PROJECTS-scope authorization appropriate to the operation and remain subject to the lifecycle of the parent Project. In particular, having the scope does not permit editing or finalizing DRAFT Revisions of an ARCHIVED Project or developing Revisions of a DELETED Project.
@@ -67,6 +71,7 @@ A Revision:
 - Product-defining content of a FINALIZED Revision never changes.
 - Any personalization capability and constraints of a FINALIZED Revision never change.
 - A FINALIZED Revision never returns to DRAFT in MVP.
+- A FINALIZED Revision is never destructively deleted in MVP.
 - If a Base Revision exists, it belongs to the same Project, is FINALIZED, and is not the Revision itself.
 - Only a FINALIZED Revision may be targeted by a Listing.
 - Only a FINALIZED Revision may be the technical base of a Personalization.
@@ -87,10 +92,14 @@ Manufacturing requirements and technology relationships will be modeled separate
 
 PROJECTS is the permission scope for the Project and Revision domain area. Exact operation-level authorization may be refined where necessary, while Project and Revision lifecycle rules and invariants remain authoritative even when the scope is available.
 
-DRAFT abandonment or discard behavior, additional DRAFT statuses, multiple-Revision merge, contributor or co-author modeling, manufacturing validation or approval, and detailed retention policy remain unresolved.
+DRAFT abandonment, discard, or destructive-deletion behavior, additional DRAFT statuses, multiple-Revision merge, contributor or co-author modeling, manufacturing validation or approval, and detailed retention policy remain unresolved. No DISCARDED state is introduced by this specification.
+
+Destructive deletion means physical or domain removal of the stable Revision identity such that existing references can no longer resolve it. It is distinct from immutable FINALIZED lifecycle state and from any future UI hiding, archival, pseudonymization, or lawful retention behavior. Exact retention duration remains future legal and compliance work.
+
+Future relational persistence must prevent destructive deletion or cascading removal of a FINALIZED Revision while preserving required Listing, Personalization, Base Revision, and historical source references. Exact constraints and schema remain implementation work.
 
 ---
 
 Status: DRAFT
 
-Version: 0.4
+Version: 0.5

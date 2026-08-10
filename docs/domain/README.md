@@ -31,16 +31,16 @@ These entities have active draft specifications. They represent active architect
 
 - [Workspace](workspace.md) — DRAFT 0.8
 - [Workspace Membership](workspace-membership.md) — DRAFT 0.8
-- [Ready-Made Product](ready-made-product.md) — DRAFT 0.5
-- [Project](project.md) — DRAFT 0.5
-- [Revision](revision.md) — DRAFT 0.4
+- [Ready-Made Product](ready-made-product.md) — DRAFT 0.6
+- [Project](project.md) — DRAFT 0.6
+- [Revision](revision.md) — DRAFT 0.5
 - [Designer Profile](designer-profile.md) — DRAFT 0.2
 - [Designer Review](designer-review.md) — DRAFT 0.1
-- [Listing](listing.md) — DRAFT 0.8
-- [Personalization](personalization.md) — DRAFT 0.4
+- [Listing](listing.md) — DRAFT 0.9
+- [Personalization](personalization.md) — DRAFT 0.5
 - [Manufacturer Profile](manufacturer-profile.md) — DRAFT 0.3
 - [Order](order.md) — DRAFT 0.5
-- [Order Item](order-item.md) — DRAFT 0.8
+- [Order Item](order-item.md) — DRAFT 0.9
 - [Payment](payment.md) — DRAFT 0.4
 - [Payment Allocation](payment-allocation.md) — DRAFT 0.2
 - [Royalty](royalty.md) — DRAFT 0.2

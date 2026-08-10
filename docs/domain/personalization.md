@@ -52,7 +52,11 @@ A Personalization:
 - Buyer-selected values may provide inputs to price calculation, while confirmed merchandise amounts and currency belong to the Order Item snapshot.
 - Personalization does not select or own a Manufacturer Profile and does not own final sale price, Listing pricing terms, currency, tax, shipping price, or royalty terms.
 - Manufacturer Profile selection, assignment, and item-specific manufacturing feasibility belong to the made-to-order Order Item confirmation and fulfillment workflow.
-- Discard or deletion of a saved Personalization remains subject to future retention rules and never changes historical Order Item snapshots.
+- Hard versus soft discard or deletion of a saved Personalization remains subject to future explicit retention, legal, and authorization rules. C1 does not choose or enable either deletion model.
+- If a future approved Personalization deletion physically removes the live entity, the optional live Order Item-to-Personalization traceability reference may be severed as part of that authorized operation because historical purchase correctness does not depend on it.
+- Such severing never deletes or rewrites the Order Item, changes its Order membership or purchased Listing relationship, changes the Personalization identity value preserved in its immutable purchase snapshot, or mutates selected values, reproducible output, validation, monetary, royalty, manufacturer, or fulfillment snapshots.
+- No Personalization deletion may cascade into an Order Item or destroy or rewrite its immutable purchased Personalization snapshot.
+- While a Personalization exists, its immutable FINALIZED Revision base remains a required live relationship. That base cannot become dangling through valid MVP deletion because FINALIZED Revisions cannot be destructively deleted.
 
 ## Invariants
 
@@ -68,6 +72,7 @@ A Personalization:
 - A Personalization has no lifecycle state in MVP.
 - A Personalization is never published or converted to a Revision automatically.
 - Later Personalization changes never rewrite immutable historical Order Item snapshots.
+- Any future Personalization deletion always preserves every immutable historical Order Item purchased Personalization snapshot.
 
 ## Notes
 
@@ -79,10 +84,12 @@ Lightweight validation may occur while editing. Authoritative purchase validatio
 
 Generated SVG, geometry, text layout, image composition, decorative pattern, or other manufacturing-oriented output may remain mutable artifacts of the Personalization workflow. Whether those artifacts are persisted or regenerated remains unresolved, while an Order Item must preserve or reference the reproducible output actually used for production.
 
-Hard versus soft deletion, retention, Organization-owned or shared Personalizations, support-assisted creation, copy or adaptation to another Revision, media and file architecture, buyer-content intellectual-property rules, feasibility for an assigned Manufacturer Profile, and hybrid Ready-Made Product customization remain future concerns.
+Hard versus soft deletion, retention, Organization-owned or shared Personalizations, support-assisted creation, copy or adaptation to another Revision, media and file architecture, buyer-content intellectual-property rules, feasibility for an assigned Manufacturer Profile, and hybrid Ready-Made Product customization remain future concerns. No Personalization Tombstone or Deleted Personalization entity is introduced.
+
+Future relational persistence must allow an authorized physical deletion, if later approved, to sever only optional live traceability while preventing destructive foreign-key cascade into confirmed Order Items or their snapshots. Exact persistence and retention mechanisms remain future implementation, legal, and compliance work.
 
 ---
 
 Status: DRAFT
 
-Version: 0.4
+Version: 0.5

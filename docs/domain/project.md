@@ -15,6 +15,7 @@ A Project is responsible for:
 - preserving its relationship with the Workspace where the Project exists;
 - recording the User who created the Project record;
 - managing the Project lifecycle;
+- preserving the Project identity and child and historical references through logical deletion;
 - enforcing Workspace movement restrictions in MVP.
 
 ## Relationships
@@ -38,6 +39,9 @@ A Project:
 - An ARCHIVED Project does not permit new DRAFT Revisions, editing or finalization of existing DRAFT Revisions, or new commercialization.
 - An ARCHIVED Project may return to ACTIVE in MVP.
 - A DELETED Project is logically soft-deleted, does not permit development or new commercialization, and cannot be restored through normal user actions in MVP.
+- Transition to DELETED never destructively removes the Project identity and never cascade-deletes any Revision, Listing targeting a Revision, Personalization based on a FINALIZED Revision, confirmed Order Item, or immutable historical commerce snapshot.
+- Project deletion does not mutate Revision, Listing, Personalization, Order, or Order Item lifecycle or historical state. Existing Listings retain their lifecycle and become non-orderable through current source rules without being automatically paused or archived.
+- Destructive removal of a Project through ordinary MVP lifecycle is unsupported. DELETED is the retained logical closure state rather than a second hard-delete operation.
 - A Project may transition from ACTIVE to ARCHIVED, from ARCHIVED to ACTIVE, from ACTIVE to DELETED, or from ARCHIVED to DELETED.
 - A Project may move between Workspaces only when both Workspaces have the same owner; the move preserves its identity and Revisions.
 - Moving a Project requires the acting User to have effective write authorization for PROJECTS operations in both the source Workspace and the target Workspace, in addition to all lifecycle and ownership rules.
@@ -62,6 +66,7 @@ A Project:
 - The Effective Business Rights Holder of a Project always corresponds to the owner of its Workspace in MVP.
 - A Project always has exactly one lifecycle status: ACTIVE, ARCHIVED, or DELETED.
 - A Project never has PUBLISHED as a lifecycle status.
+- A DELETED Project always retains its identity and never destructively cascades into Revisions or historical commerce.
 - Project lifecycle changes never destroy required historical references.
 
 ## Notes
@@ -82,10 +87,14 @@ Manufacturing requirements and technology relationships will be modeled separate
 
 Any future cross-owner transfer requires a separate explicit domain decision and must not be implemented as a simple Workspace reference change.
 
+Destructive deletion means physical or domain removal of a stable entity identity such that existing references can no longer resolve it. It is distinct from Project DELETED, which is logical soft deletion. Exact retention duration, archival storage, legal deletion, privacy erasure, and pseudonymization remain future legal, compliance, and retention work.
+
+Future relational persistence must prevent destructive cascade deletion that would violate these identity and history invariants. Restrictive references, non-cascading deletion behavior, and explicit lifecycle updates may implement the rule without prescribing exact schema or table design here.
+
 PROJECTS is the permission scope for the Project and Revision domain area. Exact operation-level authorization may be refined where necessary, and Project lifecycle rules and invariants remain authoritative even when the scope is available.
 
 ---
 
 Status: DRAFT
 
-Version: 0.5
+Version: 0.6

@@ -58,6 +58,8 @@ A Listing:
 - An ACTIVE Listing has commercial activation enabled and may be publicly presented, but ACTIVE alone does not guarantee effective orderability.
 - A PAUSED Listing is temporarily disabled for new commerce, is not orderable, retains its commercial settings and history, and may return to ACTIVE.
 - An ARCHIVED Listing is permanently closed for new commerce in MVP, retains historical references, and does not return to ACTIVE.
+- A Listing cannot be destructively deleted in MVP in any lifecycle state, including DRAFT, ACTIVE, PAUSED, or ARCHIVED. ARCHIVED is the normal retained permanent closure state for new commerce.
+- Destructive cleanup of a never-used DRAFT or PAUSED Listing remains future explicit deletion and retention work. Current MVP does not use conditional hard-delete rules based on Order Item references or other mutable reference counts.
 - Activating or reactivating a Listing requires effective LISTINGS authorization, a source that permits commerce, valid current pricing information, applicable business eligibility, and every required publication and royalty validation.
 - Activating or reactivating a Listing sourced by a FINALIZED Revision requires authority to act through its immutable Publication Designer Profile, that profile to be VERIFIED with a valid non-empty current public display/studio name, valid current design-specific publication rights for that exact profile and Revision, an explicit valid royalty configuration, and currently applicable platform-accepted royalty-rights validation matching the exact current royalty validation subject.
 - For Revision-based Listing commerce, effective LISTINGS write authorization, authority through the immutable Publication Designer Profile, valid design-specific publication rights for the exact Revision and Publication Designer Profile, and accepted royalty-rights validation for the exact current royalty configuration are four independent axes. None substitutes for another.
@@ -144,6 +146,7 @@ A Listing:
 - The design-specific publication-rights context of a FINALIZED Revision Listing always pertains to that Listing's immutable source Revision and immutable Publication Designer Profile.
 - A Listing always has exactly one lifecycle state: DRAFT, ACTIVE, PAUSED, or ARCHIVED.
 - An ARCHIVED Listing never returns to active commerce in MVP.
+- A Listing is never destructively deleted in MVP.
 - A commercial source never has more than one ACTIVE Listing at the same time in MVP.
 - A Listing always uses exactly one currency in MVP.
 - An ACTIVE FINALIZED Revision Listing always preserves exactly one valid explicit current royalty configuration using PERCENTAGE, NET_ITEM_MERCHANDISE_CONTRIBUTION_V1, and HALF_UP_MINOR_UNIT_V1.
@@ -166,7 +169,9 @@ A source may later have canonical or reference media, while Listing owns or sele
 
 Revision defines immutable technical personalization capability and constraints, while a Revision-sourced Listing determines whether and under what narrower current commercial restrictions that capability is offered. Personalization remains a private buyer object without a permanent Listing relationship. Ordinary ready-made commerce does not include customization requiring fabrication or product-defining production work.
 
-Multi-currency, multiple simultaneously ACTIVE channels, manufacturer-specific offers, detailed quoting, tax and shipping price presentation, deletion and retention, public URL or slug behavior, and exact visibility of PAUSED, ARCHIVED, or non-orderable Listings remain future concerns.
+Multi-currency, multiple simultaneously ACTIVE channels, manufacturer-specific offers, detailed quoting, tax and shipping price presentation, public URL or slug behavior, and exact visibility of PAUSED, ARCHIVED, or non-orderable Listings remain future concerns.
+
+Destructive deletion means physical or domain removal of the stable Listing identity such that existing references can no longer resolve it. It is distinct from ARCHIVED lifecycle, UI hiding, and future archival or pseudonymization behavior. Destructive Listing deletion is unsupported in MVP; exact retention duration and any future cleanup of never-used Listings require separate legal, compliance, and domain work.
 
 Actual Royalty accrual is not historical state inside Listing. Order Items preserve the immutable purchased Listing reference and applicable source, Publication Designer Profile identity and publication context, merchandise amounts, currency, royalty calculation, beneficiary and rights context, commercial context, Personalization, fulfillment, and Manufacturer Profile snapshots required for historical commerce. Current Listing, Project, Workspace, or Designer Profile changes never rewrite those confirmed snapshots.
 
@@ -180,8 +185,10 @@ Concurrent royalty configuration editing, validation acceptance or invalidation,
 
 Significant creation, activation, pause, archive, pricing, and royalty-term events may later be recorded through Audit Log behavior.
 
+Future relational persistence must preserve every confirmed Order Item's purchased Listing relationship and prevent destructive cascade deletion into historical commerce. Exact foreign-key and storage mechanisms remain implementation work.
+
 ---
 
 Status: DRAFT
 
-Version: 0.8
+Version: 0.9

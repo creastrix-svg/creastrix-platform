@@ -34,7 +34,7 @@ An Order Item:
 - belongs to exactly one Order;
 - references exactly one immutable purchased Listing;
 - preserves the Publication Designer Profile identity and historical publication context inside its immutable snapshot when Revision-based, without creating a second authoritative live Designer Profile relationship;
-- may reference zero or one Personalization for traceability;
+- may reference zero or one live Personalization for optional traceability, without making that relationship authoritative for historical purchase data;
 - has exactly one assigned Manufacturer Profile when its purchased source is a FINALIZED Revision;
 - has no assigned Manufacturer Profile merely for ordinary Ready-Made Product fulfillment;
 - may be a current or frozen member of zero or more Shipments over time, subject to at most one non-CANCELLED Shipment at a time;
@@ -48,8 +48,9 @@ An Order Item:
 - An Order Item is created atomically with its Order only when Order confirmation succeeds.
 - An Order Item cannot be added to, removed from, or moved between Orders after confirmation.
 - Every Order Item references exactly one purchased Listing, and that Listing relationship cannot change after confirmation.
-- The purchased Listing remains a traceability reference, while the immutable Order Item snapshot is the authoritative historical record of the purchase.
+- The purchased Listing remains a resolvable immutable traceability relationship for the confirmed Order Item because Listings cannot be destructively deleted in MVP, while the immutable Order Item snapshot is the authoritative historical record of purchased terms.
 - An Order Item preserves exactly one immutable source identity and source type snapshot derived from its purchased Listing at confirmation. The source type is either one FINALIZED Revision or one Ready-Made Product.
+- The source snapshot provides historical autonomy from later source mutation but does not permit destructive deletion of the live purchased Listing or its stable FINALIZED Revision or Ready-Made Product source. Valid MVP deletion rules retain all three identities.
 - The source type determines the MVP fulfillment path: a FINALIZED Revision uses made-to-order fulfillment, while a Ready-Made Product uses existing-stock ready-made fulfillment.
 - No separate mutable fulfillment path is stored merely to duplicate the immutable source type.
 - The purchase-time snapshot preserves the Listing identity, source identity and type, source Workspace identity, Workspace owner identity and type, applicable Project business-rights or Ready-Made commercial context, and purchased commercial or public presentation required for history.
@@ -101,7 +102,9 @@ An Order Item:
 - Personalization is optional and may be used only for an applicable FINALIZED Revision-sourced Order Item in MVP.
 - When Personalization is used, it must belong to the Buyer User of the Order, use the applicable FINALIZED Revision base, and pass current required validation before confirmation.
 - A Personalization reference is for traceability. The authoritative purchased Personalization snapshot preserves the Personalization identity where applicable, FINALIZED Revision identity, selected buyer values, reproducible generated output required for manufacturing, and relevant validation context.
-- Later Personalization edits or deletion never change the purchased Personalization snapshot.
+- The optional live Personalization relationship is convenience traceability and is not required for historical snapshot correctness. If a future approved physical Personalization deletion removes the live entity, this optional relationship may be severed without changing the Order Item or its immutable snapshot.
+- Severing the live relationship never changes Order membership, purchased Listing, preserved Personalization identity value, selected values or output, validation context, or any monetary, royalty, manufacturer, or fulfillment snapshot.
+- Later Personalization edits, discard, or deletion never change or destroy the purchased Personalization snapshot, and no Personalization foreign-key cascade may delete or rewrite the Order Item or its history.
 - A made-to-order Order Item has exactly one assigned Manufacturer Profile at confirmation.
 - The assigned Manufacturer Profile must be VERIFIED at confirmation, item-specific manufacturing eligibility must succeed, and required Manufacturer acceptance must already have occurred.
 - VERIFIED status alone does not establish item-specific capability, available capacity, pricing, acceptance, lead time, or product compliance.
@@ -170,6 +173,7 @@ An Order Item:
 - An Order Item always belongs to exactly one Order.
 - Its Order membership never changes after confirmation.
 - An Order Item always references exactly one immutable purchased Listing.
+- The purchased Listing relationship of a confirmed Order Item always remains resolvable in MVP.
 - An Order Item always preserves exactly one immutable source identity and source type snapshot.
 - The source type is always either exactly one FINALIZED Revision or exactly one Ready-Made Product.
 - Quantity is always a positive integer.
@@ -196,6 +200,7 @@ An Order Item:
 - A Ready-Made Product Order Item never has a Designer Review in the current MVP.
 - The purchase-time commercial, source, Workspace, and royalty context never changes after confirmation.
 - When Personalization is used, the authoritative purchased Personalization snapshot never changes after confirmation.
+- Future Personalization deletion never destroys or rewrites an authoritative purchased Personalization snapshot.
 - A made-to-order Order Item always has exactly one assigned Manufacturer Profile.
 - A confirmed made-to-order Order Item always preserves an immutable, authoritative confirmation-time fact that required Manufacturer acceptance was obtained.
 - A confirmed made-to-order Order Item always preserves its explicitly established Manufacturer compensation and User or Organization beneficiary basis.
@@ -215,6 +220,8 @@ An Order Item:
 
 The immutable source snapshot does not create a second authoritative direct source relationship. The purchased Listing remains the entity relationship, and the snapshot provides historical autonomy from current Listing and source state.
 
+Snapshot autonomy protects historical terms from later mutation; it is not permission to destructively delete stable Listing, FINALIZED Revision, or Ready-Made Product identities that remain required by domain relationships.
+
 Order Item does not own Inventory, and no Inventory or Reservation entity is introduced in MVP. Temporary reservation, returns, restocking, and technical locking remain future integration concerns. Payment-resolution failure may lead to Order Item cancellation, but Payment never directly releases ready-made stock allocation.
 
 Shipment provides delivery evidence toward the FULFILLED transition, while Shipment lifecycle states are not duplicated in the Order Item lifecycle. Manufacturing, Payment, Payment Allocation, and refund substates also remain outside the Order Item lifecycle.
@@ -227,8 +234,10 @@ Designer Profile publication context is separate from Royalty beneficiary contex
 
 The Order preserves the current Creastrix seller-of-record and merchant-of-record context and its final payable snapshot. Detailed tax, payment-fee, refund-policy, and replacement-commerce rules remain future domain concerns.
 
+Future relational persistence must prevent destructive cascade deletion from Listing or source entities into confirmed Order Items. If future approved Personalization deletion physically removes a live Personalization, persistence may sever only the optional traceability relationship while retaining the complete immutable snapshot and Order Item identity. Exact schema and foreign-key mechanisms remain implementation work.
+
 ---
 
 Status: DRAFT
 
-Version: 0.8
+Version: 0.9

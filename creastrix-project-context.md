@@ -85,10 +85,12 @@ The following specifications are DRAFT. They represent active architecture work 
 - Project belongs to exactly one Workspace.
 - Project has no separate Business Owner in MVP.
 - Project Effective Business Rights Holder derives from the Workspace owner.
+- Project DELETED is logical soft deletion. It retains Project identity and never cascade-deletes or mutates Revisions, Listings, Personalizations, confirmed commerce, or immutable historical snapshots.
 - Moving a Project requires PROJECTS write authorization in both source and target Workspaces; DRAFT or PAUSED Listings additionally require LISTINGS write authorization in both.
 - Ready-Made Product is the stable identity of one independently stocked physical product configuration and belongs to exactly one Workspace.
 - The Workspace owner provides the platform-recognized commercial context in which a Ready-Made Product is managed; this does not prove legal ownership, physical custody, seller-of-record, manufacturer, or supplier status.
 - Ready-Made Product has the ACTIVE and ARCHIVED lifecycle and may transition in either direction.
+- Ready-Made Product cannot be destructively deleted in MVP. ARCHIVED is its retained non-active state, while exact future deletion and retention policy remains separate work.
 - Ready-Made Product uses simple non-negative available quantity in MVP; an allocation may be confirmed only when sufficient quantity is available at confirmation, and the same available stock capacity cannot be confirmed for more than one Order Item. Lifecycle remains independent from stock availability.
 - One independently stocked physical configuration is one Ready-Made Product in MVP; no Product Variant entity exists.
 - Ready-Made Product exists independently from Listing and is never published directly.
@@ -97,6 +99,7 @@ The following specifications are DRAFT. They represent active architecture work 
 - Revision itself carries the DRAFT and FINALIZED lifecycle; no separate Project Draft entity exists.
 - Multiple DRAFT Revisions may be developed in parallel.
 - A FINALIZED Revision has immutable product-defining content.
+- A FINALIZED Revision cannot be destructively deleted in MVP, protecting Listing sources, Personalization bases, Base Revision provenance, and historical Order Item source traceability. DRAFT Revision discard or deletion remains unresolved future work.
 - Designer Profile is the stable public professional design identity and platform-verified publication capability of exactly one User or Organization.
 - A Designer Profile has exactly one immutable Profile Holder of type USER or ORGANIZATION, never both. A User may directly hold no more than one personal Designer Profile, and an Organization may hold no more than one Designer Profile in MVP.
 - Organization-held Designer Profiles through which a User is authorized to act remain Organization-held and do not count against the User's personal Designer Profile cardinality.
@@ -120,6 +123,7 @@ The following specifications are DRAFT. They represent active architecture work 
 - LISTINGS authorization and business eligibility are separate requirements.
 - A source may have multiple Listings over time but no more than one ACTIVE Listing at the same time in MVP.
 - Listing has the DRAFT, ACTIVE, PAUSED, and ARCHIVED lifecycle; ACTIVE does not guarantee effective orderability.
+- Listing cannot be destructively deleted in MVP in any lifecycle state. ARCHIVED is the retained terminal commercial state for new commerce.
 - Source archive or loss of required business eligibility makes an existing Listing non-orderable without changing Listing lifecycle automatically.
 - A Project cannot move between Workspaces while a Listing targeting any of its Revisions is ACTIVE.
 - A Ready-Made Product Listing uses a fixed unit sale price, while a Revision-based Listing may use base or display pricing before confirmed Order Item merchandise amounts are determined.
@@ -141,6 +145,7 @@ The following specifications are DRAFT. They represent active architecture work 
 - Initial buyer creation occurs through a suitable ACTIVE Revision-sourced Listing, after which the saved Personalization remains independent from that Listing.
 - Personalization has no lifecycle in MVP. Validity is evaluated separately, and the saved object may be temporarily invalid while editing.
 - Personalization remains mutable and reusable after purchase, while Order Item snapshots the purchased configuration immutably.
+- A future approved physical Personalization deletion may sever only the optional live Order Item traceability relationship. The immutable purchased Personalization snapshot remains authoritative and unchanged, and deletion never cascades into confirmed commerce.
 - AI-assisted generation and generated artifacts remain workflow inside Personalization and do not change Created By.
 - Personalization never mutates or automatically becomes a Revision.
 - Ordinary Ready-Made Product fulfillment does not use Personalization in MVP.
@@ -230,6 +235,7 @@ The following specifications are DRAFT. They represent active architecture work 
 - TAX refund amount is explicit input from an approved authoritative tax or refund workflow. Core refund allocation does not calculate VAT or jurisdictional tax and never adds tax or shipping implicitly to ITEM_MERCHANDISE.
 - Cancellation preserves all confirmed snapshots, and partial-quantity cancellation is unsupported in MVP.
 - Later Listing, source, Personalization, Workspace access, Designer verification, Manufacturer Profile, or royalty-term changes never rewrite confirmed commerce.
+- No Deleted Listing, source tombstone, Personalization tombstone, generic historical-source, or retention entity is introduced for C1; existing lifecycles, stable identities, and immutable Order Item snapshots are sufficient.
 - Order owns one immutable confirmed delivery destination, and every Shipment of that Order uses it without an independent divergent destination.
 - Shipment belongs to one Order and groups full-quantity Order Items from that Order. Partial-quantity shipment and Shipment Item are unsupported in MVP.
 - Shipment preserves one immutable fulfillment-context snapshot established at creation: made-to-order context captures one Manufacturer Profile identity through Order Items, ready-made context contains an opaque platform-controlled context value, and the paths never mix or switch; the snapshot is an embedded domain value rather than a separate entity.
@@ -256,6 +262,6 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Next Steps
 
-1. Add historical deletion protection and terminal non-delivery resolution without reshipment (C1/C2 / F-05/F-06).
+1. Add terminal non-delivery resolution without reshipment and protect ready-made stock from incorrect release after post-dispatch loss (C2 / F-06).
 2. Start the Ready-Made purchase/payment implementation vertical slice with remaining domain work continuing in parallel.
 3. Before any functional Payout implementation milestone, separately define and approve the first concrete versioned Payout release policy.

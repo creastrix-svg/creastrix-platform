@@ -38,6 +38,9 @@ A Ready-Made Product:
 - A Ready-Made Product has the lifecycle state ACTIVE or ARCHIVED and may transition from ACTIVE to ARCHIVED or from ARCHIVED to ACTIVE.
 - An ACTIVE Ready-Made Product is operational and may participate in commerce subject to Listing, Order, and other applicable domain rules, but ACTIVE does not mean published or in stock.
 - An ARCHIVED Ready-Made Product is not intended for new commercial use, retains required historical references, and may return to ACTIVE.
+- A Ready-Made Product cannot be destructively deleted in MVP, whether ACTIVE, ARCHIVED, listed, purchased, allocated, or unused. ARCHIVED remains the retained non-active lifecycle state and no DELETED state is introduced.
+- The global no-destructive-delete rule protects immutable Listing source relationships, historical ready-made Order Item source identity, confirmed allocation history, and stable commercial product identity without conditional predicates based on Listing count, Order Item count, stock quantity, or allocation state.
+- Any future deletion of a never-commercialized Ready-Made Product requires separate explicit deletion and retention rules.
 - A Ready-Made Product exists independently from Listing, may exist without a Listing, and is never published directly.
 - A new Listing may be created for a Ready-Made Product only while the product is ACTIVE, and no more than one Listing for that product may be ACTIVE at the same time in MVP.
 - If a Ready-Made Product becomes ARCHIVED, existing Listing lifecycle status does not change automatically, but the Listing becomes non-orderable. Orderability may recover after the product returns to ACTIVE when all other conditions hold.
@@ -66,6 +69,7 @@ A Ready-Made Product:
 - A Ready-Made Product always has exactly one immutable Created By User.
 - A Ready-Made Product always has exactly one lifecycle state: ACTIVE or ARCHIVED.
 - A Ready-Made Product never has PUBLISHED or DELETED as a lifecycle state in MVP.
+- A Ready-Made Product is never destructively deleted in MVP.
 - Available quantity is always a non-negative integer.
 - The same available stock capacity is never confirmed for more than one Order Item.
 - A Ready-Made Product lifecycle remains independent from its stock availability.
@@ -89,10 +93,14 @@ Creastrix-first selling is platform policy rather than a Ready-Made Product inva
 
 Order Items preserve the purchased-product and commercial snapshots required for history without depending on the current mutable presentation of a Ready-Made Product.
 
+Destructive deletion means physical or domain removal of the stable Ready-Made Product identity such that existing references can no longer resolve it. It is distinct from ARCHIVED lifecycle, which remains reversible under current rules. Exact retention duration, legal deletion, privacy treatment, archival storage, and pseudonymization remain future legal and compliance work.
+
+Future relational persistence must prevent destructive cascade deletion that would break Listing source or historical Order Item references. Exact database constraints remain implementation work.
+
 Significant creation, lifecycle, and quantity events may later be recorded through Audit Log behavior.
 
 ---
 
 Status: DRAFT
 
-Version: 0.5
+Version: 0.6
