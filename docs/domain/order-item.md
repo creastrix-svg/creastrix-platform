@@ -15,6 +15,7 @@ An Order Item is responsible for:
 - preserving an immutable purchase-time commercial and source snapshot;
 - recording positive integer quantity, currency, unit merchandise price, and line merchandise amount;
 - preserving its immutable confirmed discount share for captured-funds attribution;
+- preserving its immutable confirmation-time publication context when Revision-based;
 - preserving its immutable confirmation-time royalty configuration, calculation, beneficiary, and rights context when Revision-based;
 - preserving optional Personalization traceability and the authoritative purchased Personalization snapshot;
 - establishing confirmed Ready-Made Product stock allocation when applicable;
@@ -31,6 +32,7 @@ An Order Item:
 
 - belongs to exactly one Order;
 - references exactly one immutable purchased Listing;
+- preserves the Publication Designer Profile identity and historical publication context inside its immutable snapshot when Revision-based, without creating a second authoritative live Designer Profile relationship;
 - may reference zero or one Personalization for traceability;
 - has exactly one assigned Manufacturer Profile when its purchased source is a FINALIZED Revision;
 - has no assigned Manufacturer Profile merely for ordinary Ready-Made Product fulfillment;
@@ -50,6 +52,14 @@ An Order Item:
 - No separate mutable fulfillment path is stored merely to duplicate the immutable source type.
 - The purchase-time snapshot preserves the Listing identity, source identity and type, source Workspace identity, Workspace owner identity and type, applicable Project business-rights or Ready-Made commercial context, and purchased commercial or public presentation required for history.
 - The purchase-time commercial context does not identify the Workspace owner automatically as seller, merchant, tax merchant, or payout recipient.
+- Every Revision-based Order Item preserves an immutable publication-context snapshot derived from its purchased Listing at confirmation.
+- The Revision-based publication snapshot preserves the immutable Publication Designer Profile identity, Profile Holder type and identity, the valid non-empty public display/studio name copied from that profile's current publication identity at confirmation, the confirmation-time facts that required profile publication eligibility and design-specific publication-rights validation passed, and sufficient rights-context or source basis for historical traceability.
+- Order confirmation for a Revision-based Item requires the purchased Listing's immutable Publication Designer Profile to remain VERIFIED and the applicable current design-specific publication rights to remain valid.
+- The publication-context snapshot does not copy the full Designer Profile, bio, portfolio, media, or mutable current status. It does not establish authorship, intellectual-property ownership, Project business rights, Royalty beneficiary identity, payout identity, seller identity, or manufacturing authority.
+- The purchased Listing remains the authoritative entity relationship through which the Publication Designer Profile was selected. Preserving its identity in the Order Item snapshot provides historical autonomy without creating another mutable ownership or publication relationship.
+- A Ready-Made Product Order Item has no Designer Profile publication context merely because its source is ready-made.
+- The current public display/studio name of a Designer Profile may change prospectively, but a later rename never changes the confirmation-time name in an immutable Order Item publication-context snapshot.
+- Later Designer Profile status, other presentation, Profile Holder authority, or design-specific publication-rights changes never rewrite the immutable publication-context snapshot.
 - Order Item quantity must be a positive integer.
 - Quantity greater than one represents multiple units of the same confirmed purchased configuration. Different Personalizations or other purchased configurations require separate Order Items.
 - Every Order Item uses the currency of its Order.
@@ -154,6 +164,9 @@ An Order Item:
 - The sum of all confirmed item discount shares in an Order always equals that Order's aggregate confirmed discount total.
 - Net item merchandise contribution is always non-negative.
 - Every Revision-based Order Item always preserves exactly one immutable royalty decision and calculation context using PERCENTAGE, NET_ITEM_MERCHANDISE_CONTRIBUTION_V1, and HALF_UP_MINOR_UNIT_V1.
+- Every Revision-based Order Item always preserves exactly one immutable publication-context snapshot identifying the Publication Designer Profile and its confirmation-time Holder and validation context.
+- Every Revision-based Order Item publication-context snapshot always preserves the valid non-empty public display/studio name used by its Publication Designer Profile at confirmation.
+- A Ready-Made Product Order Item never has a Designer Profile publication-context snapshot merely because of its source type.
 - A Revision-based royalty rate is always an integer from zero through 10,000 basis points inclusive.
 - Royalty basis amount always equals net item merchandise contribution, and calculated original royalty amount always equals the HALF_UP_MINOR_UNIT_V1 line-level result of applying the immutable rate to that basis.
 - A positive royalty rate always preserves exactly one immutable USER or ORGANIZATION beneficiary context. An explicitly permitted zero rate may preserve no monetary beneficiary.
@@ -186,10 +199,12 @@ Shipment provides delivery evidence toward the FULFILLED transition, while Shipm
 
 Royalty accrual and append-only reversal history belong to Royalty. Royalty recognition after accepted capture does not mean the amount has been earned, become payable or payout-eligible, or been transferred. Earning, release, and Payout rules remain future work. Payment Allocation explains captured funds without becoming the Royalty ledger or being rewritten by Royalty.
 
+Designer Profile publication context is separate from Royalty beneficiary context, Project business rights, authorship, intellectual-property ownership, seller identity, and Manufacturer Profile capability. A future Designer Review may identify the publication profile from the immutable Order Item snapshot without changing the current Order Item model or introducing review rules here.
+
 The Order preserves the current Creastrix seller-of-record and merchant-of-record context and its final payable snapshot. Detailed tax, payment-fee, refund-policy, and replacement-commerce rules remain future domain concerns.
 
 ---
 
 Status: DRAFT
 
-Version: 0.5
+Version: 0.6

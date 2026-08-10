@@ -32,6 +32,7 @@ The following specifications are DRAFT. They represent active architecture work 
 - Ready-Made Product
 - Project
 - Revision
+- Designer Profile
 - Listing
 - Personalization
 - Manufacturer Profile
@@ -87,6 +88,15 @@ The following specifications are DRAFT. They represent active architecture work 
 - Revision itself carries the DRAFT and FINALIZED lifecycle; no separate Project Draft entity exists.
 - Multiple DRAFT Revisions may be developed in parallel.
 - A FINALIZED Revision has immutable product-defining content.
+- Designer Profile is the stable public professional design identity and platform-verified publication capability of exactly one User or Organization.
+- A Designer Profile has exactly one immutable Profile Holder of type USER or ORGANIZATION, never both. A User may hold no more than one personal Designer Profile, and an Organization may hold no more than one Designer Profile in MVP.
+- Designer Profile Created By is immutable record-creation provenance and does not determine the Profile Holder, authorship, intellectual-property ownership, publication rights, Royalty beneficiary, payout identity, or permanent management authority.
+- Designer Profile eligibility status is UNVERIFIED, VERIFIED, or SUSPENDED. Profile-level verification is separate from design-specific publication-rights validation.
+- Every Revision-based Listing selects exactly one immutable Publication Designer Profile at creation and preserves sufficient current design-specific publication-rights context or basis. A Ready-Made Product Listing has no Publication Designer Profile.
+- Creating or publishing a Revision-based Listing requires effective LISTINGS authorization in its source-derived Workspace and independent authority to act through the selected Designer Profile. Activation, reactivation, and effective orderability additionally require current profile and design-specific rights eligibility.
+- Designer Profile has no mandatory Workspace relationship and is independent from Project ownership, Project business rights, legal authorship, intellectual-property ownership, Manufacturer Profile capability, and Royalty beneficiary identity.
+- Loss of Designer Profile or design-specific rights eligibility leaves Listing lifecycle unchanged but makes an ACTIVE Revision-based Listing non-orderable while the loss continues.
+- A Revision-based Order Item preserves an immutable historical publication-context snapshot without creating a second authoritative live Designer Profile relationship.
 - Listing represents the commercial and public offer of exactly one immutable commercial source: a FINALIZED Revision or a Ready-Made Product, never both.
 - Listing Workspace context is derived from its commercial source, and source write permission is not required merely to manage Listing commercial data.
 - LISTINGS authorization and business eligibility are separate requirements.
@@ -192,7 +202,6 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Next Steps
 
-1. Review and finalize the Royalty draft.
-2. Model Designer Profile.
-3. Review Payout when beneficiary transfer requirements are modeled.
-4. Continue with Reviews, Notifications, Conversations, and Audit Log as dependencies become clear.
+1. Review and finalize the Designer Profile draft.
+2. Review and model Payout when beneficiary transfer requirements are modeled.
+3. Continue with Reviews, Notifications, Conversations, and Audit Log as dependencies become clear.
