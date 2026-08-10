@@ -55,25 +55,32 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Important Decisions
 
-- User represents identity.
+- User represents identity and has exactly one account and access status: ACTIVE, SUSPENDED, or DEACTIVATED. A new User starts ACTIVE.
+- Ordinary User-driven or delegated authority requires ACTIVE User status in addition to every other applicable authorization and domain rule. ACTIVE status alone grants no business authority.
+- User suspension or deactivation preserves identity, history, Memberships, ownership, Profile Holder identity, provenance, buyer, reviewer, beneficiary, and historical snapshot relationships without mutating them automatically.
+- User status constrains authority exercised by that User but does not by itself block independently authorized platform workflows.
+- Structural ACTIVE Organization OWNER and ACTIVE Workspace ADMIN Membership invariants remain separate from User actionability.
 - User Profile stores personal information.
 - Organization is a first-class business participant.
 - Organization Membership is a real domain entity.
-- An ACTIVE Organization Membership with the role OWNER is the current source of general organization-level authority when no more specific delegation rule exists.
+- An ACTIVE Organization Membership with the role OWNER is the structural source of general organization-level authority when no more specific delegation rule exists. Ordinary OWNER authority additionally requires the associated User to be ACTIVE.
+- An Organization is operationally orphaned as a derived condition when it has no User who is both ACTIVE and an ACTIVE Organization OWNER. No ORPHANED state or separate recovery entity exists.
+- After independent identity and business-control verification, exceptional platform Organization recovery may restore or establish the minimum actionable OWNER and affected Workspace ADMIN representation without rewriting Organization or Workspace ownership, domain history, or prior Membership history.
 - Organization does not by itself determine seller-of-record, merchant identity, economic beneficiary, payment recipient, or payout identity. Creastrix is the single buyer-facing seller-of-record and merchant-of-record for current MVP Orders.
 - Workspace belongs to exactly one User or Organization.
 - Workspace remains a common operational and access boundary and is not limited to design work.
 - Workspace ownership and Workspace access are separate concepts.
 - In a User-owned Workspace, the User owner remains an ACTIVE ADMIN in MVP and cannot lose administrative access through normal Workspace membership changes.
-- Workspace Membership authorization combines membership status, Workspace role, the relevant permission scope, and rules of the requested domain operation.
-- An ACTIVE ADMIN has full Workspace access in MVP, while EDITOR and VIEWER operate only within explicitly granted scopes.
+- Effective ordinary Workspace Membership authorization combines ACTIVE User status, ACTIVE membership status, Workspace role, the relevant permission scope, and rules of the requested domain operation.
+- For an ACTIVE User, an ACTIVE ADMIN has full Workspace access in MVP, while EDITOR and VIEWER operate only within explicitly granted scopes.
 - PROJECTS is the Workspace permission scope for Project and Revision work.
 - READY_MADE_PRODUCTS is the Workspace permission scope for Ready-Made Product management, including simple MVP available quantity.
 - LISTINGS is the Workspace permission scope for Listing commercial management.
 - PROJECTS, READY_MADE_PRODUCTS, and LISTINGS are independent scopes and do not grant access to one another.
 - Future domain areas may introduce additional permission scopes without automatically expanding existing EDITOR or VIEWER access.
 - Organization Membership does not automatically grant Workspace access or Workspace permission scopes.
-- Every Organization-owned Workspace retains at least one User who is both an ACTIVE Organization OWNER and an ACTIVE Workspace ADMIN.
+- Every Organization-owned Workspace structurally retains at least one User who is both an ACTIVE Organization OWNER and an ACTIVE Workspace ADMIN. User account actionability is evaluated separately.
+- Suspending or deactivating a User does not mutate Workspace Membership or ownership. A User-owned Workspace remains owned by its User and retains that User's structurally ACTIVE ADMIN Membership, while ordinary access is unavailable until the User becomes ACTIVE again; ownership transfer and special personal Workspace recovery are unsupported in MVP.
 - Scoped Workspace permissions never grant ownership or business rights.
 - Project belongs to exactly one Workspace.
 - Project has no separate Business Owner in MVP.
@@ -91,7 +98,8 @@ The following specifications are DRAFT. They represent active architecture work 
 - Multiple DRAFT Revisions may be developed in parallel.
 - A FINALIZED Revision has immutable product-defining content.
 - Designer Profile is the stable public professional design identity and platform-verified publication capability of exactly one User or Organization.
-- A Designer Profile has exactly one immutable Profile Holder of type USER or ORGANIZATION, never both. A User may hold no more than one personal Designer Profile, and an Organization may hold no more than one Designer Profile in MVP.
+- A Designer Profile has exactly one immutable Profile Holder of type USER or ORGANIZATION, never both. A User may directly hold no more than one personal Designer Profile, and an Organization may hold no more than one Designer Profile in MVP.
+- Organization-held Designer Profiles through which a User is authorized to act remain Organization-held and do not count against the User's personal Designer Profile cardinality.
 - Designer Profile Created By is immutable record-creation provenance and does not determine the Profile Holder, authorship, intellectual-property ownership, publication rights, Royalty beneficiary, payout identity, or permanent management authority.
 - Designer Profile eligibility status is UNVERIFIED, VERIFIED, or SUSPENDED. Profile-level verification is separate from design-specific publication-rights validation.
 - Every Revision-based Listing selects exactly one immutable Publication Designer Profile at creation and preserves sufficient current design-specific publication-rights context or basis. A Ready-Made Product Listing has no Publication Designer Profile.
@@ -231,6 +239,7 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Next Steps
 
-1. Review and finalize Designer Review DRAFT.
-2. Model Manufacturer Review as a separate domain using its own purchase and fulfillment eligibility.
-3. Continue with Notifications, Conversations, and Audit Log as dependencies become clear.
+1. Define and harden the independent royalty-rights validation boundary for Revision-based Listings (A2 / F-04).
+2. Harden external money boundaries: durable pre-Order provider authorization commitment and explicit fail-closed Payout release-policy behavior (B1/B2 / F-02/F-03).
+3. Add historical deletion protection and terminal non-delivery resolution without reshipment (C1/C2 / F-05/F-06).
+4. Start the Ready-Made purchase/payment implementation vertical slice with remaining domain work continuing in parallel.

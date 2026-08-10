@@ -16,7 +16,7 @@ A Workspace is responsible for:
 - providing the platform-recognized commercial context in which Ready-Made Products are managed;
 - managing participant access through scoped Workspace Membership authorization;
 - supporting distinct domain access areas without mixing participant authorization with ownership;
-- ensuring that the Workspace remains actively administered.
+- preserving the required structural administrative representation.
 
 ## Relationships
 
@@ -26,7 +26,7 @@ A Workspace:
 - contains zero or more Projects;
 - contains zero or more Ready-Made Products;
 - has one or more Workspace Memberships;
-- is administered by at least one ACTIVE Workspace Membership with the role ADMIN;
+- retains at least one ACTIVE Workspace Membership with the role ADMIN;
 - exists independently from Organization Memberships.
 
 ## Business Rules
@@ -38,15 +38,19 @@ A Workspace:
 - When a User-owned Workspace is created, the owner receives an ACTIVE Workspace Membership with the role ADMIN.
 - In a User-owned Workspace, the User owner must remain an ACTIVE ADMIN for as long as the User remains the Workspace owner in MVP.
 - The User owner's Workspace Membership cannot be removed, suspended, or changed from ADMIN through normal Workspace Membership administration while ownership remains unchanged.
-- An Organization-owned Workspace may be created only by a User who has an ACTIVE Organization Membership with the role OWNER in the owning Organization.
+- An Organization-owned Workspace may be created only by an ACTIVE User who has an ACTIVE Organization Membership with the role OWNER in the owning Organization.
 - The ACTIVE OWNER creating an Organization-owned Workspace receives the initial ACTIVE Workspace Membership with the role ADMIN.
 - Every Organization-owned Workspace must always retain at least one User who simultaneously has an ACTIVE Organization Membership with the role OWNER in the owning Organization and an ACTIVE Workspace Membership with the role ADMIN in that Workspace.
+- The Organization OWNER and Workspace ADMIN intersection is structural and does not require the User account itself to be ACTIVE. Ordinary Workspace administration through that intersection additionally requires the User to be ACTIVE.
 - In an Organization-owned Workspace, individual ADMIN Users may be replaced as long as the Workspace retains at least one ACTIVE Workspace Membership with the role ADMIN and at least one User satisfying the Organization ACTIVE OWNER and Workspace ACTIVE ADMIN requirement.
 - If a User is the last User satisfying both requirements for an Organization-owned Workspace, no operation may cause that User to stop satisfying either requirement until that Workspace has another User satisfying both.
 - External Users and non-OWNER Organization Users may hold independently granted Workspace ADMIN Memberships, but they cannot be the only remaining administrative representation of the owning Organization.
 - A Workspace cannot be left without an ACTIVE administrator.
 - Access to Workspace resources is managed through scoped Workspace Memberships.
-- Effective Workspace authorization is determined by Membership status, Workspace role, the relevant permission scope, and rules of the requested domain operation.
+- Effective ordinary Workspace authorization requires ACTIVE User status, ACTIVE Workspace Membership status, the required Workspace role, the relevant permission scope, and satisfaction of the requested domain operation's rules.
+- ACTIVE User status alone does not provide Workspace access or business authority.
+- A SUSPENDED or DEACTIVATED User cannot exercise ordinary Workspace authority even when the User's Workspace Membership remains ACTIVE.
+- A User account status change does not automatically mutate Workspace Membership status, role, or permission scopes and does not change Workspace ownership.
 - A non-ADMIN Workspace role alone does not provide access to every Workspace resource or domain area.
 - Different Workspace domain areas may use different permission scopes.
 - A newly introduced permission scope is not granted automatically to existing EDITOR or VIEWER Memberships.
@@ -59,6 +63,11 @@ A Workspace:
 - The Workspace owner provides the platform-recognized commercial context in which Ready-Made Products in that Workspace are managed.
 - The commercial context of a Ready-Made Product does not establish legal title, physical custody, seller-of-record, manufacturer, supplier, importer, brand ownership, or intellectual-property ownership.
 - The Workspace context for Listing authorization is derived from the Listing's immutable commercial source; Listing has no separate Workspace ownership relationship in MVP.
+- If the User owner of a User-owned Workspace is SUSPENDED or DEACTIVATED, the owner remains the structurally ACTIVE ADMIN and Workspace ownership remains unchanged, but ordinary Workspace authority through that User is unavailable until the User becomes ACTIVE again.
+- User-owned Workspace ownership cannot be transferred through account suspension, deactivation, or Workspace Membership administration in MVP. No special personal Workspace recovery or ownership-transfer mechanism is introduced by this specification version.
+- An Organization-owned Workspace may remain structurally valid while its required Organization OWNER and Workspace ADMIN representation is not actionable because the associated User is not ACTIVE.
+- Exceptional platform Organization recovery may establish the minimum actionable Organization OWNER and Workspace ADMIN representation for an affected Organization-owned Workspace after the required independent verification.
+- User status constrains authority exercised by that User but does not by itself block independently authorized platform workflows, including internal security, moderation, reconciliation, finance, Ready-Made Product fulfillment, or Organization recovery workflows.
 
 ## Invariants
 
@@ -86,10 +95,12 @@ Projects and Ready-Made Products are the currently specified resource relationsh
 
 Workspace creation and its initial ACTIVE ADMIN Membership are atomic, so every valid Workspace has one or more Workspace Memberships.
 
+ACTIVE ADMIN requirements in this specification are structural Membership invariants. Effective ordinary administration additionally requires an ACTIVE associated User.
+
 A User may retain an independently granted Workspace Membership after leaving an Organization, subject to future platform policy. Such a User cannot be the sole User satisfying the Organization ACTIVE OWNER and Workspace ACTIVE ADMIN invariant.
 
 ---
 
 Status: DRAFT
 
-Version: 0.7
+Version: 0.8
