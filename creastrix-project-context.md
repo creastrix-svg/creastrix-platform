@@ -185,7 +185,15 @@ The following specifications are DRAFT. They represent active architecture work 
 - Outbound Payout execution is economically idempotent: one Payout can cause at most one outbound economic transfer, and lost provider responses are reconciled through the same stable submission identity rather than an independent transfer.
 - Reversal during PROCESSING or after SUCCEEDED never rewrites the attempt; derived recovery exposure may result.
 - Recovery, provider-return treatment, and any balance domain remain future production policy and architecture work and must preserve immutable Payout history.
-- A deterministic Refund Allocation Selection Policy remains a separate IMPORTANT production gate before production refunds or Payout execution because it determines Allocation reversals, Manufacturer compensation outstanding, refunded Royalty basis, Royalty reversal, Payout source outstanding, and merchandise, shipping, and tax refund attribution.
+- The approved deterministic MVP Refund Allocation Selection Policy is PLATFORM_FIRST_WITH_ROYALTY_NO_SUBSIDY_SAFETY_FLOOR_V1. It translates immutable buyer-facing refund components into exact Payment Allocation REVERSALS independently from mutable Listing, Profile, Manufacturer Profile, or Workspace state.
+- No economically unscoped accepted refund exists in MVP. Allowed embedded refund component types are ITEM_MERCHANDISE for one exact Order Item, Order-level SHIPPING, and Order-level TAX; their positive Payment-currency amounts sum exactly to the accepted refund amount.
+- An accepted Payment refund preserves its immutable normalized component snapshot and policy version. The accepted fact, snapshot, and complete positive REVERSAL set are recognized atomically, and the REVERSALS sum exactly to both component total and accepted refund amount without creating a Refund or Refund Component entity.
+- Ready-made ITEM_MERCHANDISE refund reverses only its Item's ITEM_PROCEEDS. Made-to-order refund follows cumulative platform-first targets while retaining enough ITEM_PROCEEDS to support authoritative remaining Royalty and reversing MANUFACTURING_COMPENSATION only when the safety floor requires it.
+- After every cumulative accepted made-to-order Item refund prefix, Manufacturer compensation outstanding plus authoritative Royalty outstanding cannot exceed unreversed net item merchandise amount. The authoritative Royalty amount derives from immutable Order Item royalty terms and accepted refund economics rather than asynchronous Royalty entity recognition.
+- Payment Allocation refund targets and Royalty reversal use compatible cumulative calculations and the same canonical accepted-refund order of immutable platform-accepted timestamp followed by refund-event identity, preventing path-dependent rounding across sequential refunds.
+- Before the first provider refund command, a durable workflow or integration commitment freezes one stable submission identity, Payment and provider context, amount, currency, exact component instruction, and policy version. MVP permits at most one active or economically unknown refund submission per Payment, reserves its capacities, and reconciles the same provider operation rather than blindly retrying.
+- Durable refund commitment and PENDING-to-PROCESSING Payout submission use one serialized ordering for sources the frozen instruction would economically reduce. Unrelated sources are not blocked; a Payout submission that commits first proceeds under existing PROCESSING and recovery semantics.
+- TAX refund amount is explicit input from an approved authoritative tax or refund workflow. Core refund allocation does not calculate VAT or jurisdictional tax and never adds tax or shipping implicitly to ITEM_MERCHANDISE.
 - Cancellation preserves all confirmed snapshots, and partial-quantity cancellation is unsupported in MVP.
 - Later Listing, source, Personalization, Workspace access, Designer verification, Manufacturer Profile, or royalty-term changes never rewrite confirmed commerce.
 - Order owns one immutable confirmed delivery destination, and every Shipment of that Order uses it without an independent divergent destination.
@@ -214,6 +222,6 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Next Steps
 
-1. Define and approve a deterministic Refund Allocation Selection Policy.
-2. Perform one final focused commerce and financial consistency review after that policy is integrated.
+1. Perform final focused commerce/financial consistency review after Refund Allocation Selection Policy integration.
+2. Resolve remaining production legal/tax/returns/recovery gates as needed for implementation.
 3. Continue with Reviews, Notifications, Conversations, and Audit Log as dependencies become clear.

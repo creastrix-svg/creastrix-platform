@@ -17,6 +17,7 @@ A Payout is responsible for:
 - reserving every included source amount while the Payout is active;
 - managing the PENDING, PROCESSING, SUCCEEDED, FAILED, and CANCELLED transfer-attempt lifecycle;
 - preserving accepted provider correlation and outcome evidence idempotently;
+- coordinating source selection and submission with unresolved refund commitments that would economically reduce an included source;
 - releasing source reservations only when the attempt reaches a terminal no-transfer outcome;
 - preserving successful transfer history without rewriting it after later source reversals or provider returns.
 
@@ -54,9 +55,14 @@ A Payout:
 - Payment capture, completion of manufacturing, Shipment creation, and Shipment SHIPPED status are insufficient for financial release candidacy. For the current physical-delivery MVP, the applicable non-CANCELLED Shipment must provide DELIVERED evidence and all other fulfillment obligations must be complete before the Order Item may become FULFILLED.
 - No separate Buyer receipt confirmation is required for the current MVP FULFILLED gate. Buyer non-receipt complaints, delivery disputes, return or refund conditions, and fraud or compliance concerns may still cause the applicable release or hold policy to keep a source payout-ineligible without rewriting immutable Shipment or Order history merely because of the complaint.
 - FULFILLED does not automatically make a source payout-eligible, earned, due, payable, or withdrawable.
-- A release candidate is payout-eligible only when the applicable versioned release or hold policy has passed, current compliance and provider capability checks pass, a valid destination is available, current outstanding amount is positive, and no conflicting active reservation or successful consumption exists.
+- A release candidate is payout-eligible only when the applicable versioned release or hold policy has passed, current compliance and provider capability checks pass, a valid destination is available, current outstanding amount is positive, and no conflicting active reservation, successful consumption, or earlier unresolved refund commitment affecting that source exists.
 - A ROYALTY source is payout-eligible only when its recorded cumulative Royalty reversal equals the authoritative cumulative Royalty reversal target derived from all applicable accepted Payment Allocation REVERSAL facts.
 - Once an accepted Payment refund and its complete Payment Allocation REVERSAL set are committed for a Royalty-bearing Order Item, the resulting authoritative cumulative Royalty reversal target applies immediately to Payout eligibility. A Royalty cannot be included in a new Payout or submitted through an existing Payout while its recorded cumulative reversal is below that target.
+- A durable active or economically unknown refund submission commitment affects only Payout sources whose amounts would be reduced if its frozen refund instruction succeeds under the frozen `PLATFORM_FIRST_WITH_ROYALTY_NO_SUBSIDY_SAFETY_FLOOR_V1` policy.
+- A MANUFACTURING_COMPENSATION_ALLOCATION source is affected when the frozen ITEM_MERCHANDISE instruction produces a positive additional `M_rev` delta for that source's exact Order Item.
+- A ROYALTY source is affected when the frozen ITEM_MERCHANDISE instruction would increase the authoritative cumulative Royalty reversal target for that source's exact Order Item.
+- A SHIPPING-only or TAX-only refund does not affect a MANUFACTURING_COMPENSATION_ALLOCATION or ROYALTY Payout source merely because the refund belongs to the same Payment. An ITEM_MERCHANDISE refund that produces no positive Manufacturer delta and no increased authoritative Royalty target likewise does not block unrelated sources.
+- Unrelated Payout sources are never blocked solely because their Order or Payment has a refund submission commitment.
 - Payout eligibility is a platform transfer condition and does not establish the legal or accounting classification of an amount as earned, due, or unconditional debt.
 - No separate Hold or Reserve entity is introduced in MVP. The applicable release-policy basis and version are preserved for historical explanation; arbitrary hold durations must not be invented without an approved policy.
 - For one source, uncommitted amount is `max(0, current outstanding amount - successfully paid amount - active reserved amount)`.
@@ -64,6 +70,7 @@ A Payout:
 - Payout-available amount equals uncommitted amount only when release-policy, compliance, provider-capability, and destination requirements pass; otherwise it is zero.
 - Because partial-source Payout is unsupported, a source may be selected only when its payout-available amount equals its complete positive current outstanding amount.
 - Creation of a PENDING Payout, creation of all immutable source portions, and reservation of every complete included source amount form one atomic domain operation.
+- Source selection for Payout creation must revalidate that no earlier active or economically unknown refund submission commitment affects the source.
 - A source may have at most one active reservation at a time and may be successfully consumed by at most one SUCCEEDED Payout.
 - A later reversal or provider return does not reopen a source for another Payout after successful consumption.
 - The immutable destination snapshot includes provider identity and type, provider recipient or account reference, destination type, non-sensitive masked or display metadata, provider-side destination identifier or reference where applicable, and the relevant onboarding or payout-capability context at creation.
@@ -81,7 +88,7 @@ A Payout:
 - A Payout has exactly one lifecycle state: PENDING, PROCESSING, SUCCEEDED, FAILED, or CANCELLED.
 - PENDING means the immutable attempt and source reservations exist, but the durable local submission commitment has not occurred.
 - The transition from PENDING to PROCESSING is the durable local submission commitment boundary for exactly one outbound provider execution associated with the Payout.
-- Immediately before committing PENDING to PROCESSING, every source must be revalidated for current outstanding amount, equality with its immutable source-portion amount, absence of a newly accepted source reduction, ownership of its active reservation by this Payout, absence of successful prior consumption, beneficiary and currency consistency, current release or hold policy, compliance and provider payout capability, and destination eligibility. Every ROYALTY source must also be reconciliation-complete against all applicable accepted Payment Allocation REVERSAL facts.
+- Immediately before committing PENDING to PROCESSING, every source must be revalidated for current outstanding amount, equality with its immutable source-portion amount, absence of a newly accepted source reduction or earlier unresolved refund submission commitment affecting it, ownership of its active reservation by this Payout, absence of successful prior consumption, beneficiary and currency consistency, current release or hold policy, compliance and provider payout capability, and destination eligibility. Every ROYALTY source must also be reconciliation-complete against all applicable accepted Payment Allocation REVERSAL facts.
 - Source revalidation and the PENDING-to-PROCESSING transition must commit as one local atomic or serializable operation. A stale source or reconciliation-incomplete Royalty prevents the transition.
 - PROCESSING means Creastrix has durably committed exactly one outbound provider execution for the Payout, whether or not the provider acknowledgement has been received, and the final safe economic outcome of that same execution is not yet known.
 - SUCCEEDED means the platform has reliable accepted evidence that the complete immutable Payout amount was transferred. It does not prove final bank settlement, irrevocability, absence of future return, or absence of recovery exposure.
@@ -95,6 +102,12 @@ A Payout:
 - Provider evidence is not automatic domain truth. Before accepting submission or outcome evidence, the authorized platform workflow validates provider and account identity, external reference, beneficiary, amount, currency, destination correlation, authenticity, duplicate economic-event identity, current Payout state, and the allowed transition.
 - The same external transfer submission or outcome event must never be recognized more than once, and repeated delivery of accepted evidence must not create another Payout or duplicate state change.
 - Provider evidence of a partial transfer cannot make the Payout SUCCEEDED or safely FAILED. The Payout remains PROCESSING, reservations remain active, and an explicit reconciliation exception is required. No partial-success lifecycle state is introduced in MVP.
+- Durable refund submission commitment and the PENDING-to-PROCESSING Payout submission commitment for an economically affected source must follow one serialized domain ordering.
+- If the refund submission commitment commits first, the affected source cannot be selected into a new Payout, and an existing PENDING Payout containing that source cannot enter PROCESSING until the refund operation reaches a definitive outcome.
+- If that provider refund definitively fails with reliable evidence that no refund occurred or will occur, its commitment barrier and component-capacity reservation are released. A Payout may proceed only after normal complete source revalidation.
+- If that refund becomes accepted, its Payment refund fact and complete REVERSAL set are recognized under their existing local atomic boundary, and any stale affected PENDING Payout follows the existing source-reversal cancellation and reservation-release rules.
+- If the PENDING-to-PROCESSING Payout submission commitment commits first after successful revalidation, the Payout enters PROCESSING. A later refund remains allowed and follows the existing PROCESSING and recovery rules rather than rewriting or cancelling that provider execution.
+- An affected unresolved refund commitment that has committed first can never be followed by a successful stale PENDING-to-PROCESSING transition for that source.
 - Acceptance of a source reversal and commitment of an affected Payout from PENDING to PROCESSING must follow one serialized domain ordering.
 - If the accepted source reversal commits first while an affected Payout is PENDING, recognition of that reversal and invalidation or cancellation of the stale Payout must share one coordinated local atomic or serializable boundary, or an equivalent serialized operation. The Payout cannot enter PROCESSING, the entire Payout is CANCELLED, every reservation is released, and any later attempt is a new Payout with recalculated source amounts. The immutable amount and source portions are never edited.
 - If the PENDING-to-PROCESSING submission commitment commits first after successful source revalidation, a subsequent source reversal does not cancel that provider execution and follows the PROCESSING and recovery rules.
@@ -122,9 +135,12 @@ A Payout:
 - One Payout never contains the same economic source more than once.
 - Every source portion always matches the Payout beneficiary identity and type and Payout currency.
 - Every source portion always represents the complete eligible current outstanding amount of its source at Payout creation.
+- A source is never selected into a new Payout while an earlier active or economically unknown refund submission commitment would reduce that source if accepted.
 - One source never has more than one active Payout reservation and is never successfully consumed by more than one Payout.
 - A PENDING or PROCESSING Payout always reserves all its source portions.
 - Every transition from PENDING to PROCESSING is committed against revalidated current sources and never against a source reduction that has already been accepted.
+- Every transition from PENDING to PROCESSING is serialized against earlier unresolved refund submission commitments that would economically reduce an included source.
+- A refund commitment never blocks an unrelated Payout source solely because it belongs to the same Payment or Order.
 - Every ROYALTY source is reconciliation-complete against applicable accepted Payment Allocation REVERSAL facts at the decision boundary where it is selected for Payout creation and at the decision boundary where its Payout transitions from PENDING to PROCESSING.
 - One Payout execution attempt never causes more than one outbound economic transfer.
 - A Payout always has exactly one lifecycle state: PENDING, PROCESSING, SUCCEEDED, FAILED, or CANCELLED.
@@ -144,10 +160,12 @@ Actual provider selection, licensed payout-rail architecture, legal earning and 
 
 Technical coordination may use row or advisory locking, optimistic versioning, serializable transactions, compare-and-transition, durable outbox or command processing, inbox processing, provider idempotency keys, or equivalent mechanisms. These mechanisms implement the required domain ordering and economic idempotency without introducing a Reservation, Payout Command, or other core entity.
 
+The durable pre-provider refund commitment belongs to Payment workflow or integration persistence rather than Payout and does not introduce a Refund, Refund Allocation Plan, Hold, Balance, Recovery, or Adjustment entity. Payout consumes only the fact that a frozen unresolved instruction would reduce a specific source.
+
 Future recovery or balance domains may consume immutable Payout history but must not rewrite it. Blockchain or other enhanced royalty-tracking infrastructure may improve auditability only if it preserves the same domain distinctions, idempotency, privacy, provider evidence validation, and correction model.
 
 ---
 
 Status: DRAFT
 
-Version: 0.2
+Version: 0.3

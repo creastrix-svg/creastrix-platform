@@ -40,10 +40,10 @@ These entities have active draft specifications. They represent active architect
 - [Manufacturer Profile](manufacturer-profile.md) — DRAFT 0.3
 - [Order](order.md) — DRAFT 0.4
 - [Order Item](order-item.md) — DRAFT 0.6
-- [Payment](payment.md) — DRAFT 0.2
-- [Payment Allocation](payment-allocation.md) — DRAFT 0.1
+- [Payment](payment.md) — DRAFT 0.3
+- [Payment Allocation](payment-allocation.md) — DRAFT 0.2
 - [Royalty](royalty.md) — DRAFT 0.2
-- [Payout](payout.md) — DRAFT 0.2
+- [Payout](payout.md) — DRAFT 0.3
 - [Shipment](shipment.md) — DRAFT 0.2
 
 ## Planned entities
