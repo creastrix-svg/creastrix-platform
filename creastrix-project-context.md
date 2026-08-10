@@ -41,6 +41,7 @@ The following specifications are DRAFT. They represent active architecture work 
 - Payment
 - Payment Allocation
 - Royalty
+- Payout
 - Shipment
 
 ## Domain Principles
@@ -173,7 +174,14 @@ The following specifications are DRAFT. They represent active architecture work 
 - Royalty calculation terms, basis, beneficiary context, currency, and original amount freeze in the Order Item snapshot at confirmation. Manufacturer compensation and Royalty remain independent, but their combined confirmed amounts cannot exceed net item merchandise contribution.
 - A qualifying positive Royalty is recognized durably and idempotently after accepted full Payment capture. Temporary Royalty-processing failure does not change CAPTURED Payment state, and reconciliation ensures exactly-once business recognition.
 - Accepted refunds create append-only Royalty reversal facts based on cumulative refunded royalty basis attributed to the Order Item; cancellation alone does not reverse Royalty.
-- Payout is a separate PLANNED domain for future transfers, KYC, reserves, aggregation, and payout failure or retry behavior.
+- Payout is one durable outbound transfer execution attempt for exactly one USER or ORGANIZATION beneficiary; it is not a balance, settlement ledger, accounting entry, or legal earning determination.
+- Payout freezes one currency, one beneficiary context, one non-sensitive destination snapshot, and one or more embedded source portions. No Payout Profile, Payout Account, Payout Source, Payout Item, Balance, Hold, or Reserve entity exists in the current draft.
+- Current Payout sources are an ORIGINAL MANUFACTURING_COMPENSATION Payment Allocation and Royalty. Sources from multiple Orders and both source types may be aggregated only for the same beneficiary and currency.
+- Payout uses full-source portions only. A FULFILLED Order Item makes an associated source a release candidate, while current release or hold policy, compliance and provider capability, destination validity, positive outstanding amount, and absence of conflicting reservation or consumption determine payout eligibility.
+- PENDING and PROCESSING Payouts reserve every included source amount. Creation of the PENDING Payout, its portions, and all source reservations is atomic; retries are new Payouts.
+- Payout lifecycle is PENDING, PROCESSING, SUCCEEDED, FAILED, or CANCELLED. Ambiguous or partial provider outcomes remain PROCESSING with reservations active.
+- Reversal before a PENDING attempt is submitted cancels the complete Payout and releases all reservations. Reversal during PROCESSING or after SUCCEEDED never rewrites the attempt; derived recovery exposure may result.
+- Recovery, provider-return treatment, and any balance domain remain future production policy and architecture work and must preserve immutable Payout history.
 - Cancellation preserves all confirmed snapshots, and partial-quantity cancellation is unsupported in MVP.
 - Later Listing, source, Personalization, Workspace access, Designer verification, Manufacturer Profile, or royalty-term changes never rewrite confirmed commerce.
 - Order owns one immutable confirmed delivery destination, and every Shipment of that Order uses it without an independent divergent destination.
@@ -202,6 +210,5 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Next Steps
 
-1. Review and finalize the Designer Profile draft.
-2. Review and model Payout when beneficiary transfer requirements are modeled.
-3. Continue with Reviews, Notifications, Conversations, and Audit Log as dependencies become clear.
+1. Review and finalize the Payout draft.
+2. Continue with Reviews, Notifications, Conversations, and Audit Log as dependencies become clear.
