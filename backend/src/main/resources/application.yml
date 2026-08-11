@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: creastrix-backend
+  datasource:
+    url: ${CREASTRIX_DB_URL}
+    username: ${CREASTRIX_DB_USERNAME}
+    password: ${CREASTRIX_DB_PASSWORD}
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
