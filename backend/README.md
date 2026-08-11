@@ -1,8 +1,22 @@
 # Creastrix Backend
 
-Infrastructure bootstrap for the Creastrix backend. This module contains no
-business domain logic yet. Domain specifications under `docs/domain` remain the
-source of truth for business rules.
+Backend of the Creastrix platform. Domain specifications under `docs/domain`
+remain the source of truth for business rules.
+
+## Implemented domain foundation
+
+- User stable UUID platform identity;
+- User account and access status lifecycle (`ACTIVE`, `SUSPENDED`,
+  `DEACTIVATED`), enforced both in the Java domain layer and in PostgreSQL;
+- mandatory one-to-one User Profile persistence, created atomically with its
+  User.
+
+Intentionally not implemented yet:
+
+- authentication and login (no credentials, no OAuth, no MFA);
+- concrete User Profile personal fields, which remain unimplemented until the
+  approved specification defines them;
+- any HTTP API for User.
 
 ## Technology baseline
 
@@ -10,6 +24,7 @@ source of truth for business rules.
 - Spring Boot 4.1.0
 - Maven Wrapper (Apache Maven 3.9.16) — no system Maven required
 - PostgreSQL (integration tested against `postgres:18.4-alpine`)
+- Spring JDBC with explicit SQL (no JPA, no Hibernate, no ORM)
 - Flyway (version managed by Spring Boot 4.1.0)
 - Testcontainers (version managed by Spring Boot 4.1.0)
 
@@ -29,9 +44,10 @@ property in `pom.xml`. Do not remove it without review.
 ./mvnw clean test
 ```
 
-The integration test starts a real PostgreSQL container, verifies the Spring
-context, executes a real `SELECT 1`, confirms the Flyway `V1` bootstrap
-migration was applied, and checks that the health infrastructure reports `UP`.
+The integration tests start a real PostgreSQL container. They verify the Spring
+context, execute a real `SELECT 1`, confirm the Flyway migrations were applied,
+check that the health infrastructure reports `UP`, and prove the User schema
+invariants and status lifecycle against real PostgreSQL.
 
 ## Running the application
 
