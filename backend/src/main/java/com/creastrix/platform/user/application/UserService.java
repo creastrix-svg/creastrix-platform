@@ -2,10 +2,10 @@ package com.creastrix.platform.user.application;
 
 import java.util.UUID;
 
+import com.creastrix.platform.user.application.port.UserRepository;
 import com.creastrix.platform.user.domain.User;
 import com.creastrix.platform.user.domain.UserNotFoundException;
 import com.creastrix.platform.user.domain.UserStatus;
-import com.creastrix.platform.user.persistence.JdbcUserStore;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,10 +22,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class UserService {
 
-    private final JdbcUserStore userStore;
+    private final UserRepository users;
 
-    public UserService(JdbcUserStore userStore) {
-        this.userStore = userStore;
+    public UserService(UserRepository users) {
+        this.users = users;
     }
 
     /**
@@ -35,14 +35,13 @@ public class UserService {
     @Transactional
     public User createUser() {
         UUID id = UUID.randomUUID();
-        userStore.insertUser(id);
-        userStore.insertUserProfile(id);
-        return userStore.findUser(id).orElseThrow(() -> new UserNotFoundException(id));
+        users.create(id);
+        return users.findById(id).orElseThrow(() -> new UserNotFoundException(id));
     }
 
     @Transactional(readOnly = true)
     public User findUser(UUID id) {
-        return userStore.findUser(id).orElseThrow(() -> new UserNotFoundException(id));
+        return users.findById(id).orElseThrow(() -> new UserNotFoundException(id));
     }
 
     /**
@@ -51,9 +50,9 @@ public class UserService {
      */
     @Transactional
     public User changeStatus(UUID id, UserStatus targetStatus) {
-        User current = userStore.findUserForUpdate(id).orElseThrow(() -> new UserNotFoundException(id));
+        User current = users.findByIdForUpdate(id).orElseThrow(() -> new UserNotFoundException(id));
         User updated = current.transitionTo(targetStatus);
-        userStore.updateUserStatus(updated.id(), updated.status());
+        users.updateStatus(updated.id(), updated.status());
         return updated;
     }
 }
