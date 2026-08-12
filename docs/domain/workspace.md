@@ -35,6 +35,8 @@ A Workspace:
 - A Workspace owner cannot be changed in MVP.
 - A Workspace cannot exist without an owner.
 - Workspace creation and creation of its initial ACTIVE ADMIN Workspace Membership are atomic.
+- A User-owned Workspace may be created only by its owner while that owner is an ACTIVE User acting for that same User.
+- Creating a User-owned Workspace owned by another User is unsupported in MVP.
 - When a User-owned Workspace is created, the owner receives an ACTIVE Workspace Membership with the role ADMIN.
 - In a User-owned Workspace, the User owner must remain an ACTIVE ADMIN for as long as the User remains the Workspace owner in MVP.
 - The User owner's Workspace Membership cannot be removed, suspended, or changed from ADMIN through normal Workspace Membership administration while ownership remains unchanged.
@@ -65,6 +67,8 @@ A Workspace:
 - The Workspace context for Listing authorization is derived from the Listing's immutable commercial source; Listing has no separate Workspace ownership relationship in MVP.
 - If the User owner of a User-owned Workspace is SUSPENDED or DEACTIVATED, the owner remains the structurally ACTIVE ADMIN and Workspace ownership remains unchanged, but ordinary Workspace authority through that User is unavailable until the User becomes ACTIVE again.
 - User-owned Workspace ownership cannot be transferred through account suspension, deactivation, or Workspace Membership administration in MVP. No special personal Workspace recovery or ownership-transfer mechanism is introduced by this specification version.
+- Workspace deletion and Workspace archival are unsupported in MVP.
+- This specification introduces no Workspace deletion or archival lifecycle state.
 - An Organization-owned Workspace may remain structurally valid while its required Organization OWNER and Workspace ADMIN representation is not actionable because the associated User is not ACTIVE.
 - Exceptional platform Organization recovery may establish the minimum actionable Organization OWNER and Workspace ADMIN representation for an affected Organization-owned Workspace after the required independent verification.
 - User status constrains authority exercised by that User but does not by itself block independently authorized platform workflows, including internal security, moderation, reconciliation, finance, Ready-Made Product fulfillment, or Organization recovery workflows.
@@ -99,8 +103,10 @@ ACTIVE ADMIN requirements in this specification are structural Membership invari
 
 A User may retain an independently granted Workspace Membership after leaving an Organization, subject to future platform policy. Such a User cannot be the sole User satisfying the Organization ACTIVE OWNER and Workspace ACTIVE ADMIN invariant.
 
+Any future Workspace deletion, archival, or retention policy requires separate architecture work. It must preserve stable referenced identities and historical context and must not implicitly introduce destructive cascading into Projects, Ready-Made Products, Listings, confirmed commerce, or immutable historical snapshots.
+
 ---
 
-Status: DRAFT
+Status: APPROVED
 
-Version: 0.8
+Version: 1.0

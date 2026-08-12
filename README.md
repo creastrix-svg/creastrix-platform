@@ -16,7 +16,7 @@ Specification approval and implementation coverage are tracked separately.
 
 ### APPROVED Domain Specifications
 
-User, User Profile, Organization, and Organization Membership have APPROVED domain specifications. Approval records the accepted architecture for those entities; it does not mean that every approved rule is already implemented.
+User, User Profile, Organization, Organization Membership, Workspace, and Workspace Membership have APPROVED domain specifications. Approval records the accepted architecture for those entities; it does not mean that every approved rule is already implemented.
 
 ### Implemented Backend Foundations
 
@@ -29,9 +29,9 @@ The current backend foundation covers:
 
 This is a partial foundation, not a complete product implementation or full delivery of every behavior in the approved specifications.
 
-### DRAFT and Unimplemented Domain Areas
+### Approved but Unimplemented and DRAFT Domain Areas
 
-Workspace, Workspace Membership, and the other DRAFT domain areas remain unimplemented. Workspace and Workspace Membership architecture must be finalized and independently approved before their implementation begins.
+Workspace and Workspace Membership now have APPROVED 1.0 domain specifications, but their backend foundations are not implemented. Implementing their backend foundation is the next implementation step. Other DRAFT domain areas remain unimplemented and require their own independent specification approval before ordinary production implementation.
 
 ## Architecture and Technology
 

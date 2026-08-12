@@ -32,6 +32,9 @@ A Workspace Membership:
 - A User may have multiple Workspace Memberships across different Workspaces.
 - A Workspace may have multiple Workspace Memberships.
 - A User cannot have more than one Workspace Membership within the same Workspace.
+- A User-owned Workspace may be created only by its owner while that owner is an ACTIVE User acting for that same User.
+- Creating a User-owned Workspace owned by another User is unsupported in MVP.
+- Creation of a User-owned Workspace and its owner's initial ACTIVE ADMIN Workspace Membership is atomic.
 - When a User-owned Workspace is created, the owner receives an ACTIVE Workspace Membership with the role ADMIN.
 - An Organization-owned Workspace may be created only by an ACTIVE User with an ACTIVE Organization Membership with the role OWNER in the owning Organization; that User receives the initial ACTIVE Workspace Membership with the role ADMIN.
 - A Workspace Membership role must be ADMIN, EDITOR, or VIEWER in MVP.
@@ -49,6 +52,9 @@ A Workspace Membership:
 - PROJECTS is a currently defined permission scope and covers the Project and Revision domain area.
 - READY_MADE_PRODUCTS is a currently defined permission scope and covers Ready-Made Product management, including simple MVP available quantity.
 - LISTINGS is a currently defined permission scope and covers Listing commercial management, including commercial presentation, pricing information, activation, pause, archive, and current offer terms.
+- The permission scopes recognized by this specification version are exactly PROJECTS, READY_MADE_PRODUCTS, and LISTINGS.
+- An unknown, unsupported, or not-yet-introduced permission scope value cannot be stored or granted and must be rejected.
+- A future permission scope cannot be stored or pre-granted before it is explicitly introduced through a future versioned Workspace architecture decision.
 - PROJECTS, READY_MADE_PRODUCTS, and LISTINGS are independent scopes and do not grant access to one another.
 - READY_MADE_PRODUCTS does not grant Listing price management, Order management, finance, Warehouse, future Inventory administration, or seller eligibility.
 - LISTINGS does not grant Project or Revision editing, Ready-Made Product editing, Order management, finance, payouts, Inventory, Warehouse, manufacturing, or seller eligibility.
@@ -88,6 +94,7 @@ A Workspace Membership:
 - Workspace Membership status, role, and permission scopes are never derived from the associated User's account status.
 - An ACTIVE VIEWER never has write access.
 - Effective access for an EDITOR or VIEWER never extends outside explicitly granted scopes.
+- Every stored Workspace permission-scope grant always references a permission scope recognized by the current specification version.
 - Introducing a future permission scope never expands the effective access of existing EDITOR or VIEWER Memberships automatically.
 - The User owner of a User-owned Workspace always has an ACTIVE ADMIN Workspace Membership.
 - An Organization-owned Workspace always has at least one User who is both an ACTIVE Organization OWNER and an ACTIVE Workspace ADMIN for that Workspace.
@@ -118,6 +125,6 @@ A User may retain an independently granted Workspace Membership after leaving an
 
 ---
 
-Status: DRAFT
+Status: APPROVED
 
-Version: 0.8
+Version: 1.0
