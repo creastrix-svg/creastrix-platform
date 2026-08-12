@@ -99,7 +99,7 @@ The current percentage-only royalty calculation is performed and frozen at Order
 
 Payment CAPTURED and the complete ORIGINAL Payment Allocation set retain their existing atomic conservation boundary. Royalty recognition is separately durable, idempotent, and reconcilable. No ROYALTY Payment Allocation purpose is introduced, and ITEM_PROCEEDS remains unchanged when Royalty is recognized.
 
-Exact refund selection policy remains separate production and business work. Royalty consumes the accepted item-level refund attribution expressed by Payment Allocation REVERSAL facts without owning or redefining that selection policy.
+The current coordinated DRAFT commerce architecture defines the Refund Allocation Selection Policy `PLATFORM_FIRST_WITH_ROYALTY_NO_SUBSIDY_SAFETY_FLOOR_V1` in Payment Allocation rather than Royalty. Royalty consumes the accepted item-level refund attribution expressed by Payment Allocation REVERSAL facts without owning or redefining that selection policy.
 
 The exact persistence and indexing mechanisms used to evaluate canonical refund-event ordering remain implementation details and do not change the event-specific economic attribution rules.
 
