@@ -8,7 +8,7 @@ This page helps readers find the correct source. It is a navigation aid and does
 - [Platform Overview](platform-overview.md) — conceptual product-level introduction.
 - [Project Context](../creastrix-project-context.md) — technical memory, current decisions, and delivery sequence.
 - [Glossary](glossary.md) — supporting terminology.
-- [Domain Map](domain-model.md) — deprecated historical map and pointer to authoritative domain documentation.
+- [Domain Map](domain-model.md) — current supporting conceptual and navigational map of the domain documentation.
 
 ## Domain Architecture
 
