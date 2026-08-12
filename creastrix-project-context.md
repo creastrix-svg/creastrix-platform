@@ -45,6 +45,21 @@ The following specifications are DRAFT. They represent active architecture work 
 - Payout
 - Shipment
 
+## Current Implementation State
+
+Specification approval and implementation coverage are separate dimensions. An APPROVED specification records accepted architecture for its entity; it does not mean that every approved rule has been implemented.
+
+The `main` branch currently contains these backend foundations:
+
+- backend bootstrap;
+- User and User Profile foundation;
+- User repository port with an explicit JDBC adapter;
+- Organization and Organization Membership foundation.
+
+This is not a full product implementation and does not mean that all behavior in the approved specifications has been delivered.
+
+Workspace, Workspace Membership, and the other DRAFT domains are not approved for implementation merely because their current decisions are summarized in this document. They remain subject to their own architecture review and independent specification approval.
+
 ## Domain Principles
 
 - Domain first.
@@ -270,6 +285,8 @@ The following specifications are DRAFT. They represent active architecture work 
 
 ## Next Steps
 
-1. Start the Ready-Made purchase/payment executable vertical slice, translating domain invariants into relational constraints, transactional enforcement and adversarial integration/concurrency tests.
-2. Continue remaining non-blocking domain work in parallel as required by the implementation slice.
-3. Before any functional Payout implementation milestone, separately define and approve the first concrete versioned Payout release policy.
+1. Finalize and independently approve the Workspace and Workspace Membership architecture.
+2. Implement the Workspace foundation from approved specifications.
+3. Then proceed to the Ready-Made Product foundation.
+4. Only afterward advance toward Listing and commerce slices in separately reviewed steps.
+5. Before any functional Payout implementation milestone, separately define and approve the first concrete versioned Payout release policy.
