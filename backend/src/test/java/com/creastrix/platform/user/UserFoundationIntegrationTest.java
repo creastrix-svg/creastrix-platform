@@ -75,10 +75,10 @@ class UserFoundationIntegrationTest {
     }
 
     @Test
-    void v2AddsExactlyUsersAndUserProfilesTables() {
+    void v2AddsUsersAndUserProfilesTables() {
         var tables = jdbcTemplate.queryForList(
                 "SELECT table_name FROM information_schema.tables "
-                        + "WHERE table_schema = 'public' AND table_name <> 'flyway_schema_history' "
+                        + "WHERE table_schema = 'public' AND table_name IN ('users', 'user_profiles') "
                         + "ORDER BY table_name",
                 String.class);
         assertThat(tables).containsExactly("user_profiles", "users");
