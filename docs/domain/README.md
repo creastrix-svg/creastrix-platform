@@ -24,13 +24,13 @@ If a DRAFT or PLANNED dependency changes incompatibly with an APPROVED specifica
 - [User Profile](user-profile.md) — APPROVED 1.0
 - [Organization](organization.md) — APPROVED 1.5
 - [Organization Membership](organization-membership.md) — APPROVED 1.4
+- [Workspace](workspace.md) — APPROVED 1.0
+- [Workspace Membership](workspace-membership.md) — APPROVED 1.0
 
 ## Draft specifications
 
 These entities have active draft specifications. They represent active architecture work and are not independently approved.
 
-- [Workspace](workspace.md) — DRAFT 0.8
-- [Workspace Membership](workspace-membership.md) — DRAFT 0.8
 - [Ready-Made Product](ready-made-product.md) — DRAFT 0.7
 - [Project](project.md) — DRAFT 0.6
 - [Revision](revision.md) — DRAFT 0.5

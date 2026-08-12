@@ -6,7 +6,7 @@ Use the [Domain Specifications Index](domain/README.md) for current specificatio
 
 ## Identity and shared operating context
 
-These specifications describe individual and business participants together with the proposed shared contexts and access relationships through which they work.
+These specifications describe individual and business participants together with the shared contexts and access relationships through which they work.
 
 - [User](domain/user.md)
 - [User Profile](domain/user-profile.md)
@@ -50,7 +50,7 @@ These specifications describe proposed confirmed purchases, collection and attri
 Most connections below involve DRAFT specifications. They are conceptual and provisional, remain subject to approval in their own specifications, and do not assert implementation.
 
 - User and Organization provide individual or business-participant context; Memberships and Workspace access remain separate concepts.
-- Workspace is the proposed shared operational context for Project and Ready-Made Product areas, while ownership and participant authorization remain distinct.
+- Workspace is the shared operational context for Project and Ready-Made Product areas, while ownership and participant authorization remain distinct.
 - Project and Revision may exist before commerce; in the current proposed commerce path, an eligible FINALIZED Revision proceeds through a Revision-based Listing carrying the applicable publication context, then a confirmed Order Item, and then made-to-order fulfillment.
 - A Ready-Made Product may exist independently without a Listing; when it enters the current proposed commerce path, it proceeds through a Ready-Made Product Listing, then a confirmed Order Item, and then existing-stock fulfillment.
 - Order groups Order Items.

@@ -22,13 +22,13 @@ protecting creator ownership and customer trust.
 - User Profile
 - Organization
 - Organization Membership
+- Workspace
+- Workspace Membership
 
 ## Current Draft Domain Specifications
 
 The following specifications are DRAFT. They represent active architecture work and are not independently approved.
 
-- Workspace
-- Workspace Membership
 - Ready-Made Product
 - Project
 - Revision
@@ -58,7 +58,9 @@ The `main` branch currently contains these backend foundations:
 
 This is not a full product implementation and does not mean that all behavior in the approved specifications has been delivered.
 
-Workspace, Workspace Membership, and the other DRAFT domains are not approved for implementation merely because their current decisions are summarized in this document. They remain subject to their own architecture review and independent specification approval.
+The Workspace and Workspace Membership specifications are independently APPROVED 1.0, but their backend foundations are not yet implemented. Their approval does not imply implementation coverage or approve any downstream DRAFT specification.
+
+The remaining DRAFT domains are active architecture work and require their own architecture review and independent specification approval before implementation.
 
 ## Domain Principles
 
@@ -285,8 +287,8 @@ Workspace, Workspace Membership, and the other DRAFT domains are not approved fo
 
 ## Next Steps
 
-1. Finalize and independently approve the Workspace and Workspace Membership architecture.
-2. Implement the Workspace foundation from approved specifications.
-3. Then proceed to the Ready-Made Product foundation.
-4. Only afterward advance toward Listing and commerce slices in separately reviewed steps.
+1. Implement the Workspace and Workspace Membership foundation from their APPROVED 1.0 specifications.
+2. Independently finalize and approve the Ready-Made Product architecture before implementing its foundation.
+3. Implement the Ready-Made Product foundation only after that approval.
+4. Advance toward Listing and commerce slices only through separately reviewed and approved steps.
 5. Before any functional Payout implementation milestone, separately define and approve the first concrete versioned Payout release policy.
