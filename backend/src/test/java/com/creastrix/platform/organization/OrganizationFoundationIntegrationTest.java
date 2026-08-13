@@ -96,7 +96,10 @@ class OrganizationFoundationIntegrationTest {
                 "SELECT version FROM flyway_schema_history WHERE success = true "
                         + "AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
-        assertThat(versions).containsExactly("1", "2", "3");
+        // Later migrations (V4+) may follow; this test only verifies that V3 is
+        // applied after V1 and V2 in order. The Workspace foundation test owns
+        // the full V1..V4 history assertion.
+        assertThat(versions).startsWith("1", "2", "3");
     }
 
     @Test
@@ -214,10 +217,15 @@ class OrganizationFoundationIntegrationTest {
                         + "'organization_memberships'::regclass) "
                         + "ORDER BY tgname");
 
+        // V3 triggers plus the V4 Workspace-foundation triggers added on the
+        // existing organization_memberships table (V3 itself is unchanged).
+        // The V4 triggers are verified in detail by the Workspace tests.
         assertThat(triggers).extracting(row -> row.get("tgname")).containsExactlyInAnyOrder(
                 "organizations_require_active_owner",
                 "organization_memberships_preserve_active_owner",
-                "organization_memberships_preserve_active_owner_on_truncate");
+                "organization_memberships_preserve_active_owner_on_truncate",
+                "organization_memberships_preserve_workspace_foundation",
+                "organization_memberships_preserve_workspaces_on_truncate");
 
         var requireOwner = trigger(triggers, "organizations_require_active_owner");
         assertThat(requireOwner.get("relation")).isEqualTo("organizations");
