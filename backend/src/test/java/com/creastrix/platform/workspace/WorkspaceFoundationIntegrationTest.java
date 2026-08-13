@@ -65,6 +65,9 @@ class WorkspaceFoundationIntegrationTest {
 
     private static final String CHECK_VIOLATION_SQL_STATE = "23514";
 
+    private static final String OWNER_ORGANIZATION_INDEX_NAME =
+            "workspaces_owner_organization_id_not_null_idx";
+
     @Container
     static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:18.4-alpine");
@@ -99,12 +102,102 @@ class WorkspaceFoundationIntegrationTest {
     // ------------------------------------------------------------------
 
     @Test
-    void v4MigrationIsAppliedAfterV1V2AndV3() {
+    void v5MigrationIsAppliedAfterV1V2V3AndV4() {
         var versions = jdbcTemplate.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success = true "
                         + "AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
-        assertThat(versions).containsExactly("1", "2", "3", "4");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5");
+    }
+
+    /**
+     * Resolves the metadata of the approved lookup index of {@code
+     * public.workspaces}, strictly qualified by schema, table, and index name.
+     */
+    private Map<String, Object> ownerOrganizationIndexMetadata() {
+        return jdbcTemplate.queryForMap(
+                "SELECT i.indexrelid AS index_oid, "
+                        + "c.relname AS index_name, am.amname AS access_method, "
+                        + "i.indisunique, i.indisvalid, i.indisready, "
+                        + "i.indnatts, i.indnkeyatts, "
+                        + "pg_get_expr(i.indpred, i.indrelid) AS predicate, "
+                        + "pg_get_indexdef(i.indexrelid) AS definition "
+                        + "FROM pg_index i "
+                        + "JOIN pg_class c ON c.oid = i.indexrelid "
+                        + "JOIN pg_class t ON t.oid = i.indrelid "
+                        + "JOIN pg_namespace n ON n.oid = t.relnamespace "
+                        + "JOIN pg_am am ON am.oid = c.relam "
+                        + "WHERE n.nspname = 'public' AND t.relname = 'workspaces' "
+                        + "AND c.relname = ?",
+                OWNER_ORGANIZATION_INDEX_NAME);
+    }
+
+    /**
+     * Reads the columns of exactly the index identified by {@code indexOid}, so
+     * an identically named index in another schema cannot contribute a row.
+     */
+    private List<String> indexColumns(Object indexOid) {
+        return jdbcTemplate.queryForList(
+                "SELECT a.attname FROM pg_attribute a "
+                        + "WHERE a.attrelid = CAST(? AS oid) AND a.attnum > 0 "
+                        + "ORDER BY a.attnum",
+                String.class,
+                indexOid);
+    }
+
+    @Test
+    void v5AddsExactlyTheApprovedOwnerOrganizationLookupIndex() {
+        var index = ownerOrganizationIndexMetadata();
+
+        assertThat(index.get("index_name")).isEqualTo(OWNER_ORGANIZATION_INDEX_NAME);
+        assertThat(index.get("access_method")).isEqualTo("btree");
+        assertThat(index.get("indisunique")).isEqualTo(false);
+        assertThat(index.get("indisvalid")).isEqualTo(true);
+        assertThat(index.get("indisready")).isEqualTo(true);
+        // Exactly one key column and no additional included column.
+        assertThat(index.get("indnkeyatts")).isEqualTo(1);
+        assertThat(index.get("indnatts")).isEqualTo(1);
+        assertThat(index.get("predicate")).isEqualTo("(owner_organization_id IS NOT NULL)");
+        assertThat(index.get("definition")).isEqualTo(
+                "CREATE INDEX workspaces_owner_organization_id_not_null_idx "
+                        + "ON public.workspaces USING btree (owner_organization_id) "
+                        + "WHERE (owner_organization_id IS NOT NULL)");
+
+        assertThat(indexColumns(index.get("index_oid")))
+                .containsExactly("owner_organization_id");
+    }
+
+    /**
+     * An identically named index in a different schema must not disturb the
+     * schema proof above: the metadata path is bound to the exact index OID of
+     * public.workspaces.
+     */
+    @Test
+    void ownerOrganizationIndexMetadataIgnoresIdenticallyNamedIndexInAnotherSchema() {
+        var decoySchema = "decoy_" + UUID.randomUUID().toString().replace("-", "");
+        var expectedOid = ownerOrganizationIndexMetadata().get("index_oid");
+        try {
+            jdbcTemplate.execute("CREATE SCHEMA " + decoySchema);
+            jdbcTemplate.execute("CREATE TABLE " + decoySchema
+                    + ".workspaces (id uuid NOT NULL, owner_organization_id uuid, other_column uuid)");
+            jdbcTemplate.execute("CREATE INDEX workspaces_owner_organization_id_not_null_idx ON "
+                    + decoySchema + ".workspaces (other_column) "
+                    + "WHERE other_column IS NOT NULL");
+
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                            + "WHERE c.relname = ? AND c.relkind = 'i'",
+                    Integer.class,
+                    OWNER_ORGANIZATION_INDEX_NAME))
+                    .isEqualTo(2);
+
+            var index = ownerOrganizationIndexMetadata();
+            assertThat(index.get("index_oid")).isEqualTo(expectedOid);
+            assertThat(indexColumns(index.get("index_oid")))
+                    .containsExactly("owner_organization_id");
+        } finally {
+            jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + decoySchema + " CASCADE");
+        }
     }
 
     @Test
