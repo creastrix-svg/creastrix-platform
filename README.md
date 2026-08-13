@@ -25,13 +25,21 @@ The current backend foundation covers:
 - the executable backend bootstrap;
 - the User and mandatory User Profile foundation;
 - the User repository port with an explicit JDBC persistence adapter;
-- the Organization and Organization Membership foundation.
+- the Organization and Organization Membership foundation;
+- the Workspace and Workspace Membership structural foundation, including
+  User-owned and Organization-owned creation with an atomic initial `ACTIVE`
+  `ADMIN` Membership;
+- the Workspace repository port with an explicit JDBC persistence adapter and
+  V4 PostgreSQL structural-invariant enforcement.
 
 This is a partial foundation, not a complete product implementation or full delivery of every behavior in the approved specifications.
 
-### Approved but Unimplemented and DRAFT Domain Areas
+### Remaining DRAFT Domain Areas
 
-Workspace and Workspace Membership now have APPROVED 1.0 domain specifications, but their backend foundations are not implemented. Implementing their backend foundation is the next implementation step. Other DRAFT domain areas remain unimplemented and require their own independent specification approval before ordinary production implementation.
+The remaining DRAFT domain areas are unimplemented and require their own
+independent specification approval before ordinary production implementation.
+The Workspace and Workspace Membership structural foundation does not approve
+any downstream DRAFT specification.
 
 ## Architecture and Technology
 

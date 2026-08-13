@@ -54,11 +54,13 @@ The `main` branch currently contains these backend foundations:
 - backend bootstrap;
 - User and User Profile foundation;
 - User repository port with an explicit JDBC adapter;
-- Organization and Organization Membership foundation.
+- Organization and Organization Membership foundation;
+- Workspace and Workspace Membership structural foundation, including User-owned and Organization-owned Workspace creation with an atomic initial ACTIVE ADMIN Membership;
+- Workspace repository port with an explicit JDBC adapter and V4 PostgreSQL structural-invariant enforcement.
 
 This is not a full product implementation and does not mean that all behavior in the approved specifications has been delivered.
 
-The Workspace and Workspace Membership specifications are independently APPROVED 1.0, but their backend foundations are not yet implemented. Their approval does not imply implementation coverage or approve any downstream DRAFT specification.
+The merged Workspace foundation is partial implementation coverage of the independently APPROVED 1.0 Workspace and Workspace Membership specifications, not complete delivery of every approved rule or workflow. It does not implement authentication or external caller identity proof, HTTP APIs, invitations or invitation acceptance, general Workspace Membership creation or mutation workflows beyond the atomic initial Membership, ownership transfer, Workspace deletion or archival workflows, or recovery. The Workspace implementation does not approve any downstream DRAFT specification.
 
 The remaining DRAFT domains are active architecture work and require their own architecture review and independent specification approval before implementation.
 
@@ -287,8 +289,7 @@ The remaining DRAFT domains are active architecture work and require their own a
 
 ## Next Steps
 
-1. Implement the Workspace and Workspace Membership foundation from their APPROVED 1.0 specifications.
-2. Independently finalize and approve the Ready-Made Product architecture before implementing its foundation.
-3. Implement the Ready-Made Product foundation only after that approval.
-4. Advance toward Listing and commerce slices only through separately reviewed and approved steps.
-5. Before any functional Payout implementation milestone, separately define and approve the first concrete versioned Payout release policy.
+1. Independently finalize and approve the Ready-Made Product architecture before implementing its foundation.
+2. Implement the Ready-Made Product foundation only after that approval.
+3. Advance toward Listing and commerce slices only through separately reviewed and approved steps.
+4. Before any functional Payout implementation milestone, separately define and approve the first concrete versioned Payout release policy.
