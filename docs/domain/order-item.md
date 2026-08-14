@@ -19,7 +19,7 @@ An Order Item is responsible for:
 - preserving its immutable confirmation-time royalty configuration, calculation, beneficiary, and rights context when Revision-based;
 - preserving immutable confirmation-time accepted royalty-rights validation context for the exact purchased royalty configuration when Revision-based;
 - preserving optional Personalization traceability and the authoritative purchased Personalization snapshot;
-- establishing confirmed Ready-Made Product stock allocation when applicable;
+- establishing and permanently preserving confirmed Ready-Made Product stock allocation history when applicable;
 - preserving exactly one assigned Manufacturer Profile for made-to-order fulfillment;
 - preserving an immutable, authoritative confirmation-time Manufacturer acceptance fact for made-to-order fulfillment;
 - preserving the confirmed manufacturer compensation and beneficiary basis for made-to-order Payment Allocation;
@@ -124,10 +124,16 @@ An Order Item:
 - Later changes to the Manufacturer Profile, Profile Holder, User, Organization, or commercial rules do not rewrite the confirmed Manufacturer compensation or beneficiary basis.
 - If an assigned Manufacturer later fails, the Order Item may be cancelled when applicable rules permit. Replacement requires a future separate purchasing workflow rather than mutation of the confirmed assignment or Order Item collection.
 - A ready-made Order Item has no assigned Manufacturer Profile merely because of ordinary existing-stock fulfillment.
-- Ready-made confirmation establishes a confirmed allocation of the full Order Item quantity against its Ready-Made Product.
-- Ready-made allocation succeeds only when the full quantity is currently available. Allocation is atomic at the domain level, available quantity never becomes negative, and the same stock capacity cannot be confirmed more than once.
-- A confirmed ready-made allocation remains associated with the Order Item until fulfillment or consumption, or until an applicable release.
-- Successful eligible cancellation before physical dispatch may release a ready-made allocation only when the applicable allocation-release rule permits that physical capacity to return to available quantity.
+- Successful ready-made confirmation atomically establishes a confirmed allocation of the full Order Item quantity and decreases its Ready-Made Product available quantity by exactly that full quantity.
+- Ready-made allocation succeeds only when the full quantity is currently available. The confirmation-time decrease is applied exactly once, available quantity never becomes negative, and the same stock capacity cannot be confirmed more than once.
+- The original confirmed ready-made allocation and quantity remain permanently associated with the Order Item as immutable history. Ending the allocation's operational effect never deletes or rewrites that historical fact.
+- Eligible pre-dispatch cancellation releases the confirmed ready-made allocation only when the Order Item has that allocation, its normal cancellation transition is allowed, physical dispatch has not occurred, no covering non-CANCELLED Shipment has reached SHIPPED, DELIVERED, or UNDELIVERED, release has not previously been applied, and any current PREPARING Shipment membership is resolved inside the same atomic cancellation-and-release result so the cancelled Item does not remain planned for dispatch.
+- Eligible cancellation, release, and any required PREPARING Shipment membership or lifecycle resolution automatically form one atomic domain result. The release increases Ready-Made Product available quantity by exactly the original confirmed Order Item quantity and is applied at most once.
+- If at least one other valid current Item remains in such a PREPARING Shipment, the cancelled Item is removed inside that atomic result. If the cancelled Item is the final current member, the Shipment transitions to CANCELLED inside the same result and preserves its current membership as frozen history.
+- Eligible ready-made cancellation cannot commit first and leave allocation release or PREPARING Shipment cleanup to a later operation. Rollback of any part rolls back the Order Item cancellation, allocation release, and related Shipment membership or lifecycle change.
+- An already CANCELLED Order Item, repeated cancellation command, or repeated event processing never applies another release.
+- Pre-dispatch cancellation and release serialize with a covering Shipment's transition to SHIPPED. If cancellation and release commit first, the Order Item cannot be shipped; if SHIPPED commits first, pre-dispatch release is unavailable. Both outcomes cannot commit for the same allocation.
+- Shipment transition to SHIPPED, DELIVERED, or UNDELIVERED and Order Item transition to FULFILLED neither decrement Ready-Made Product available quantity again nor increase it.
 - Cancellation after physical dispatch through terminal non-delivery resolution never releases the original ready-made allocation and never increases Ready-Made Product available quantity. Dispatch means the allocated unit left the ordinary available stock pool, while Shipment UNDELIVERED does not prove that it is again physically received, inspected, sellable, or accepted for restock.
 - Ready-Made Product stock allocation remains an Order Item responsibility. Shipment does not reserve or allocate stock, change ordered quantity, or create Inventory state.
 - An Order Item may be added to a Shipment only after the Item is in the IN_FULFILLMENT state.
@@ -157,7 +163,7 @@ An Order Item:
 - FULFILLED and CANCELLED are terminal states.
 - Cancellation applies to the complete Order Item in MVP. Partial-quantity cancellation is not supported.
 - A FULFILLED Order Item cannot be cancelled.
-- Cancellation preserves the Order Item identity, Order membership, purchased Listing, merchandise amounts, discount share, commercial and source snapshot, Personalization and publication snapshots, royalty context, Manufacturer Profile assignment, Manufacturer acceptance, Manufacturer compensation basis, and every frozen historical Shipment relationship.
+- Cancellation preserves the Order Item identity, Order membership, purchased Listing, merchandise amounts, discount share, commercial and source snapshot, Personalization and publication snapshots, royalty context, original confirmed ready-made allocation and quantity when applicable, Manufacturer Profile assignment, Manufacturer acceptance, Manufacturer compensation basis, and every frozen historical Shipment relationship.
 - An Item cancelled through terminal non-delivery resolution remains a frozen historical member of its UNDELIVERED Shipment. It is not removed or treated as if dispatch never occurred.
 - Reshipment and replacement after dispatch are unsupported in MVP. Because UNDELIVERED remains a non-CANCELLED Shipment, its frozen member cannot be placed into a second non-CANCELLED Shipment under the existing coverage invariant.
 - Payment failure or timeout does not directly mutate Order Item state. After a bounded payment-resolution window, commerce workflow may attempt cancellation when the existing Item cancellation rules permit it.
@@ -217,6 +223,12 @@ An Order Item:
 - A confirmed made-to-order Order Item always preserves an immutable, authoritative confirmation-time fact that required Manufacturer acceptance was obtained.
 - A confirmed made-to-order Order Item always preserves its explicitly established Manufacturer compensation and User or Organization beneficiary basis.
 - An ordinary ready-made Order Item never has an assigned Manufacturer Profile merely for stock fulfillment.
+- Every confirmed ready-made Order Item always preserves its original confirmed allocation and quantity as immutable history.
+- Successful ready-made confirmation always decreases available quantity exactly once by the full Order Item quantity.
+- An eligible pre-dispatch release always commits atomically with cancellation and any required PREPARING Shipment membership or lifecycle resolution and increases available quantity at most once by exactly the original confirmed Order Item quantity.
+- A CANCELLED Order Item is never scheduled for dispatch in a PREPARING Shipment.
+- A covering Shipment never both commits SHIPPED and permits pre-dispatch release for the same confirmed allocation.
+- Shipment lifecycle and Order Item fulfillment never apply another ready-made confirmation decrement or release.
 - Manufacturer Profile assignment never changes after confirmation.
 - The historical confirmed Manufacturer acceptance fact never changes after confirmation.
 - An Order Item included in a Shipment is always covered in its full quantity.
@@ -237,11 +249,11 @@ The immutable source snapshot does not create a second authoritative direct sour
 
 Snapshot autonomy protects historical terms from later mutation; it is not permission to destructively delete stable Listing, FINALIZED Revision, or Ready-Made Product identities that remain required by domain relationships.
 
-Order Item does not own Inventory, and no Inventory or Reservation entity is introduced in MVP. Temporary reservation, returns, restocking, and technical locking remain future integration concerns. Payment-resolution failure may lead to Order Item cancellation, but Payment never directly releases ready-made stock allocation.
+Order Item does not own Inventory, and no Inventory or Reservation entity is introduced in MVP. Temporary reservation, returns, restocking, and technical locking remain future integration concerns. Payment-resolution failure may lead commerce workflow to attempt Order Item cancellation, but Payment never directly changes ready-made stock and only a successful cancellation satisfying the defined pre-dispatch gate releases available quantity.
 
 Shipment provides delivery evidence toward the FULFILLED transition, while Shipment lifecycle states are not duplicated in the Order Item lifecycle. Manufacturing, Payment, Payment Allocation, and refund substates also remain outside the Order Item lifecycle.
 
-Ordinary cancellation after physical dispatch remains forbidden. UNDELIVERED provides only the narrow authorized terminal non-delivery exception; it does not auto-cancel, refund, replace, reship, or restock. Ready-made allocation release remains path-specific: eligible pre-dispatch cancellation may release capacity, while post-dispatch terminal non-delivery cancellation never restores the dispatched allocation to available quantity.
+Ordinary cancellation after physical dispatch remains forbidden. UNDELIVERED provides only the narrow authorized terminal non-delivery exception; it does not auto-cancel, refund, replace, reship, or restock. Ready-made allocation release is automatic only as part of an eligible pre-dispatch cancellation that satisfies every defined gate condition; post-dispatch terminal non-delivery cancellation never restores the dispatched allocation to available quantity.
 
 Replacement or reshipment would require new stock consumption for ready-made fulfillment or a new manufacturing and compensation decision for made-to-order fulfillment, so both remain separate future architecture. C2 does not determine carrier, Manufacturer, or platform liability, post-loss Manufacturer compensation, or insurance recovery.
 
@@ -255,10 +267,10 @@ The Order preserves the current Creastrix seller-of-record and merchant-of-recor
 
 Future relational persistence must prevent destructive cascade deletion from Listing or source entities into confirmed Order Items. If future approved Personalization deletion physically removes a live Personalization, persistence may sever only the optional traceability relationship while retaining the complete immutable snapshot and Order Item identity. Exact schema and foreign-key mechanisms remain implementation work.
 
-Future executable implementation must serialize DELIVERED/FULFILLED and UNDELIVERED/CANCELLED paths, require current UNDELIVERED coverage for the post-dispatch exception, reject cancellation of FULFILLED Items, preserve historical Shipment membership, prevent a second non-CANCELLED Shipment, preserve pre-dispatch release behavior, enforce no ready-made release after dispatch, and keep refund acceptance separate. Exact persistence and concurrency mechanisms remain implementation validation.
+Future executable implementation must serialize DELIVERED/FULFILLED and UNDELIVERED/CANCELLED paths, require current UNDELIVERED coverage for the post-dispatch exception, reject cancellation of FULFILLED Items, preserve historical Shipment membership, prevent a second non-CANCELLED Shipment, prove exact once-only ready-made confirmation decrement and eligible pre-dispatch release, prove atomic PREPARING Shipment membership resolution with no cancel-first cleanup-later state, preserve original allocation history after release, serialize the complete cancellation-and-release operation against SHIPPED, enforce no ready-made quantity change after dispatch or fulfillment, and keep refund acceptance separate. Exact persistence and concurrency mechanisms remain implementation validation.
 
 ---
 
 Status: DRAFT
 
-Version: 0.10
+Version: 0.11

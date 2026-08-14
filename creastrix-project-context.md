@@ -24,12 +24,12 @@ protecting creator ownership and customer trust.
 - Organization Membership
 - Workspace
 - Workspace Membership
+- Ready-Made Product
 
 ## Current Draft Domain Specifications
 
 The following specifications are DRAFT. They represent active architecture work and are not independently approved.
 
-- Ready-Made Product
 - Project
 - Revision
 - Designer Profile
@@ -61,6 +61,8 @@ The `main` branch currently contains these backend foundations:
 This is not a full product implementation and does not mean that all behavior in the approved specifications has been delivered.
 
 The merged Workspace foundation is partial implementation coverage of the independently APPROVED 1.0 Workspace and Workspace Membership specifications, not complete delivery of every approved rule or workflow. It does not implement authentication or external caller identity proof, HTTP APIs, invitations or invitation acceptance, general Workspace Membership creation or mutation workflows beyond the atomic initial Membership, ownership transfer, Workspace deletion or archival workflows, or recovery. The Workspace implementation does not approve any downstream DRAFT specification.
+
+The independently APPROVED 1.0 Ready-Made Product specification records accepted architecture, but its backend foundation has not been implemented. Its references to the DRAFT Listing, Order Item, and Shipment specifications preserve accepted Ready-Made Product boundaries only; they do not approve those specifications or authorize their production implementation.
 
 The remaining DRAFT domains are active architecture work and require their own architecture review and independent specification approval before implementation.
 
@@ -109,8 +111,16 @@ The remaining DRAFT domains are active architecture work and require their own a
 - Ready-Made Product is the stable identity of one independently stocked physical product configuration and belongs to exactly one Workspace.
 - The Workspace owner provides the platform-recognized commercial context in which a Ready-Made Product is managed; this does not prove legal ownership, physical custody, seller-of-record, manufacturer, or supplier status.
 - Ready-Made Product has the ACTIVE and ARCHIVED lifecycle and may transition in either direction.
+- Every new Ready-Made Product starts ACTIVE with required non-negative integer initial available quantity, including zero. After effective READY_MADE_PRODUCTS write authorization, its Workspace, immutable Created By User, ACTIVE state, and initial quantity are established as one coherent creation result; the User cannot select the initial lifecycle state, and creation does not create a Listing.
 - Ready-Made Product cannot be destructively deleted in MVP. ARCHIVED is its retained non-active state, while exact future deletion and retention policy remains separate work.
-- Ready-Made Product uses simple non-negative available quantity in MVP; an allocation may be confirmed only when sufficient quantity is available at confirmation, and the same available stock capacity cannot be confirmed for more than one Order Item. Eligible pre-dispatch cancellation may release allocation under the applicable release rule, while post-dispatch terminal non-delivery cancellation never restores the dispatched allocation to available quantity. Lifecycle remains independent from stock availability.
+- Ready-Made Product available quantity is the number of whole physical units currently sellable, free for new allocation, and not already allocated to a confirmed Order Item. It is neither total physical on-hand nor allocated units nor historical sales, and lifecycle remains independent from it.
+- Successful ready-made Order Item confirmation atomically decreases available quantity exactly once by the full Item quantity. Insufficient full quantity fails the whole Order confirmation, available quantity never becomes negative, and Shipment or fulfillment never decrements it again.
+- Eligible pre-dispatch Order Item cancellation automatically and atomically releases confirmed ready-made allocation only when the normal cancellation transition is allowed, dispatch has not occurred, no covering non-CANCELLED Shipment has reached SHIPPED, DELIVERED, or UNDELIVERED, release was not previously applied, and any current PREPARING Shipment membership is resolved inside the same atomic result. Release restores exactly the original confirmed Item quantity at most once and preserves the original allocation and quantity permanently in Order Item history.
+- When such a PREPARING Shipment retains another valid current Item, the cancelled Item is removed inside that result; when it is the final current member, the Shipment transitions to CANCELLED and preserves its membership as frozen history. Cancellation, release, and this membership or lifecycle change commit or roll back together, so cancel-first cleanup-later is not permitted.
+- Pre-dispatch cancellation and allocation release serialize with Shipment SHIPPED: cancellation and release first prevent shipping, while SHIPPED first makes release unavailable, and both cannot commit for the same allocation.
+- A User with effective READY_MADE_PRODUCTS write authorization may apply an explicit non-zero integer manual quantity delta against free stock capacity, subject to an atomic current-state check, non-negative result, and serialization with confirmation and release. This delta does not rewrite allocation history or represent procurement, receipt, inspection, returns, restocking, or a future Inventory workflow and is never triggered automatically by Payment, Shipment, refund, UNDELIVERED, or return-to-sender evidence.
+- Every manual quantity delta command has a stable unique identity before its first application attempt, immutably binds that identity to the exact Ready-Made Product and signed non-zero delta, and may change available quantity at most once. An identical retry resolves to the recorded result, a changed Product or delta is rejected, an unknown outcome is resolved from local persistence before another application, and a fully rolled-back unsuccessful attempt is not considered applied.
+- Manual quantity-delta command identity and result persistence are implementation details and do not introduce a Manual Adjustment, Stock Movement, Inventory Transaction, or other core entity.
 - One independently stocked physical configuration is one Ready-Made Product in MVP; no Product Variant entity exists.
 - Ready-Made Product exists independently from Listing and is never published directly.
 - Ready-Made Product does not require a Manufacturer Profile.
@@ -198,7 +208,7 @@ The remaining DRAFT domains are active architecture work and require their own a
 - An immutable snapshotted FINALIZED Revision source uses made-to-order fulfillment, while a Ready-Made Product source uses existing-stock fulfillment in MVP.
 - A made-to-order Order Item requires exactly one VERIFIED and item-eligible Manufacturer Profile whose acceptance was obtained before confirmation. Assignment is immutable afterward.
 - Every confirmed made-to-order Order Item preserves an immutable, authoritative confirmation-time fact that required Manufacturer acceptance was obtained.
-- Confirmation of a ready-made Order Item establishes allocation of its full quantity without overselling.
+- Confirmation of a ready-made Order Item atomically establishes and permanently records allocation of its full quantity while decreasing Ready-Made Product available quantity by that quantity exactly once without overselling.
 - An Order Item Personalization snapshot is immutable and authoritative even when the referenced Personalization later changes or is deleted.
 - Order Item preserves immutable Listing, source, source Workspace, commercial context, merchandise amounts, and applicable royalty terms without establishing seller-of-record.
 - Payment state remains separate from Order confirmation and lifecycle.
@@ -212,7 +222,7 @@ The remaining DRAFT domains are active architecture work and require their own a
 - Core Payment still cannot exist without Order. Pre-Order direct capture is unsupported in the current MVP, and no Checkout, Authorization, Payment Intent, Collection Intent, Compensation, or other pre-Order core entity is introduced.
 - Payment uses the PENDING, AUTHORIZED, CAPTURED, FAILED, and CANCELLED lifecycle. Provider status is evidence rather than automatic domain authority, and duplicate economic events are recognized only once.
 - For the positive-payable card MVP, full accepted capture of the confirmed payable total is required before fulfillment may start. A zero-payable Order is payment-ready without Payment, and payment readiness is not an Order or Order Item lifecycle state.
-- Payment failure and timeout do not directly mutate Order Item state or ready-made stock. After a bounded resolution window, commerce workflow may cancel eligible Items, and successful applicable ready-made Item cancellation releases stock under existing rules.
+- Payment failure and timeout do not directly mutate Order Item state or ready-made stock. After a bounded resolution window, commerce workflow may attempt cancellation of eligible Items; only a successful ready-made pre-dispatch cancellation satisfying the defined release gate restores available quantity as part of the same atomic result.
 - If any Order Item is cancelled before the first accepted Payment capture for a positive-payable Order, that immutable Order is permanently closed to further buyer payment collection in MVP; remaining desired selections require a new Order.
 - Payment Allocation is an immutable accounting attribution or reversal of accepted captured buyer funds for one Payment and is not payout, settlement, Royalty, seller identity, or a profit ledger.
 - Payment Allocation kinds are ORIGINAL and REVERSAL. A CAPTURED Payment and its complete ORIGINAL Allocation set are recognized atomically, every captured minor unit is attributed exactly once, and accepted refunds append REVERSAL facts without rewriting originals.
@@ -263,7 +273,7 @@ The remaining DRAFT domains are active architecture work and require their own a
 - UNDELIVERED preserves dispatch, frozen membership, fulfillment context, destination, and evidence history and does not automatically cancel an Order Item, accept a refund, release stock, or change financial history.
 - Ordinary Order Item cancellation after SHIPPED remains forbidden. The only C2 exception permits a separately authorized terminal non-delivery resolution to move an IN_FULFILLMENT Item to CANCELLED after its frozen covering Shipment is UNDELIVERED and all applicable rules pass.
 - Reshipment and replacement after dispatch are unsupported in MVP. UNDELIVERED remains non-CANCELLED, so its frozen Order Items cannot join a second non-CANCELLED Shipment.
-- Ready-made post-dispatch terminal non-delivery cancellation never releases the original allocation or increases available quantity. Return-to-sender evidence is not automatic restock; receipt, inspection, restocking, and manual adjustment remain separate future work.
+- Ready-made post-dispatch terminal non-delivery cancellation never releases the original allocation or increases available quantity. Return-to-sender evidence is not automatic restock; procurement, receipt, inspection, returns, restocking, and a future Inventory domain remain separate future workflows from the explicit MVP manual quantity delta.
 - Made-to-order terminal non-delivery cancellation preserves Manufacturer Profile assignment, acceptance, compensation basis, and all historical snapshots. A CANCELLED Item does not satisfy the current Payout FULFILLED release-candidate prerequisite.
 - C2 introduces no Delivery Failure, Shipment Event, replacement, return, inventory, claim, or other core entity and no new Workspace scope.
 - Shipment has no Workspace relationship or new Workspace scope and owns no independent destination, money, stock allocation, or manufacturing responsibility.
@@ -289,7 +299,7 @@ The remaining DRAFT domains are active architecture work and require their own a
 
 ## Next Steps
 
-1. Independently finalize and approve the Ready-Made Product architecture before implementing its foundation.
-2. Implement the Ready-Made Product foundation only after that approval.
-3. Advance toward Listing and commerce slices only through separately reviewed and approved steps.
+1. Separately design and implement a bounded Ready-Made Product structural foundation from APPROVED 1.0 with explicit delivered and deferred coverage.
+2. Do not implement Listing, Order Item, Shipment, or commerce integration from their DRAFT specifications before separate approval.
+3. Advance Listing and commerce through separately reviewed and approved slices.
 4. Before any functional Payout implementation milestone, separately define and approve the first concrete versioned Payout release policy.

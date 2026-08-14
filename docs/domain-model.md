@@ -28,7 +28,7 @@ These specifications describe proposed design creation, revision history, profes
 
 ## Manufacturing, stock, and fulfillment
 
-These specifications describe proposed existing-stock products, manufacturing capability, and physical-delivery grouping and history.
+These specifications describe Ready-Made Product architecture together with proposed manufacturing capability and physical-delivery grouping and history.
 
 - [Ready-Made Product](domain/ready-made-product.md)
 - [Manufacturer Profile](domain/manufacturer-profile.md)
