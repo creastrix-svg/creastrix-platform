@@ -48,7 +48,12 @@ A Shipment:
 - If an Order Item is removed while the Shipment remains PREPARING, the Item ceases to be a Shipment member and no historical domain relationship to that Shipment is retained. Future Audit Log behavior may record the planning change.
 - A Shipment must always have at least one current or frozen Order Item member. Removing an Item while PREPARING is allowed only when at least one Item remains.
 - The final member cannot be removed from a PREPARING Shipment. If no member should remain, the Shipment must transition to CANCELLED while preserving its current membership as frozen history.
+- When eligible ready-made pre-dispatch cancellation targets a current member of a PREPARING Shipment, resolution of that membership is part of the same atomic domain result as Order Item cancellation and allocation release.
+- If at least one other valid current Item remains, the cancelled Item is removed from the PREPARING Shipment inside that atomic result. If the cancelled Item is the final current member, the Shipment transitions to CANCELLED inside the same result and preserves its current membership as frozen history.
+- Eligible ready-made cancellation cannot commit first and leave PREPARING Shipment membership cleanup for a later operation. Rollback of any part rolls back cancellation, allocation release, and the related Shipment membership or lifecycle change.
 - When a Shipment transitions from PREPARING to SHIPPED or CANCELLED, its current membership freezes and becomes immutable. DELIVERED and UNDELIVERED retain the membership already frozen at SHIPPED.
+- Transition from PREPARING to SHIPPED closes the eligible pre-dispatch ready-made allocation-release gate for every frozen Order Item member.
+- A covering Shipment's transition to SHIPPED must serialize with eligible Order Item cancellation and ready-made allocation release. If cancellation and release commit first, the Item cannot remain eligible to ship; if SHIPPED commits first, pre-dispatch release is unavailable. Both outcomes cannot commit for the same confirmed allocation.
 - An Order Item may be current- or frozen-covered by at most one non-CANCELLED Shipment in MVP.
 - An Item removed from a PREPARING Shipment is no longer covered by it and may join another Shipment when all rules pass.
 - A CANCELLED Shipment retains its frozen membership as history but does not prevent a replacement non-CANCELLED Shipment from covering those Items.
@@ -84,7 +89,7 @@ A Shipment:
 - Shipment DELIVERED is delivery evidence and is not a universal permanent synonym for Order Item FULFILLED.
 - An UNDELIVERED Shipment cannot provide the DELIVERED evidence required for Order Item fulfillment.
 - Cancelling a PREPARING Shipment does not automatically cancel an included Order Item or rewrite its commercial snapshot.
-- If an Order Item becomes CANCELLED while its Shipment is PREPARING, it must not remain scheduled for dispatch. It may be removed when other dispatchable current members remain; otherwise the Shipment must transition to CANCELLED.
+- A CANCELLED Order Item must not remain scheduled for dispatch in a PREPARING Shipment. For eligible ready-made pre-dispatch cancellation, the required membership removal or Shipment cancellation occurs inside the same atomic result defined above.
 - Once the non-CANCELLED Shipment covering an Order Item is SHIPPED, ordinary MVP Order Item cancellation is not permitted through pre-dispatch cancellation behavior. The only post-dispatch exception in C2 is the separate authorized terminal non-delivery resolution for an IN_FULFILLMENT Item whose covering Shipment has already become UNDELIVERED.
 - Shipment may hold operational provider identification, service, label, tracking, URL, and provider-status metadata without requiring a Carrier entity or exact fields in this specification.
 - Provider or tracking metadata may evolve, but later updates never rewrite established dispatch, delivery, or terminal non-delivery facts.
@@ -97,6 +102,7 @@ A Shipment:
 - Workspace ownership, Workspace Membership, Organization Membership, and the PROJECTS, READY_MADE_PRODUCTS, and LISTINGS scopes do not automatically provide Shipment or buyer-destination access or Shipment mutation authority.
 - Shipment has no buyer-facing monetary semantics and does not own shipping price, tax, payment amount, or operational carrier cost in this specification.
 - Shipment does not reserve or allocate stock, change ordered quantity, own manufacturing, or manage Payment state.
+- Shipment transition to SHIPPED, DELIVERED, or UNDELIVERED never decrements Ready-Made Product available quantity again and never increases it. Order Item fulfillment also does not cause another stock decrement.
 - Shipment UNDELIVERED and return-to-sender evidence do not establish that a ready-made unit has been physically received, inspected, accepted for restock, or returned to available quantity.
 - Shipment does not require a Created By User. It may be created through an authorized User workflow, authorized platform automation, an authorized internal platform process, or a platform-authorized workflow triggered by provider integration. Provider integration does not independently own Shipment creation or mutation authority, and initiator provenance may later belong to Audit Log.
 - Competing SHIPPED-to-DELIVERED and SHIPPED-to-UNDELIVERED decisions, and any dependent Order Item fulfillment or terminal non-delivery resolution, require current-state revalidation and domain-consistent serialization. Only one terminal Shipment transition may commit; conflicting later evidence is a reconciliation or support concern and never rewrites terminal history.
@@ -120,6 +126,10 @@ A Shipment:
 - A Shipment always has exactly one lifecycle state: PREPARING, SHIPPED, DELIVERED, UNDELIVERED, or CANCELLED.
 - DELIVERED, UNDELIVERED, and CANCELLED are terminal states.
 - Shipment membership never changes after the Shipment becomes SHIPPED or CANCELLED, and DELIVERED and UNDELIVERED retain the membership frozen at SHIPPED.
+- Eligible ready-made cancellation, allocation release, and required PREPARING Shipment membership or lifecycle resolution never partially commit.
+- A CANCELLED Order Item is never scheduled for dispatch in a PREPARING Shipment.
+- SHIPPED always closes eligible pre-dispatch ready-made allocation release for the Shipment's frozen members.
+- A Shipment never both commits SHIPPED and permits pre-dispatch release for the same confirmed ready-made allocation.
 - One Shipment never becomes both DELIVERED and UNDELIVERED.
 - UNDELIVERED always preserves prior physical dispatch and never means pre-dispatch cancellation.
 - Established dispatch, delivery, and terminal non-delivery facts are never rewritten by later provider metadata changes.
@@ -141,10 +151,10 @@ Shipment DELIVERED may later provide evidence toward Designer Review, Manufactur
 
 Exact dispatch, delivery, and terminal non-delivery evidence fields, carrier status mappings, provider trust, support authorization, internal ready-made fulfillment locations, retention of private delivery data, and Audit Log provenance remain future refinements. Accepted UNDELIVERED resolution must preserve sufficient evidence or provenance for historical explanation without introducing a Delivery Failure, Shipment Event, Carrier Claim, Lost Parcel, or other core entity.
 
-Future executable implementation must prove mutually exclusive DELIVERED and UNDELIVERED transitions, idempotent duplicate terminal evidence handling, SHIPPED retention for ambiguous evidence, absence of automatic Order Item cancellation, refund, or stock release, the UNDELIVERED prerequisite for post-dispatch Item cancellation, the terminal nature of FULFILLED Items, continued at-most-one non-CANCELLED Shipment coverage, and correct ready-made pre-dispatch release versus post-dispatch no-release behavior. Exact locking, transaction isolation, version checks, constraints, and persistence structures remain implementation validation.
+Future executable implementation must prove mutually exclusive DELIVERED and UNDELIVERED transitions, idempotent duplicate terminal evidence handling, SHIPPED retention for ambiguous evidence, absence of automatic Order Item cancellation, refund, or post-dispatch stock restoration, the UNDELIVERED prerequisite for post-dispatch Item cancellation, the terminal nature of FULFILLED Items, continued at-most-one non-CANCELLED Shipment coverage, atomic PREPARING membership resolution with no cancel-first cleanup-later state, and exact mutual exclusion between SHIPPED and the complete eligible pre-dispatch cancellation-and-release operation. Exact locking, transaction isolation, version checks, constraints, and persistence structures remain implementation validation.
 
 ---
 
 Status: DRAFT
 
-Version: 0.3
+Version: 0.4

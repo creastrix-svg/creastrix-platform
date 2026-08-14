@@ -16,7 +16,9 @@ Specification approval and implementation coverage are tracked separately.
 
 ### APPROVED Domain Specifications
 
-User, User Profile, Organization, Organization Membership, Workspace, and Workspace Membership have APPROVED domain specifications. Approval records the accepted architecture for those entities; it does not mean that every approved rule is already implemented.
+User, User Profile, Organization, Organization Membership, Workspace, Workspace Membership, and Ready-Made Product have APPROVED domain specifications. Approval records the accepted architecture for those entities; it does not mean that every approved rule is already implemented.
+
+Ready-Made Product architecture is APPROVED at version 1.0, but its backend foundation has not been implemented.
 
 ### Implemented Backend Foundations
 
@@ -36,10 +38,11 @@ This is a partial foundation, not a complete product implementation or full deli
 
 ### Remaining DRAFT Domain Areas
 
-The remaining DRAFT domain areas are unimplemented and require their own
-independent specification approval before ordinary production implementation.
-The Workspace and Workspace Membership structural foundation does not approve
-any downstream DRAFT specification.
+The downstream Listing, Order Item, Shipment, and other remaining DRAFT domain
+areas are unimplemented and require their own independent specification
+approval before ordinary production implementation. Neither the Workspace and
+Workspace Membership structural foundation nor Ready-Made Product approval
+approves any downstream DRAFT specification.
 
 ## Architecture and Technology
 

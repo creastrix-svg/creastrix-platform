@@ -26,12 +26,12 @@ If a DRAFT or PLANNED dependency changes incompatibly with an APPROVED specifica
 - [Organization Membership](organization-membership.md) — APPROVED 1.4
 - [Workspace](workspace.md) — APPROVED 1.0
 - [Workspace Membership](workspace-membership.md) — APPROVED 1.0
+- [Ready-Made Product](ready-made-product.md) — APPROVED 1.0
 
 ## Draft specifications
 
 These entities have active draft specifications. They represent active architecture work and are not independently approved.
 
-- [Ready-Made Product](ready-made-product.md) — DRAFT 0.7
 - [Project](project.md) — DRAFT 0.6
 - [Revision](revision.md) — DRAFT 0.5
 - [Designer Profile](designer-profile.md) — DRAFT 0.2
@@ -40,12 +40,12 @@ These entities have active draft specifications. They represent active architect
 - [Personalization](personalization.md) — DRAFT 0.5
 - [Manufacturer Profile](manufacturer-profile.md) — DRAFT 0.3
 - [Order](order.md) — DRAFT 0.5
-- [Order Item](order-item.md) — DRAFT 0.10
+- [Order Item](order-item.md) — DRAFT 0.11
 - [Payment](payment.md) — DRAFT 0.4
 - [Payment Allocation](payment-allocation.md) — DRAFT 0.2
 - [Royalty](royalty.md) — DRAFT 0.2
 - [Payout](payout.md) — DRAFT 0.4
-- [Shipment](shipment.md) — DRAFT 0.3
+- [Shipment](shipment.md) — DRAFT 0.4
 
 ## Planned entities
 
