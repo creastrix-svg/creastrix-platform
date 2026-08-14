@@ -56,13 +56,18 @@ The `main` branch currently contains these backend foundations:
 - User repository port with an explicit JDBC adapter;
 - Organization and Organization Membership foundation;
 - Workspace and Workspace Membership structural foundation, including User-owned and Organization-owned Workspace creation with an atomic initial ACTIVE ADMIN Membership;
-- Workspace repository port with an explicit JDBC adapter and V4 PostgreSQL structural-invariant enforcement.
+- Workspace repository port with an explicit JDBC adapter and V4 PostgreSQL structural-invariant enforcement;
+- Ready-Made Product structural foundation as partial implementation coverage of APPROVED 1.0: a stable UUID identity, exactly one immutable Workspace, exactly one immutable Created By User, stored ACTIVE or ARCHIVED state, and a non-negative integer available quantity including zero;
+- atomic initial ACTIVE Ready-Made Product creation with creation-time validation of an ACTIVE creator User and effective Workspace-layer READY_MADE_PRODUCTS write authorization;
+- Ready-Made Product repository port, explicit JDBC adapter, Flyway V6, and an independent PostgreSQL creation gate and structural enforcement with tested concurrency and rollback boundaries.
 
 This is not a full product implementation and does not mean that all behavior in the approved specifications has been delivered.
 
 The merged Workspace foundation is partial implementation coverage of the independently APPROVED 1.0 Workspace and Workspace Membership specifications, not complete delivery of every approved rule or workflow. It does not implement authentication or external caller identity proof, HTTP APIs, invitations or invitation acceptance, general Workspace Membership creation or mutation workflows beyond the atomic initial Membership, ownership transfer, Workspace deletion or archival workflows, or recovery. The Workspace implementation does not approve any downstream DRAFT specification.
 
-The independently APPROVED 1.0 Ready-Made Product specification records accepted architecture, but its backend foundation has not been implemented. Its references to the DRAFT Listing, Order Item, and Shipment specifications preserve accepted Ready-Made Product boundaries only; they do not approve those specifications or authorize their production implementation.
+The merged Ready-Made Product foundation is partial implementation coverage of the independently APPROVED 1.0 specification, not complete delivery of every approved rule or workflow. IMPLEMENTATION 005A delivers the structural foundation and safe creation through the repository port, explicit JDBC adapter, Flyway V6, and a PostgreSQL creation-authorization gate that enforces creation authorization independently of the application-service path. It does not implement ACTIVE ↔ ARCHIVED lifecycle transition operations, generic editing, manual quantity delta with stable command identity and idempotency persistence, confirmation-time allocation and decrement, eligible pre-dispatch release, serialization with Shipment SHIPPED, Listing, Order, Order Item, Shipment or other commerce integration, list, search and paging, an HTTP API, or authentication with proven caller identity.
+
+Ready-Made Product references to the DRAFT Listing, Order Item, and Shipment specifications preserve accepted Ready-Made Product boundaries only; they do not approve those specifications or authorize their production implementation.
 
 The remaining DRAFT domains are active architecture work and require their own architecture review and independent specification approval before implementation.
 
@@ -299,7 +304,7 @@ The remaining DRAFT domains are active architecture work and require their own a
 
 ## Next Steps
 
-1. Separately design and implement a bounded Ready-Made Product structural foundation from APPROVED 1.0 with explicit delivered and deferred coverage.
+1. Select and independently review the next small implementation slice from the remaining unimplemented behavior in APPROVED 1.0 Ready-Made Product; this documentation alignment does not select or begin that slice.
 2. Do not implement Listing, Order Item, Shipment, or commerce integration from their DRAFT specifications before separate approval.
 3. Advance Listing and commerce through separately reviewed and approved slices.
 4. Before any functional Payout implementation milestone, separately define and approve the first concrete versioned Payout release policy.
