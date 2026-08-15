@@ -11,10 +11,22 @@ package com.creastrix.platform.readymadeproduct.domain;
  * have quantity zero and an ARCHIVED product may retain quantity greater than
  * zero.
  *
- * <p>This slice implements the structural foundation and creation only, so no
- * lifecycle transition rule is expressed here yet.
+ * <p>The supported lifecycle is deliberately closed: ACTIVE may transition
+ * only to ARCHIVED, and ARCHIVED may transition only to ACTIVE. A same-state
+ * command is not a lifecycle transition.
  */
 public enum ReadyMadeProductStatus {
     ACTIVE,
-    ARCHIVED
+    ARCHIVED;
+
+    /**
+     * The single canonical rule answering whether {@code this -> target} is a
+     * supported lifecycle transition.
+     */
+    public boolean canTransitionTo(ReadyMadeProductStatus target) {
+        return switch (this) {
+            case ACTIVE -> target == ARCHIVED;
+            case ARCHIVED -> target == ACTIVE;
+        };
+    }
 }
