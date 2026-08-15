@@ -102,15 +102,14 @@ class WorkspaceFoundationIntegrationTest {
     // ------------------------------------------------------------------
 
     @Test
-    void migrationHistoryIsExactlyV1ThroughV6InOrder() {
+    void migrationHistoryIsExactlyV1ThroughV7InOrder() {
         var versions = jdbcTemplate.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success = true "
                         + "AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
-        // The exact ordered history is asserted, including the later V6
-        // Ready-Made Product foundation migration. No V1..V5 assertion is
-        // weakened by this update.
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6");
+        // The exact ordered history is asserted, including the V6 foundation
+        // and V7 lifecycle migrations. No earlier assertion is weakened.
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7");
     }
 
     /**

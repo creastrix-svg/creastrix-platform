@@ -4,6 +4,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -98,5 +99,68 @@ class ReadyMadeProductTest {
         assertThat(withoutStock.availableQuantity()).isZero();
         assertThat(withStock.status()).isEqualTo(status);
         assertThat(withStock.availableQuantity()).isEqualTo(5L);
+    }
+
+    @ParameterizedTest(name = "{0} -> {1} allowed={2}")
+    @CsvSource({
+            "ACTIVE, ACTIVE, false",
+            "ACTIVE, ARCHIVED, true",
+            "ARCHIVED, ACTIVE, true",
+            "ARCHIVED, ARCHIVED, false"
+    })
+    void lifecycleTransitionMatrixIsClosed(
+            ReadyMadeProductStatus current,
+            ReadyMadeProductStatus target,
+            boolean allowed) {
+        assertThat(current.canTransitionTo(target)).isEqualTo(allowed);
+    }
+
+    @ParameterizedTest
+    @EnumSource(ReadyMadeProductStatus.class)
+    void nullIsNeverAValidLifecycleTarget(ReadyMadeProductStatus current) {
+        assertThat(current.canTransitionTo(null)).isFalse();
+    }
+
+    @ParameterizedTest(name = "{0} -> {1}")
+    @CsvSource({"ACTIVE, ARCHIVED", "ARCHIVED, ACTIVE"})
+    void supportedTransitionPreservesEveryOtherValue(
+            ReadyMadeProductStatus currentStatus, ReadyMadeProductStatus targetStatus) {
+        ReadyMadeProduct current = new ReadyMadeProduct(
+                ID, WORKSPACE_ID, CREATED_BY_USER_ID, currentStatus, 42L);
+
+        ReadyMadeProduct transitioned = current.transitionTo(targetStatus);
+
+        assertThat(transitioned.id()).isEqualTo(ID);
+        assertThat(transitioned.workspaceId()).isEqualTo(WORKSPACE_ID);
+        assertThat(transitioned.createdByUserId()).isEqualTo(CREATED_BY_USER_ID);
+        assertThat(transitioned.availableQuantity()).isEqualTo(42L);
+        assertThat(transitioned.status()).isEqualTo(targetStatus);
+        assertThat(current.status()).isEqualTo(currentStatus);
+    }
+
+    @ParameterizedTest(name = "{0} -> {1} rejected")
+    @CsvSource({"ACTIVE, ACTIVE", "ARCHIVED, ARCHIVED"})
+    void sameStateTransitionIsRejectedWithDiagnosticPayload(
+            ReadyMadeProductStatus currentStatus, ReadyMadeProductStatus targetStatus) {
+        ReadyMadeProduct product = new ReadyMadeProduct(
+                ID, WORKSPACE_ID, CREATED_BY_USER_ID, currentStatus, 7L);
+
+        assertThatExceptionOfType(InvalidReadyMadeProductStatusTransitionException.class)
+                .isThrownBy(() -> product.transitionTo(targetStatus))
+                .satisfies(exception -> {
+                    assertThat(exception.readyMadeProductId()).isEqualTo(ID);
+                    assertThat(exception.currentStatus()).isEqualTo(currentStatus);
+                    assertThat(exception.targetStatus()).isEqualTo(targetStatus);
+                });
+    }
+
+    @Test
+    void nullTransitionTargetIsRejected() {
+        ReadyMadeProduct product = new ReadyMadeProduct(
+                ID, WORKSPACE_ID, CREATED_BY_USER_ID, ReadyMadeProductStatus.ACTIVE, 1L);
+
+        assertThatNullPointerException()
+                .isThrownBy(() -> product.transitionTo(null))
+                .withMessage("Target Ready-Made Product status must not be null");
     }
 }
