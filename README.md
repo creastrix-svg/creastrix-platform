@@ -40,18 +40,28 @@ The current backend foundation covers:
   `READY_MADE_PRODUCTS` write authorization;
 - the Ready-Made Product repository port, explicit JDBC adapter, Flyway V6,
   independent PostgreSQL creation gate and structural enforcement, with
-  concurrency and rollback boundaries covered by integration tests.
+  concurrency and rollback boundaries covered by integration tests;
+- bounded Ready-Made Product archive and activate operations for `ACTIVE` →
+  `ARCHIVED` and `ARCHIVED` → `ACTIVE` through separate public application
+  methods, without a generic caller-supplied target status;
+- lifecycle authorization for an `ACTIVE` actor User with effective Workspace
+  `READY_MADE_PRODUCTS` write access, a final persisted-status decision after
+  locking the Product row, expected-state updates, and Flyway V7 structural
+  transition enforcement, including same-state rejection and rollback and
+  concurrency integration coverage.
 
-This is a partial foundation, not a complete product implementation or full delivery of every behavior in the approved specifications.
+This is a partial foundation, not a complete Ready-Made Product or MVP implementation or full delivery of every behavior in the approved specifications.
 
 Ready-Made Product implementation remains partial coverage of APPROVED 1.0.
-Deferred behavior includes `ACTIVE` ↔ `ARCHIVED` lifecycle transition
-operations, generic editing,
-manual quantity delta with stable command identity and idempotency persistence,
-confirmation-time allocation and decrement, eligible pre-dispatch release,
-serialization with Shipment `SHIPPED`, Listing, Order, Order Item, Shipment and
-other commerce integrations, list, search and paging, an HTTP API, and
-authentication with proven caller identity.
+It does not provide authentication or proven external caller identity. Raw SQL
+is structurally constrained but not actor-authorized, migration/table-owner
+privileges are not separated from the runtime database role, and global
+deadlock freedom or a general SQLSTATE `40P01` retry policy is not established.
+Deferred behavior includes generic editing, manual quantity delta with stable
+command identity and idempotency persistence, confirmation-time allocation and decrement,
+eligible pre-dispatch release, serialization with Shipment `SHIPPED`, Listing,
+Order, Order Item, Shipment, Payment and other commerce integrations, list,
+search and paging, and an HTTP API.
 
 ### Remaining DRAFT Domain Areas
 
