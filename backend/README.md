@@ -83,12 +83,17 @@ remain the source of truth for business rules.
 - creation authorization is a creation-time gate only: a later creator
   suspension or loss of Membership or scope never deletes, rewrites, or
   invalidates an already created historical Ready-Made Product or its Created
-  By.
+  By;
+- bounded Ready-Made Product lifecycle operations for `ACTIVE → ARCHIVED` and
+  `ARCHIVED → ACTIVE`, with actor authorization revalidated under row locks,
+  Product-row serialization, expected-state updates, typed application
+  outcomes, and structural PostgreSQL rejection of same-state or unsupported
+  transitions with SQLSTATE `23514`.
 
 The Ready-Made Product implementation is deliberately partial: the approved
-Ready-Made Product specification also defines lifecycle transitions,
-allocation, pre-dispatch release, and manual quantity adjustment, none of which
-is implemented here. Only the structural foundation and safe creation are
+Ready-Made Product specification also defines allocation, pre-dispatch release,
+and manual quantity adjustment, none of which is implemented here. The
+structural foundation, safe creation, and bounded lifecycle transitions are
 delivered; the remaining approved behavior is listed as deferred below.
 
 ### Ready-Made Product creation lock protocol
@@ -119,7 +124,7 @@ holding the changed Membership row. A commit-time-only creation check would
 hold the implicit Workspace `KEY SHARE` lock first and then wait for the
 Membership row, which is a real cycle that PostgreSQL resolves with SQLSTATE
 `40P01`; acquiring the authorization locks before the insert removes that cycle.
-V1–V5 are unchanged.
+V1–V6 are unchanged by the lifecycle migration.
 
 Both commit sequences are covered by deterministic tests for the creator User
 status axis, the permission-scope axis, and the Membership status, role, and
@@ -141,6 +146,34 @@ ordering of all affected Organizations and Workspaces and must safely retry the
 complete transaction after a deadlock. No such general mutation workflow, and
 no retry behavior, is implemented in this slice.
 
+### Ready-Made Product lifecycle lock protocol
+
+The supported application path first reads the Product without a lock only to
+obtain its immutable Workspace identity. It then acquires row locks in one
+canonical order: Workspace Membership → exact `READY_MADE_PRODUCTS` scope grant
+for an ACTIVE `EDITOR` → actor User → Ready-Made Product. Under the Product
+lock it re-reads persisted status, requires the exact expected state, performs
+an expected-state update, and returns the complete updated Product. Missing
+Membership or scope rows cannot be locked and therefore fail closed; this does
+not claim serialization against concurrent issuance of a previously absent
+grant.
+
+Future Membership/scope mutation workflows must preserve Membership → scope.
+A workflow that changes scope first and Membership second would introduce the
+opposing scope → Membership order and could deadlock. That general mutation
+workflow does not exist yet, global deadlock freedom is not claimed, and retry
+is not implemented: on SQLSTATE `40P01`, a future retry policy must repeat the
+whole transaction. Future quantity operations must likewise acquire
+authorization rows before Product, avoiding Product → Membership against the
+current Membership → Product order.
+
+PostgreSQL V7 enforces only the structural transition set. The migration owner
+and runtime database role currently coincide, so a client with runtime database
+credentials can execute a structurally valid raw transition without proving an
+actor. The supported Java/JDBC path proves authorization for the represented
+actor identity, but authentication and proven external caller identity remain
+absent. Database-role separation is deferred to a dedicated security task.
+
 Intentionally not implemented yet:
 
 - authentication and login (no credentials, no OAuth, no MFA);
@@ -157,9 +190,8 @@ Intentionally not implemented yet:
 - Workspace ownership transfer, deletion, archival, lifecycle states, or
   personal Workspace recovery;
 - additional Workspace roles, statuses, or permission scopes;
-- Ready-Made Product lifecycle transition operations (`ACTIVE` ↔ `ARCHIVED`),
-  generic edit/update, and manual quantity deltas with their command identity
-  and idempotency persistence;
+- Ready-Made Product generic edit/update and manual quantity deltas with their
+  command identity and idempotency persistence;
 - Ready-Made Product allocation, confirmation-time decrement, eligible
   pre-dispatch release, and serialization against dispatch;
 - Order, Order Item, Shipment, Listing, Payment, and every other commerce
@@ -216,7 +248,7 @@ removal, and User-owned as well as Organization-owned creation versus a
 concurrent User `ACTIVE` → non-`ACTIVE` status change), each of which must
 leave the Workspace foundation intact.
 
-They also prove the Ready-Made Product structural foundation: the exact V1 → V6
+They also prove the Ready-Made Product structural foundation: the exact V1 → V7
 migration history, the exact schema (columns, types, nullability, absence of
 defaults, primary key, `RESTRICT` foreign keys, closed lifecycle check set, and
 absence of speculative indexes), the Spring wiring down to real PostgreSQL, a
@@ -229,6 +261,10 @@ downgrade, and deletion) in both commit sequences, where a rejected race must
 fail with SQLSTATE `23514` and leave no product, never with `40P01`, `55P03`,
 or a timeout. Contention itself is proven from PostgreSQL lock metadata
 (`pg_blocking_pids`) with bounded polling instead of timing assumptions.
+The lifecycle coverage additionally proves both supported application
+directions, the authorization failures, raw SQL structural boundaries, and the
+five deterministic lifecycle races: User revocation and exact EDITOR-scope
+deletion in both commit orders, plus duplicate same-target Product mutation.
 
 Schema metadata assertions are anchored to the exact relation, constraint, and
 trigger-function OIDs of `public.ready_made_products`, and an adversarial test
@@ -239,10 +275,10 @@ inspected objects.
 ### Identity and authentication boundary
 
 Authentication and external caller identity proof are not implemented. A
-creator User identity presented to the application is not a proven identity of
-an authenticated HTTP session, so neither the application service nor the
-PostgreSQL creation gate proves who the external caller is. Both only prove
-that the presented creator identity actually holds the required authorization.
+creator or lifecycle actor User identity presented to the application is not a
+proven identity of an authenticated HTTP session, so neither the application
+service nor PostgreSQL proves who the external caller is. The supported path
+only proves that the represented identity holds the required authorization.
 
 ## Running the application
 

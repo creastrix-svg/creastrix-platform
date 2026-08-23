@@ -4,6 +4,8 @@ import java.util.UUID;
 
 import com.creastrix.platform.readymadeproduct.application.port.ReadyMadeProductRepository;
 import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProduct;
+import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProductActorNotActiveException;
+import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProductActorNotAuthorizedException;
 import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProductCreatorNotActiveException;
 import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProductCreatorNotAuthorizedException;
 import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProductNotFoundException;
@@ -37,8 +39,8 @@ import org.springframework.transaction.annotation.Transactional;
  * ACTIVE, and holds effective READY_MADE_PRODUCTS write authorization, but it
  * cannot prove that the external caller actually is that User.
  *
- * <p>Coverage boundary: only creation and lookup by identity belong to this
- * slice. Lifecycle transitions between ACTIVE and ARCHIVED, manual quantity
+ * <p>Coverage boundary: creation, lookup by identity, and the ACTIVE/ARCHIVED
+ * lifecycle transitions belong to the implemented foundation. Manual quantity
  * deltas, allocation, release, and every commerce interaction are not
  * implemented.
  */
@@ -116,5 +118,69 @@ public class ReadyMadeProductService {
     public ReadyMadeProduct findReadyMadeProduct(UUID readyMadeProductId) {
         return readyMadeProducts.findById(readyMadeProductId)
                 .orElseThrow(() -> new ReadyMadeProductNotFoundException(readyMadeProductId));
+    }
+
+    /**
+     * Archives an ACTIVE Ready-Made Product for the represented actor User.
+     *
+     * <p>Error precedence is intentional for this internal application layer:
+     * Product existence is checked before actor existence, authorization, and
+     * lifecycle state. Authentication and HTTP do not exist yet; when they are
+     * introduced, this disclosure boundary must be reviewed at that boundary.
+     */
+    @Transactional
+    public ReadyMadeProduct archiveReadyMadeProduct(
+            UUID readyMadeProductId, UUID actorUserId) {
+        return transitionReadyMadeProduct(
+                readyMadeProductId,
+                actorUserId,
+                ReadyMadeProductStatus.ACTIVE,
+                ReadyMadeProductStatus.ARCHIVED);
+    }
+
+    /**
+     * Activates an ARCHIVED Ready-Made Product for the represented actor User.
+     *
+     * <p>Error precedence is intentional for this internal application layer:
+     * Product existence is checked before actor existence, authorization, and
+     * lifecycle state. Authentication and HTTP do not exist yet; when they are
+     * introduced, this disclosure boundary must be reviewed at that boundary.
+     */
+    @Transactional
+    public ReadyMadeProduct activateReadyMadeProduct(
+            UUID readyMadeProductId, UUID actorUserId) {
+        return transitionReadyMadeProduct(
+                readyMadeProductId,
+                actorUserId,
+                ReadyMadeProductStatus.ARCHIVED,
+                ReadyMadeProductStatus.ACTIVE);
+    }
+
+    private ReadyMadeProduct transitionReadyMadeProduct(
+            UUID readyMadeProductId,
+            UUID actorUserId,
+            ReadyMadeProductStatus expectedStatus,
+            ReadyMadeProductStatus targetStatus) {
+        ReadyMadeProduct current = readyMadeProducts.findById(readyMadeProductId)
+                .orElseThrow(() -> new ReadyMadeProductNotFoundException(readyMadeProductId));
+
+        User actor = userService.findUser(actorUserId);
+        if (actor.status() != UserStatus.ACTIVE) {
+            throw new ReadyMadeProductActorNotActiveException(actor.id(), actor.status());
+        }
+
+        WorkspaceMembership actorMembership = workspaceService.findMemberships(current.workspaceId()).stream()
+                .filter(membership -> membership.userId().equals(actor.id()))
+                .findFirst()
+                .orElseThrow(() -> new ReadyMadeProductActorNotAuthorizedException(
+                        current.id(), current.workspaceId(), actor.id()));
+        if (!actorMembership.allowsWorkspaceLayerWrite(
+                actor.status(), WorkspacePermissionScope.READY_MADE_PRODUCTS)) {
+            throw new ReadyMadeProductActorNotAuthorizedException(
+                    current.id(), current.workspaceId(), actor.id());
+        }
+
+        return readyMadeProducts.transitionStatus(
+                current.id(), actor.id(), expectedStatus, targetStatus);
     }
 }

@@ -115,12 +115,12 @@ class ReadyMadeProductFoundationIntegrationTest {
     }
 
     @Test
-    void v6MigrationIsAppliedAfterV1ThroughV5() {
+    void migrationHistoryIsExactlyV1ThroughV7InOrder() {
         var versions = jdbcTemplate.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success = true "
                         + "AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7");
     }
 
     @Test
@@ -234,6 +234,7 @@ class ReadyMadeProductFoundationIntegrationTest {
         assertThat(triggers)
                 .extracting(row -> row.get("tgname"))
                 .containsExactly(
+                        "ready_made_products_enforce_status_transition",
                         "ready_made_products_forbid_delete",
                         "ready_made_products_forbid_identity_change",
                         "ready_made_products_forbid_truncate",
@@ -422,8 +423,8 @@ class ReadyMadeProductFoundationIntegrationTest {
     }
 
     /**
-     * The lifecycle state is not a creation input: no public application
-     * operation of this slice accepts a Ready-Made Product lifecycle state.
+     * The lifecycle state is not a creation or generic mutation input: the
+     * bounded archive/activate verbs do not expose a target status parameter.
      */
     @Test
     void noApplicationOperationAcceptsALifecycleStatusInput() {
@@ -583,15 +584,15 @@ class ReadyMadeProductFoundationIntegrationTest {
                         failure, "requires the initial lifecycle state ACTIVE", "PUBLISHED"));
         assertThat(productCount(productId)).isZero();
 
-        // The closed CHECK set itself is proven independently of the creation
-        // gate: no stored Ready-Made Product may reach a value outside
-        // ACTIVE | ARCHIVED either.
+        // V7's structural transition trigger rejects the unknown update before
+        // the closed CHECK is evaluated. The exact closed CHECK definition is
+        // asserted independently in schemaDeclaresExpectedKeysAndConstraints.
         ReadyMadeProduct stored =
                 readyMadeProductService.createReadyMadeProduct(workspace.id(), admin.id(), 1L);
         assertThatThrownBy(() -> jdbcTemplate.update(
                 "UPDATE ready_made_products SET status = 'PUBLISHED' WHERE id = ?", stored.id()))
                 .satisfies(failure -> assertStructuralCheckViolation(
-                        failure, "ready_made_products_status_allowed"));
+                        failure, "Unsupported Ready-Made Product status transition", "PUBLISHED"));
         assertThat(readyMadeProductService.findReadyMadeProduct(stored.id()).status())
                 .isEqualTo(ReadyMadeProductStatus.ACTIVE);
     }
@@ -873,8 +874,8 @@ class ReadyMadeProductFoundationIntegrationTest {
     /**
      * Lifecycle state and available quantity remain independent stored values:
      * both recognized lifecycle states and any non-negative quantity are
-     * storable in any combination. No application mutation for either value
-     * exists in this slice.
+     * storable in any combination. Lifecycle mutation is supported through
+     * bounded verbs; quantity mutation remains outside the application API.
      */
     @ParameterizedTest(name = "stored lifecycle {0}")
     @ValueSource(strings = {"ACTIVE", "ARCHIVED"})
@@ -884,9 +885,16 @@ class ReadyMadeProductFoundationIntegrationTest {
         ReadyMadeProduct product =
                 readyMadeProductService.createReadyMadeProduct(workspace.id(), admin.id(), 0L);
 
-        jdbcTemplate.update(
-                "UPDATE ready_made_products SET status = ?, available_quantity = 9 WHERE id = ?",
-                storedStatus, product.id());
+        if (storedStatus.equals("ARCHIVED")) {
+            jdbcTemplate.update(
+                    "UPDATE ready_made_products SET status = 'ARCHIVED', available_quantity = 9 "
+                            + "WHERE id = ?",
+                    product.id());
+        } else {
+            jdbcTemplate.update(
+                    "UPDATE ready_made_products SET available_quantity = 9 WHERE id = ?",
+                    product.id());
+        }
         ReadyMadeProduct withStock = readyMadeProductService.findReadyMadeProduct(product.id());
         jdbcTemplate.update(
                 "UPDATE ready_made_products SET available_quantity = 0 WHERE id = ?", product.id());

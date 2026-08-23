@@ -42,4 +42,19 @@ public record ReadyMadeProduct(
                             .formatted(availableQuantity));
         }
     }
+
+    /**
+     * Returns this Ready-Made Product in the requested lifecycle state while
+     * preserving identity, Workspace, Created By, and available quantity.
+     *
+     * @throws InvalidReadyMadeProductStatusTransitionException if the
+     *         requested transition is not supported
+     */
+    public ReadyMadeProduct transitionTo(ReadyMadeProductStatus target) {
+        Objects.requireNonNull(target, "Target Ready-Made Product status must not be null");
+        if (!status.canTransitionTo(target)) {
+            throw new InvalidReadyMadeProductStatusTransitionException(id, status, target);
+        }
+        return new ReadyMadeProduct(id, workspaceId, createdByUserId, target, availableQuantity);
+    }
 }
