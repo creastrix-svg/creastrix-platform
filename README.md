@@ -16,7 +16,7 @@ Specification approval and implementation coverage are tracked separately.
 
 ### APPROVED Domain Specifications
 
-User, User Profile, Organization, Organization Membership, Workspace, Workspace Membership, and Ready-Made Product have APPROVED domain specifications. Approval records the accepted architecture for those entities; it does not mean that every approved rule is already implemented.
+User, User Profile, Organization, Organization Membership, Workspace, Workspace Membership, and Ready-Made Product have APPROVED domain specifications. Ready-Made Product is currently APPROVED 1.1. Approval records the accepted architecture for those entities; it does not mean that every approved rule is already implemented.
 
 ### Implemented Backend Foundations
 
@@ -32,7 +32,7 @@ The current backend foundation covers:
 - the Workspace repository port with an explicit JDBC persistence adapter and
   V4 PostgreSQL structural-invariant enforcement;
 - the Ready-Made Product structural foundation as partial implementation
-  coverage of APPROVED 1.0: a stable UUID identity, exactly one immutable
+  coverage of APPROVED 1.1: a stable UUID identity, exactly one immutable
   Workspace, exactly one immutable Created By User, stored `ACTIVE` / `ARCHIVED`
   state, and a non-negative integer available quantity including zero;
 - atomic initial `ACTIVE` Ready-Made Product creation with creation-time
@@ -52,16 +52,19 @@ The current backend foundation covers:
 
 This is a partial foundation, not a complete Ready-Made Product or MVP implementation or full delivery of every behavior in the approved specifications.
 
-Ready-Made Product implementation remains partial coverage of APPROVED 1.0.
+IMPLEMENTATION 005A and IMPLEMENTATION 005B remain partial implementation
+coverage of Ready-Made Product APPROVED 1.1.
 It does not provide authentication or proven external caller identity. Raw SQL
 is structurally constrained but not actor-authorized, migration/table-owner
 privileges are not separated from the runtime database role, and global
 deadlock freedom or a general SQLSTATE `40P01` retry policy is not established.
-Deferred behavior includes generic editing, manual quantity delta with stable
-command identity and idempotency persistence, confirmation-time allocation and decrement,
-eligible pre-dispatch release, serialization with Shipment `SHIPPED`, Listing,
-Order, Order Item, Shipment, Payment and other commerce integrations, list,
-search and paging, and an HTTP API.
+Deferred behavior includes generic editing, manual quantity delta with durable
+composite command identity `(Product ID, Command ID)` and internal idempotency
+persistence, confirmation-time allocation, eligible pre-dispatch exact release,
+dispatch accounting and serialization with Shipment `SHIPPED`, Listing, Order,
+Order Item, Shipment, Payment and other commerce integrations, list, search and
+paging, and an HTTP API. IMPLEMENTATION 005C has not started, and this
+documentation step does not select a next implementation slice.
 
 ### Remaining DRAFT Domain Areas
 
