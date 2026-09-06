@@ -88,13 +88,26 @@ remain the source of truth for business rules.
   `ARCHIVED → ACTIVE`, with actor authorization revalidated under row locks,
   Product-row serialization, expected-state updates, typed application
   outcomes, and structural PostgreSQL rejection of same-state or unsupported
-  transitions with SQLSTATE `23514`.
+  transitions with SQLSTATE `23514`;
+- two explicit transactional operations for manual quantity deltas: durable
+  registration first, followed by a separately invoked apply/retry/replay;
+- Product-local command identity `(Product ID, Command ID)`, immutable non-zero
+  signed `BIGINT` delta binding, and permanent `REGISTERED`, `APPLIED`, or
+  `REJECTED` records;
+- exactly-once available-quantity changes under the Product row lock, checked
+  signed 64-bit arithmetic, immutable replay, and the closed terminal rejection
+  reasons `UNDERFLOW` and `OVERFLOW`;
+- V8 structural command protection through a composite primary key, a
+  `RESTRICT` Product foreign key, closed outcome-shape checks, guarded state
+  transitions, immutable bindings and terminal rows, and rejected deletion or
+  truncation. V8 adds no global Command-ID lookup, timestamp, actor, audit, JSON,
+  expiry, cleanup lifecycle, or speculative secondary index.
 
-The Ready-Made Product implementation is deliberately partial: the approved
-Ready-Made Product specification also defines allocation, pre-dispatch release,
-and manual quantity adjustment, none of which is implemented here. The
-structural foundation, safe creation, and bounded lifecycle transitions are
-delivered; the remaining approved behavior is listed as deferred below.
+The Ready-Made Product implementation remains deliberately partial. Structural
+creation, lifecycle transitions, and the manual available-quantity command
+protocol are present. Order Item allocation facts, release, dispatch, and their
+future contribution to accounted physical quantity are not present and remain
+listed below as deferred behavior.
 
 ### Ready-Made Product creation lock protocol
 
@@ -174,6 +187,43 @@ actor. The supported Java/JDBC path proves authorization for the represented
 actor identity, but authentication and proven external caller identity remain
 absent. Database-role separation is deferred to a dedicated security task.
 
+### Ready-Made Product manual quantity-delta protocol
+
+Registration and application are separate public service calls and therefore
+separate commit opportunities. Registration checks the represented actor for
+the supplied Product and stores a non-zero delta as `REGISTERED`; it never
+changes stock. There is no automatic application, scheduler, or background
+retry. A later explicit call rechecks current authorization and either attempts
+the registered command or returns its stored terminal result. Actor identity is
+not command payload, so any currently authorized actor may apply or replay it.
+
+The supported JDBC path may first read the Product only to resolve its immutable
+Workspace. It then locks Membership → the exact `READY_MADE_PRODUCTS` grant
+when an ACTIVE `EDITOR` requires one → actor User → Product → the exact command
+row or insert conflict. Command existence, binding, state, and outcome are not
+read before this authorization boundary succeeds. Missing Product, missing or
+inactive actor, and ineffective authorization use the same opaque internal
+access failure. Authentication, HTTP mapping, and proven caller identity remain
+absent, while privileged raw SQL remains outside actor authorization because
+the runtime role is not separated from the migration owner.
+
+For a still-`REGISTERED` command, the locked available quantity is changed with
+pre-addition boundary checks: there is no wrapping, clamping, partial result, or
+unsafe negation of `Long.MIN_VALUE`. A successful Product update and
+`REGISTERED → APPLIED` result commit atomically. Underflow or overflow leaves
+the Product unchanged and atomically stores `REGISTERED → REJECTED` with the
+reason and observed quantity. Infrastructure failure rolls back the transaction
+instead of manufacturing a business rejection. Replays never recalculate or
+mutate, and the same Command ID can be used independently for another Product.
+
+No Order Item allocation persistence exists in the current integrated schema,
+so reachable outstanding allocated quantity is zero and accounted physical
+quantity equals locked available quantity. Any later approved confirmation,
+release, or dispatch integration must derive outstanding allocations from real
+facts and serialize through this same Product quantity boundary. Neither that
+commerce work nor a general whole-transaction retry policy for SQLSTATE `40P01`
+is claimed here.
+
 Intentionally not implemented yet:
 
 - authentication and login (no credentials, no OAuth, no MFA);
@@ -190,10 +240,9 @@ Intentionally not implemented yet:
 - Workspace ownership transfer, deletion, archival, lifecycle states, or
   personal Workspace recovery;
 - additional Workspace roles, statuses, or permission scopes;
-- Ready-Made Product generic edit/update and manual quantity deltas with their
-  command identity and idempotency persistence;
 - Ready-Made Product allocation, confirmation-time decrement, eligible
-  pre-dispatch release, and serialization against dispatch;
+  pre-dispatch release, dispatch completion, and integration of those facts
+  with accounted physical quantity and manual deltas;
 - Order, Order Item, Shipment, Listing, Payment, and every other commerce
   integration (Order Item, Shipment, and Listing specifications remain DRAFT);
 - Product Variant, and any name, description, SKU, brand, model, media,
@@ -248,7 +297,7 @@ removal, and User-owned as well as Organization-owned creation versus a
 concurrent User `ACTIVE` → non-`ACTIVE` status change), each of which must
 leave the Workspace foundation intact.
 
-They also prove the Ready-Made Product structural foundation: the exact V1 → V7
+They also prove the Ready-Made Product structural foundation: the exact V1 → V8
 migration history, the exact schema (columns, types, nullability, absence of
 defaults, primary key, `RESTRICT` foreign keys, closed lifecycle check set, and
 absence of speculative indexes), the Spring wiring down to real PostgreSQL, a
@@ -265,6 +314,14 @@ The lifecycle coverage additionally proves both supported application
 directions, the authorization failures, raw SQL structural boundaries, and the
 five deterministic lifecycle races: User revocation and exact EDITOR-scope
 deletion in both commit orders, plus duplicate same-target Product mutation.
+The V8 coverage separately proves exact Product-scoped registration, composite
+namespace isolation, authorization before command disclosure, checked boundary
+arithmetic, immutable terminal replay, rollback atomicity, and structural
+PostgreSQL guards. Deterministic concurrency cases cover registration conflicts,
+rollback recovery, duplicate application, limited-stock commands, authorization
+revocation, and lifecycle interaction. Where a real wait is part of the claim,
+the tests identify both transaction backend PIDs and confirm the blocker through
+`pg_blocking_pids`, with bounded latches and no sleeps.
 
 Schema metadata assertions are anchored to the exact relation, constraint, and
 trigger-function OIDs of `public.ready_made_products`, and an adversarial test

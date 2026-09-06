@@ -102,14 +102,15 @@ class WorkspaceFoundationIntegrationTest {
     // ------------------------------------------------------------------
 
     @Test
-    void migrationHistoryIsExactlyV1ThroughV7InOrder() {
+    void flywayHistoryRemainsExactAfterManualQuantityDeltaV8() {
         var versions = jdbcTemplate.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success = true "
                         + "AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
-        // The exact ordered history is asserted, including the V6 foundation
-        // and V7 lifecycle migrations. No earlier assertion is weakened.
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7");
+        // The exact ordered history is asserted, including the V6 foundation,
+        // V7 lifecycle, and V8 manual quantity-delta migrations. No earlier
+        // assertion is weakened.
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
     }
 
     /**
@@ -986,7 +987,10 @@ class WorkspaceFoundationIntegrationTest {
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .rootCause()
                 .isInstanceOf(PSQLException.class)
-                .hasMessageContaining("TRUNCATE of workspaces is not supported")
+                // V8 adds a permanent child command ledger. PostgreSQL 18.4
+                // reaches that child's TRUNCATE guard before the unchanged V4
+                // Workspace guard; either way, the cascading bypass is denied.
+                .hasMessageContaining("manual quantity-delta command records are permanent")
                 .extracting(cause -> ((PSQLException) cause).getSQLState())
                 .isEqualTo(CHECK_VIOLATION_SQL_STATE);
 
