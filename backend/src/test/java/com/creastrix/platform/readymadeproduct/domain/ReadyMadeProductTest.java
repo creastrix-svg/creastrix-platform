@@ -163,4 +163,124 @@ class ReadyMadeProductTest {
                 .isThrownBy(() -> product.transitionTo(null))
                 .withMessage("Target Ready-Made Product status must not be null");
     }
+
+    @Test
+    void zeroManualDeltaIsInvalid() {
+        ReadyMadeProduct product = product(ReadyMadeProductStatus.ACTIVE, 1L);
+
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> product.applyManualQuantityDelta(0L))
+                .withMessage("Manual quantity delta must not be zero");
+    }
+
+    @ParameterizedTest(name = "available={0}, delta={1}, result={2}")
+    @CsvSource({
+            "1, -1, 0",
+            "0, 9223372036854775807, 9223372036854775807",
+            "7, 5, 12"
+    })
+    void validManualDeltaUsesExactArithmeticAndPreservesOtherValues(
+            long available, long delta, long expected) {
+        ReadyMadeProduct original = product(ReadyMadeProductStatus.ACTIVE, available);
+
+        ReadyMadeProduct changed = original.applyManualQuantityDelta(delta);
+
+        assertThat(changed.id()).isEqualTo(original.id());
+        assertThat(changed.workspaceId()).isEqualTo(original.workspaceId());
+        assertThat(changed.createdByUserId()).isEqualTo(original.createdByUserId());
+        assertThat(changed.status()).isEqualTo(original.status());
+        assertThat(changed.availableQuantity()).isEqualTo(expected);
+        assertThat(original.availableQuantity()).isEqualTo(available);
+    }
+
+    @ParameterizedTest
+    @EnumSource(ReadyMadeProductStatus.class)
+    void manualDeltaIsAllowedInBothLifecycleStates(ReadyMadeProductStatus status) {
+        assertThat(product(status, 2L).applyManualQuantityDelta(1L).status())
+                .isEqualTo(status);
+    }
+
+    @Test
+    void zeroMinusOneIsUnderflow() {
+        assertRejected(0L, -1L, ManualQuantityDeltaRejectionReason.UNDERFLOW);
+    }
+
+    @Test
+    void longMinimumDeltaIsUnderflowWithoutNegation() {
+        assertRejected(0L, Long.MIN_VALUE, ManualQuantityDeltaRejectionReason.UNDERFLOW);
+    }
+
+    @Test
+    void maximumPlusOneIsOverflow() {
+        assertRejected(Long.MAX_VALUE, 1L, ManualQuantityDeltaRejectionReason.OVERFLOW);
+    }
+
+    @Test
+    void maximumPlusMaximumIsOverflow() {
+        assertRejected(
+                Long.MAX_VALUE,
+                Long.MAX_VALUE,
+                ManualQuantityDeltaRejectionReason.OVERFLOW);
+    }
+
+    @Test
+    void resultReadModelRejectsInvalidOutcomeShape() {
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> new ManualQuantityDeltaResult(
+                        ID, UUID.randomUUID(), 1L,
+                        ManualQuantityDeltaCommandState.APPLIED,
+                        null, null, null))
+                .withMessageContaining("does not match state APPLIED");
+    }
+
+    @ParameterizedTest(name = "delta={0}, invalid reason={1}")
+    @CsvSource({"2, UNDERFLOW", "-2, OVERFLOW"})
+    void resultReadModelRejectsReasonIncompatibleWithDeltaSign(
+            long delta, ManualQuantityDeltaRejectionReason reason) {
+        UUID commandId = UUID.randomUUID();
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> new ManualQuantityDeltaResult(
+                        ID, commandId, delta, ManualQuantityDeltaCommandState.REJECTED,
+                        null, reason, 3L))
+                .withMessageContaining("rejection reason does not match delta sign");
+        assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> ManualQuantityDeltaResult.rejected(
+                        ID, commandId, delta, reason, 3L))
+                .withMessageContaining("rejection reason does not match delta sign");
+    }
+
+    @ParameterizedTest(name = "delta={0}, valid reason={1}")
+    @CsvSource({"-2, UNDERFLOW", "2, OVERFLOW"})
+    void resultReadModelAcceptsReasonMatchingDeltaSign(
+            long delta, ManualQuantityDeltaRejectionReason reason) {
+        UUID commandId = UUID.randomUUID();
+        ManualQuantityDeltaResult result = ManualQuantityDeltaResult.rejected(
+                ID, commandId, delta, reason, 3L);
+
+        assertThat(result).isEqualTo(new ManualQuantityDeltaResult(
+                ID, commandId, delta, ManualQuantityDeltaCommandState.REJECTED,
+                null, reason, 3L));
+        assertThat(result.rejectionReason()).isEqualTo(reason);
+        assertThat(result.delta()).isEqualTo(delta);
+    }
+
+    private void assertRejected(
+            long available,
+            long delta,
+            ManualQuantityDeltaRejectionReason expectedReason) {
+        ReadyMadeProduct product = product(ReadyMadeProductStatus.ARCHIVED, available);
+
+        assertThatExceptionOfType(ReadyMadeProductManualQuantityDeltaRejectedException.class)
+                .isThrownBy(() -> product.applyManualQuantityDelta(delta))
+                .satisfies(rejection -> {
+                    assertThat(rejection.reason()).isEqualTo(expectedReason);
+                    assertThat(rejection.observedAvailableQuantity()).isEqualTo(available);
+                });
+        assertThat(product.availableQuantity()).isEqualTo(available);
+    }
+
+    private ReadyMadeProduct product(ReadyMadeProductStatus status, long available) {
+        return new ReadyMadeProduct(
+                ID, WORKSPACE_ID, CREATED_BY_USER_ID, status, available);
+    }
 }

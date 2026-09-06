@@ -57,4 +57,31 @@ public record ReadyMadeProduct(
         }
         return new ReadyMadeProduct(id, workspaceId, createdByUserId, target, availableQuantity);
     }
+
+    /**
+     * Applies one non-zero delta using boundary checks before addition.
+     *
+     * <p>The current integrated schema has no Order Item allocation facts, so
+     * outstanding allocated quantity is zero and accounted physical quantity
+     * equals this locked available quantity. A future approved commerce slice
+     * must extend that calculation and serialize through the same Product row.
+     * No negation of {@link Long#MIN_VALUE} is performed.
+     */
+    public ReadyMadeProduct applyManualQuantityDelta(long delta) {
+        if (delta == 0) {
+            throw new IllegalArgumentException("Manual quantity delta must not be zero");
+        }
+        if (delta < 0 && delta < -availableQuantity) {
+            throw new ReadyMadeProductManualQuantityDeltaRejectedException(
+                    ManualQuantityDeltaRejectionReason.UNDERFLOW, availableQuantity);
+        }
+        if (delta > 0 && availableQuantity > Long.MAX_VALUE - delta) {
+            throw new ReadyMadeProductManualQuantityDeltaRejectedException(
+                    ManualQuantityDeltaRejectionReason.OVERFLOW, availableQuantity);
+        }
+
+        long resultingQuantity = availableQuantity + delta;
+        return new ReadyMadeProduct(
+                id, workspaceId, createdByUserId, status, resultingQuantity);
+    }
 }

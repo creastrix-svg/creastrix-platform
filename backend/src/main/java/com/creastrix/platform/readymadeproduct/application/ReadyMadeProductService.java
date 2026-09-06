@@ -1,8 +1,10 @@
 package com.creastrix.platform.readymadeproduct.application;
 
+import java.util.Objects;
 import java.util.UUID;
 
 import com.creastrix.platform.readymadeproduct.application.port.ReadyMadeProductRepository;
+import com.creastrix.platform.readymadeproduct.domain.ManualQuantityDeltaResult;
 import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProduct;
 import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProductActorNotActiveException;
 import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProductActorNotAuthorizedException;
@@ -18,6 +20,7 @@ import com.creastrix.platform.workspace.domain.Workspace;
 import com.creastrix.platform.workspace.domain.WorkspaceMembership;
 import com.creastrix.platform.workspace.domain.WorkspacePermissionScope;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -39,10 +42,11 @@ import org.springframework.transaction.annotation.Transactional;
  * ACTIVE, and holds effective READY_MADE_PRODUCTS write authorization, but it
  * cannot prove that the external caller actually is that User.
  *
- * <p>Coverage boundary: creation, lookup by identity, and the ACTIVE/ARCHIVED
- * lifecycle transitions belong to the implemented foundation. Manual quantity
- * deltas, allocation, release, and every commerce interaction are not
- * implemented.
+ * <p>Coverage boundary: creation, lookup by identity, the ACTIVE/ARCHIVED
+ * lifecycle transitions, and the separately registered and applied durable
+ * manual quantity-delta command belong to the implemented foundation.
+ * Allocation, release, dispatch integration, and every commerce interaction
+ * are not implemented.
  */
 @Service
 public class ReadyMadeProductService {
@@ -156,6 +160,32 @@ public class ReadyMadeProductService {
                 ReadyMadeProductStatus.ACTIVE);
     }
 
+    /**
+     * Durably registers one Product-scoped non-zero delta without changing
+     * available quantity. Application is a separate explicit operation.
+     * External proxy calls commit independently of any suspended caller transaction.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public ManualQuantityDeltaResult registerManualQuantityDelta(
+            UUID readyMadeProductId, UUID commandId, long delta, UUID actorUserId) {
+        validateManualQuantityDeltaInput(readyMadeProductId, commandId, delta, actorUserId);
+        return readyMadeProducts.registerManualQuantityDelta(
+                readyMadeProductId, commandId, delta, actorUserId);
+    }
+
+    /**
+     * Explicitly applies, retries, or replays a previously registered exact
+     * Product/Command pair. This operation never performs registration.
+     * External proxy calls commit independently of any suspended caller transaction.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public ManualQuantityDeltaResult applyManualQuantityDelta(
+            UUID readyMadeProductId, UUID commandId, long delta, UUID actorUserId) {
+        validateManualQuantityDeltaInput(readyMadeProductId, commandId, delta, actorUserId);
+        return readyMadeProducts.applyManualQuantityDelta(
+                readyMadeProductId, commandId, delta, actorUserId);
+    }
+
     private ReadyMadeProduct transitionReadyMadeProduct(
             UUID readyMadeProductId,
             UUID actorUserId,
@@ -182,5 +212,15 @@ public class ReadyMadeProductService {
 
         return readyMadeProducts.transitionStatus(
                 current.id(), actor.id(), expectedStatus, targetStatus);
+    }
+
+    private static void validateManualQuantityDeltaInput(
+            UUID readyMadeProductId, UUID commandId, long delta, UUID actorUserId) {
+        Objects.requireNonNull(readyMadeProductId, "Ready-Made Product id must not be null");
+        Objects.requireNonNull(commandId, "Manual quantity-delta command id must not be null");
+        Objects.requireNonNull(actorUserId, "Represented actor User id must not be null");
+        if (delta == 0) {
+            throw new IllegalArgumentException("Manual quantity delta must not be zero");
+        }
     }
 }

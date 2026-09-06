@@ -3,6 +3,7 @@ package com.creastrix.platform.readymadeproduct.application.port;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.creastrix.platform.readymadeproduct.domain.ManualQuantityDeltaResult;
 import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProduct;
 import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProductStatus;
 
@@ -10,9 +11,10 @@ import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProductStatus;
  * Outbound application port for Ready-Made Product persistence.
  *
  * <p>Only the operations required by the implemented foundation exist:
- * creation, lookup by identity, and the bounded lifecycle command. There are
- * deliberately no quantity mutation, deletion, generic CRUD, paging,
- * list-by-Workspace, or search operations.
+ * creation, lookup by identity, the bounded lifecycle command, and the two
+ * explicit durable manual quantity-delta phases. There are deliberately no
+ * generic quantity setter, deletion, generic CRUD, paging, list-by-Workspace,
+ * or search operations.
  *
  * <p>No implementation detail (SQL, JDBC, Spring types) belongs to this
  * contract.
@@ -64,4 +66,25 @@ public interface ReadyMadeProductRepository {
             UUID actorUserId,
             ReadyMadeProductStatus expectedStatus,
             ReadyMadeProductStatus targetStatus);
+
+    /**
+     * Authorizes the represented actor under canonical locks, then creates or
+     * resolves the exact Product/Command registration without changing
+     * quantity. No command row is read before authorization succeeds.
+     */
+    ManualQuantityDeltaResult registerManualQuantityDelta(
+            UUID readyMadeProductId,
+            UUID commandId,
+            long delta,
+            UUID actorUserId);
+
+    /**
+     * Authorizes first, locks Product and then the exact command, and applies
+     * or replays one immutable terminal result in the caller-owned transaction.
+     */
+    ManualQuantityDeltaResult applyManualQuantityDelta(
+            UUID readyMadeProductId,
+            UUID commandId,
+            long delta,
+            UUID actorUserId);
 }

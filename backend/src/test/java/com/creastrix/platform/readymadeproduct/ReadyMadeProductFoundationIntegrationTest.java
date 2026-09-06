@@ -115,22 +115,24 @@ class ReadyMadeProductFoundationIntegrationTest {
     }
 
     @Test
-    void migrationHistoryIsExactlyV1ThroughV7InOrder() {
+    void flywayHistoryIsExactThroughManualQuantityDeltaV8() {
         var versions = jdbcTemplate.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success = true "
                         + "AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
     }
 
     @Test
-    void v6AddsExactlyTheReadyMadeProductsTable() {
+    void productNamedRelationsAreOnlyTheFoundationAndInternalCommandTable() {
         var tables = jdbcTemplate.queryForList(
                 "SELECT table_name FROM information_schema.tables "
                         + "WHERE table_schema = 'public' AND table_name LIKE '%product%' "
                         + "ORDER BY table_name",
                 String.class);
-        assertThat(tables).containsExactly("ready_made_products");
+        assertThat(tables).containsExactly(
+                "ready_made_product_manual_quantity_delta_commands",
+                "ready_made_products");
     }
 
     @Test
@@ -862,9 +864,15 @@ class ReadyMadeProductFoundationIntegrationTest {
         assertThatThrownBy(() -> jdbcTemplate.update(
                 "DELETE FROM ready_made_products WHERE id = ?", product.id()))
                 .satisfies(failure -> assertStructuralCheckViolation(failure, "cannot be deleted"));
-        assertThatThrownBy(() -> jdbcTemplate.execute("TRUNCATE ready_made_products"))
+        // V8's RESTRICT child reference makes plain parent-only TRUNCATE fail
+        // before row triggers. CASCADE reaches the permanent child-command
+        // guard first on PostgreSQL 18.4 and proves that even an attempt to
+        // truncate the Product together with its dependent persistence remains
+        // structurally forbidden with the stable project SQLSTATE. The exact
+        // V6 Product TRUNCATE trigger remains asserted separately by metadata.
+        assertThatThrownBy(() -> jdbcTemplate.execute("TRUNCATE ready_made_products CASCADE"))
                 .satisfies(failure -> assertStructuralCheckViolation(
-                        failure, "TRUNCATE of ready_made_products is not supported"));
+                        failure, "command records are permanent"));
 
         assertThat(productCount(product.id())).isEqualTo(1);
         assertThat(readyMadeProductService.findReadyMadeProduct(product.id()).status())
