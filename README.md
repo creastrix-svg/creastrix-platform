@@ -31,8 +31,8 @@ The current backend foundation covers:
   `ADMIN` Membership;
 - the Workspace repository port with an explicit JDBC persistence adapter and
   V4 PostgreSQL structural-invariant enforcement;
-- the Ready-Made Product structural foundation as partial implementation
-  coverage of APPROVED 1.1: a stable UUID identity, exactly one immutable
+- the Ready-Made Product structural foundation (IMPLEMENTATION 005A) as partial
+  implementation coverage of APPROVED 1.1: a stable UUID identity, exactly one immutable
   Workspace, exactly one immutable Created By User, stored `ACTIVE` / `ARCHIVED`
   state, and a non-negative integer available quantity including zero;
 - atomic initial `ACTIVE` Ready-Made Product creation with creation-time
@@ -41,30 +41,48 @@ The current backend foundation covers:
 - the Ready-Made Product repository port, explicit JDBC adapter, Flyway V6,
   independent PostgreSQL creation gate and structural enforcement, with
   concurrency and rollback boundaries covered by integration tests;
-- bounded Ready-Made Product archive and activate operations for `ACTIVE` →
-  `ARCHIVED` and `ARCHIVED` → `ACTIVE` through separate public application
+- bounded Ready-Made Product archive and activate operations (IMPLEMENTATION 005B)
+  for `ACTIVE` → `ARCHIVED` and `ARCHIVED` → `ACTIVE` through separate public application
   methods, without a generic caller-supplied target status;
 - lifecycle authorization for an `ACTIVE` actor User with effective Workspace
   `READY_MADE_PRODUCTS` write access, a final persisted-status decision after
   locking the Product row, expected-state updates, and Flyway V7 structural
   transition enforcement, including same-state rejection and rollback and
-  concurrency integration coverage.
+  concurrency integration coverage;
+- durable manual quantity-delta commands (IMPLEMENTATION 005C) for both `ACTIVE`
+  and `ARCHIVED` Products, through separate registration and application/retry/replay
+  service operations; external Spring-proxy calls use `REQUIRES_NEW` for independent
+  commit boundaries, and registration does not change quantity or trigger application;
+- composite `(Product ID, Command ID)` identity, immutable non-zero signed 64-bit
+  delta binding, permanent `REGISTERED` / `APPLIED` / `REJECTED` persistence through
+  the explicit JDBC adapter, and Flyway V8 structural enforcement;
+- current Product authorization before command lookup or disclosure, checked
+  arithmetic with terminal `UNDERFLOW` / `OVERFLOW`, atomic quantity and terminal
+  outcome persistence, and historical terminal replay without reapplying the delta.
 
 This is a partial foundation, not a complete Ready-Made Product or MVP implementation or full delivery of every behavior in the approved specifications.
 
-IMPLEMENTATION 005A and IMPLEMENTATION 005B remain partial implementation
-coverage of Ready-Made Product APPROVED 1.1.
-It does not provide authentication or proven external caller identity. Raw SQL
-is structurally constrained but not actor-authorized, migration/table-owner
+IMPLEMENTATION 005A, IMPLEMENTATION 005B, and IMPLEMENTATION 005C remain partial
+implementation coverage of Ready-Made Product APPROVED 1.1.
+Allocation persistence is absent, so reachable outstanding allocated quantity is
+zero and accounted physical quantity currently equals available quantity.
+Integration of accounted quantity with allocation, release, and dispatch remains
+unimplemented; manual delta is not a complete stock or commerce workflow.
+
+`REQUIRES_NEW` can require an additional connection when an outer transaction holds
+one, and an outer transaction holding locks needed by the inner operation can
+prevent completion. Independent commit boundaries do not remove those constraints.
+
+The implementation does not provide authentication or proven external caller
+identity. Raw SQL is structurally constrained but not actor-authorized, migration/table-owner
 privileges are not separated from the runtime database role, and global
 deadlock freedom or a general SQLSTATE `40P01` retry policy is not established.
-Deferred behavior includes generic editing, manual quantity delta with durable
-composite command identity `(Product ID, Command ID)` and internal idempotency
-persistence, confirmation-time allocation, eligible pre-dispatch exact release,
+Deferred behavior includes generic editing, Order Item confirmation-time
+allocation, eligible pre-dispatch exact release,
 dispatch accounting and serialization with Shipment `SHIPPED`, Listing, Order,
 Order Item, Shipment, Payment and other commerce integrations, list, search and
-paging, and an HTTP API. IMPLEMENTATION 005C has not started, and this
-documentation step does not select a next implementation slice.
+paging, and an HTTP API. This documentation step does not select or begin a next
+implementation slice.
 
 ### Remaining DRAFT Domain Areas
 
