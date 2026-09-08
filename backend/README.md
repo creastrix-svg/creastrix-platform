@@ -20,7 +20,7 @@ remain the source of truth for business rules.
 - PostgreSQL concurrency protection for the last-owner invariant: every
   invariant-changing Membership check is serialized through a `FOR UPDATE`
   lock on the parent Organization row, which prevents the two-owner
-  write-skew race;
+  write-skew race under the V9 READ COMMITTED write contract below;
 - Workspace stable UUID platform identity with exactly one immutable owner
   that is either one User or one Organization;
 - User-owned and Organization-owned Workspace creation, each atomic with the
@@ -41,7 +41,7 @@ remain the source of truth for business rules.
   enforced bidirectionally from both Membership tables;
 - PostgreSQL concurrency protection for the Workspace invariants: a scoped
   row-lock protocol (Organization row, then affected Workspace rows in UUID
-  order, then User rows) that closes the specifically tested write-skew races:
+  order, then User rows) under that READ COMMITTED contract, closing the tested races:
   concurrent removal of the last `ACTIVE` `ADMIN` alternatives, cross-table
   Organization `OWNER` / Workspace `ADMIN` write skew, Workspace creation
   versus removal of the creator's Organization `OWNER` Membership, and
@@ -108,6 +108,70 @@ creation, lifecycle transitions, and the manual available-quantity command
 protocol are present. Order Item allocation facts, release, dispatch, and their
 future contribution to accounted physical quantity are not present and remain
 listed below as deferred behavior.
+
+### Foundation write isolation contract and V9 upgrade
+
+V9 admits writes to `public.organizations`, `public.organization_memberships`,
+`public.workspaces`, and `public.workspace_memberships` only when the actual
+transaction isolation is `read committed`. A shared PostgreSQL function and one
+non-deferred `BEFORE STATEMENT` trigger per table cover `INSERT`, `UPDATE`,
+`DELETE`, and `TRUNCATE`, including zero-row and multi-row statements. Prepared
+statements, UPSERT, COPY FROM, and MERGE use the same admission boundary.
+
+READ UNCOMMITTED, REPEATABLE READ, and SERIALIZABLE are rejected with SQLSTATE
+`0A000` and message
+`CREASTRIX_FOUNDATION_WRITE_ISOLATION_V1: foundation write requires READ COMMITTED`.
+The server error carries the exact schema/table and DETAIL fields `operation`
+and `actual_isolation`, without row data. PostgreSQL may reject an invalid
+statement before any trigger runs; a native error with the same SQLSTATE is not
+evidence that this guard executed. READ UNCOMMITTED is deliberately unsupported
+even though PostgreSQL gives it READ COMMITTED visibility semantics.
+
+Existing REQUIRED Organization/Workspace service calls join an ambient
+transaction: a forbidden ambient mode fails at its first guarded write. Neither
+the guard nor the services change isolation, add REQUIRES_NEW, or retry. Direct
+unpooled JDBC can recover to a savepoint, but another guarded write in that
+transaction is still rejected. The current Hikari policy treats SQLSTATE
+`0A000` as a broken connection and closes it. In the verified Spring ambient
+transaction path, rollback then raises a different `TransactionSystemException`;
+`getApplicationException()` retains the original service exception. A generic
+rollback error or `Connection is closed` is not guard evidence. The failed
+transaction's writes are rolled back and a subsequent new READ COMMITTED
+service transaction can commit through the pool; continuation of the same
+pooled transaction via savepoint is not guaranteed. No SQLExceptionOverride or
+SQLSTATE change is included. Read-only queries are not prohibited. User, User Profile,
+scope-grant, and Ready-Made Product tables receive no new isolation guard, and
+their existing protections remain. Structural OWNER/ADMIN qualification still
+counts ACTIVE Memberships even when the associated User is SUSPENDED; ordinary
+actor actionability remains a separate requirement. This is not protection
+against a privileged schema owner disabling or replacing triggers.
+
+V9 first verifies actual READ COMMITTED, then takes four separate top-level
+`SHARE ROW EXCLUSIVE` table locks in this order: organizations →
+organization_memberships → workspaces → workspace_memberships. On the same
+physical Flyway connection and transaction, a separate command after the
+complete barrier validates the permanent OWNER, User-owner ADMIN, generic ADMIN,
+and Organization OWNER/Workspace ADMIN intersection predicates from a fresh
+snapshot. Only then are the new function and triggers created. Validation, DDL,
+and successful migration history commit atomically. Invalid data, an incomplete
+transaction barrier, unexpected table descendants, or a timeout stops the upgrade without repairing data or
+terminating other sessions. V1–V8 and their row-lock protocols are unchanged.
+
+This boundary requires `spring.flyway.postgresql.transactional-lock=false`,
+with `spring.flyway.execute-in-transaction=true` and `spring.flyway.group=false`.
+Standalone Flyway must use the equivalent PostgreSQL transactional-lock setting.
+Session advisory locking remains enabled: concurrent migrators serialize, and
+Flyway explicitly releases the lock after success or rollback. The compatibility
+proof covers the installed Flyway execution path and direct PostgreSQL sessions;
+it does not establish compatibility with transaction-pooling proxies or replace
+deployment-specific verification.
+
+The migration tests use only owned disposable PostgreSQL databases. A real
+deployment still requires a separately authorized drain and operational lock/
+statement deadlines; no user or deployed database rollout is claimed. The
+same-owner Workspace-creation deadlock finding (PROD-001) remains open: V9 fixes
+the isolation admission gap (PROD-002), not that creation lock protocol. V10 and
+NO KEY UPDATE changes are not included.
 
 ### Ready-Made Product creation lock protocol
 
@@ -297,7 +361,7 @@ removal, and User-owned as well as Organization-owned creation versus a
 concurrent User `ACTIVE` → non-`ACTIVE` status change), each of which must
 leave the Workspace foundation intact.
 
-They also prove the Ready-Made Product structural foundation: the exact V1 → V8
+They also prove the Ready-Made Product structural foundation: the exact V1 → V9
 migration history, the exact schema (columns, types, nullability, absence of
 defaults, primary key, `RESTRICT` foreign keys, closed lifecycle check set, and
 absence of speculative indexes), the Spring wiring down to real PostgreSQL, a
@@ -328,6 +392,20 @@ trigger-function OIDs of `public.ready_made_products`, and an adversarial test
 creates a decoy schema with same-named table, constraints, and functions to
 prove that name collisions in another schema neither replace nor disturb the
 inspected objects.
+
+The V9 tests separately preserve the V8 REPEATABLE READ OWNER/ADMIN write-skew
+counterexamples and READ COMMITTED controls, then exercise forbidden-isolation
+admission without partial effects and READ COMMITTED OWNER/ADMIN/cross-table
+preservation. They verify exact error provenance with negative controls, the
+four-table write-event matrix, actual versus default isolation, ambient service
+transactions, savepoint recovery, and public relation/function OID isolation
+against same-named decoys. Upgrade coverage includes fresh V1 → V9, populated
+V8 → V9 with nine domain tables preserved, invalid-preexisting data, non-RC
+migration rejection, and a real Flyway upgrade overlapping an old writer. The
+overlap proves actual PID-directed waiting on the partial barrier, fresh
+validation after the writer commits, and complete migration rollback. Core
+concurrency and overlap cases run three times sequentially with bounded waits;
+timeouts or unrelated errors are not accepted as invariant evidence.
 
 ### Identity and authentication boundary
 
