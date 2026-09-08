@@ -102,15 +102,15 @@ class WorkspaceFoundationIntegrationTest {
     // ------------------------------------------------------------------
 
     @Test
-    void flywayHistoryRemainsExactAfterFoundationIsolationV9() {
+    void flywayHistoryRemainsExactAfterWorkspaceCreationLocksV10() {
         var versions = jdbcTemplate.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success = true "
                         + "AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
         // The exact ordered history is asserted, including the V6 foundation,
-        // V7 lifecycle, V8 manual quantity-delta, and V9 foundation isolation
-        // migrations. No earlier assertion is weakened.
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
+        // V7 lifecycle, V8 manual quantity-delta, V9 foundation isolation,
+        // and V10 creation-lock migrations. No earlier assertion is weakened.
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
     }
 
     /**
@@ -401,7 +401,20 @@ class WorkspaceFoundationIntegrationTest {
                 .contains("FOR EACH STATEMENT");
 
         // The lock-bearing trigger functions actually contain the row locking.
-        assertThat(functionSource("workspaces_require_initial_foundation")).contains("FOR UPDATE");
+        String creationSource = jdbcTemplate.queryForObject(
+                "SELECT prosrc FROM pg_proc "
+                        + "WHERE oid = 'public.workspaces_require_initial_foundation()'::regprocedure",
+                String.class).replaceAll("\\s+", " ").trim();
+        assertThat(creationSource)
+                .contains("SELECT status INTO owner_status FROM users WHERE id = NEW.owner_user_id "
+                        + "FOR NO KEY UPDATE;")
+                .contains("PERFORM 1 FROM organizations WHERE id = NEW.owner_organization_id "
+                        + "FOR NO KEY UPDATE;")
+                .contains("PERFORM 1 FROM users u WHERE u.id IN ( SELECT user_id FROM workspace_memberships "
+                        + "WHERE workspace_id = NEW.id AND role = 'ADMIN' AND status = 'ACTIVE' ) "
+                        + "ORDER BY u.id FOR NO KEY UPDATE;")
+                .doesNotContain("FOR UPDATE");
+        assertThat(creationSource.split("FOR NO KEY UPDATE", -1)).hasSize(4);
         assertThat(functionSource("workspace_memberships_preserve_foundation")).contains("FOR UPDATE");
         assertThat(functionSource("organization_memberships_preserve_workspace_foundation"))
                 .contains("FOR UPDATE")

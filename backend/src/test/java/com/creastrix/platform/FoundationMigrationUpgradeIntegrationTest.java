@@ -27,6 +27,7 @@ import com.creastrix.platform.organization.application.OrganizationService;
 import com.creastrix.platform.organization.persistence.JdbcOrganizationRepository;
 import com.creastrix.platform.readymadeproduct.application.ReadyMadeProductService;
 import com.creastrix.platform.readymadeproduct.domain.ManualQuantityDeltaCommandState;
+import com.creastrix.platform.readymadeproduct.domain.ManualQuantityDeltaRejectionReason;
 import com.creastrix.platform.readymadeproduct.domain.ManualQuantityDeltaResult;
 import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProductStatus;
 import com.creastrix.platform.readymadeproduct.persistence.JdbcReadyMadeProductRepository;
@@ -34,6 +35,8 @@ import com.creastrix.platform.user.application.UserService;
 import com.creastrix.platform.user.domain.UserStatus;
 import com.creastrix.platform.user.persistence.JdbcUserRepository;
 import com.creastrix.platform.workspace.application.WorkspaceService;
+import com.creastrix.platform.workspace.domain.WorkspaceCreatorNotActiveException;
+import com.creastrix.platform.workspace.domain.WorkspaceCreatorNotOrganizationOwnerException;
 import com.creastrix.platform.workspace.persistence.JdbcWorkspaceRepository;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -170,6 +173,148 @@ class FoundationMigrationUpgradeIntegrationTest {
             assertThat(products.archiveReadyMadeProduct(ordinary, actor).status()).isEqualTo(ReadyMadeProductStatus.ARCHIVED);
             assertThat(products.activateReadyMadeProduct(ordinary, actor).status()).isEqualTo(ReadyMadeProductStatus.ACTIVE);
             assertThat(workspaces.createUserOwnedWorkspace(actor).ownerId()).isEqualTo(actor);
+        }
+    }
+
+    @Test
+    void freshDatabaseMigratesThroughActualV1ToV10() {
+        assertThat(migrate("10", source).migrationsExecuted).isEqualTo(10);
+        assertVersionTenInstalled();
+        String function = workspaceCreationFunction();
+        assertThreeCreationNoKeyUpdateSites(function);
+        assertThat(workspaceCreationTriggerBinding()).isEqualTo(workspaceCreationFunctionOid());
+        for (String table : DOMAIN_TABLES) {
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM public." + table, Integer.class))
+                    .as("fresh V10 %s", table).isZero();
+        }
+        try (AnnotationConfigApplicationContext context = serviceContext()) {
+            UserService users = context.getBean(UserService.class);
+            WorkspaceService workspaces = context.getBean(WorkspaceService.class);
+            OrganizationService organizations = context.getBean(OrganizationService.class);
+            UUID actor = users.createUser().id();
+            assertThat(workspaces.createUserOwnedWorkspace(actor).ownerId()).isEqualTo(actor);
+            UUID organization = organizations.createOrganization(actor).id();
+            assertThat(workspaces.createOrganizationOwnedWorkspace(organization, actor).ownerId())
+                    .isEqualTo(organization);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"9", "8"})
+    void populatedUpgradeToV10ChangesOnlyThreeCreationLocksAndPreservesAllDomainRows(String initialVersion) {
+        migrate(initialVersion, source);
+        try (AnnotationConfigApplicationContext context = serviceContext()) {
+            UserService users = context.getBean(UserService.class);
+            WorkspaceService workspaces = context.getBean(WorkspaceService.class);
+            ReadyMadeProductService products = context.getBean(ReadyMadeProductService.class);
+            OrganizationService organizations = context.getBean(OrganizationService.class);
+            assertThat(AopUtils.isAopProxy(workspaces)).isTrue();
+            assertThat(AopUtils.isAopProxy(products)).isTrue();
+            UUID actor = users.createUser().id();
+            UUID historic = users.createUser().id();
+            UUID outsider = users.createUser().id();
+            UUID organization = organizations.createOrganization(actor).id();
+            jdbc.update("INSERT INTO public.organization_memberships VALUES (?, ?, 'OWNER', 'ACTIVE')",
+                    organization, historic);
+            UUID personal = workspaces.createUserOwnedWorkspace(historic).id();
+            UUID firstWorkspace = workspaces.createOrganizationOwnedWorkspace(organization, actor).id();
+            UUID secondWorkspace = workspaces.createOrganizationOwnedWorkspace(organization, historic).id();
+            // Different OWNER/ADMIN intersections survive per Workspace, including the suspended historical owner.
+            jdbc.update("INSERT INTO public.workspace_memberships VALUES (?, ?, 'ADMIN', 'ACTIVE')",
+                    firstWorkspace, outsider);
+            jdbc.update("INSERT INTO public.workspace_membership_scopes VALUES (?, ?, 'READY_MADE_PRODUCTS')",
+                    firstWorkspace, outsider);
+            UUID maximum = products.createReadyMadeProduct(personal, historic, Long.MAX_VALUE).id();
+            UUID zero = products.createReadyMadeProduct(secondWorkspace, historic, 0).id();
+            UUID ordinary = products.createReadyMadeProduct(firstWorkspace, actor, 10).id();
+            products.archiveReadyMadeProduct(zero, historic);
+            UUID registered = UUID.randomUUID();
+            ManualQuantityDeltaResult registeredResult = products.registerManualQuantityDelta(ordinary, registered, 3, actor);
+            UUID applied = UUID.randomUUID();
+            products.registerManualQuantityDelta(ordinary, applied, 2, actor);
+            ManualQuantityDeltaResult appliedResult = products.applyManualQuantityDelta(ordinary, applied, 2, actor);
+            UUID rejected = UUID.randomUUID();
+            products.registerManualQuantityDelta(ordinary, rejected, -20, actor);
+            ManualQuantityDeltaResult rejectedResult = products.applyManualQuantityDelta(ordinary, rejected, -20, actor);
+            UUID overflow = UUID.randomUUID();
+            products.registerManualQuantityDelta(maximum, overflow, 1, historic);
+            ManualQuantityDeltaResult overflowResult = products.applyManualQuantityDelta(maximum, overflow, 1, historic);
+            assertThat(registeredResult).isEqualTo(ManualQuantityDeltaResult.registered(ordinary, registered, 3));
+            assertThat(appliedResult).isEqualTo(ManualQuantityDeltaResult.applied(ordinary, applied, 2, 12));
+            assertThat(rejectedResult).isEqualTo(ManualQuantityDeltaResult.rejected(
+                    ordinary, rejected, -20, ManualQuantityDeltaRejectionReason.UNDERFLOW, 12));
+            assertThat(overflowResult).isEqualTo(ManualQuantityDeltaResult.rejected(
+                    maximum, overflow, 1, ManualQuantityDeltaRejectionReason.OVERFLOW, Long.MAX_VALUE));
+            users.changeStatus(historic, UserStatus.SUSPENDED);
+
+            Map<String, List<String>> beforeRows = domainSnapshot();
+            assertThat(beforeRows).allSatisfy((table, rows) -> assertThat(rows).as(table).isNotEmpty());
+            if (initialVersion.equals("8")) {
+                Map<String, List<String>> beforeV9Metadata = legacyMetadata();
+                List<Map<String, Object>> beforeV9History = versionEightHistory();
+                MigrationTrace trace = new MigrationTrace(false);
+                assertThat(migrate("9", new ObservedDataSource(source, trace, null, null)).migrationsExecuted).isOne();
+                assertVersionNineInstalled();
+                trace.assertSuccessfulProtocol();
+                assertThat(domainSnapshot()).isEqualTo(beforeRows);
+                assertThat(legacyMetadata()).isEqualTo(beforeV9Metadata);
+                assertThat(versionEightHistory()).isEqualTo(beforeV9History);
+            }
+            Map<String, List<String>> beforeMetadata = completeVersionNineMetadata();
+            List<Map<String, Object>> beforeHistory = jdbc.queryForList(
+                    "SELECT * FROM public.flyway_schema_history ORDER BY installed_rank");
+            long functionOid = workspaceCreationFunctionOid();
+            assertThat(workspaceCreationTriggerBinding()).isEqualTo(functionOid);
+            String beforeFunction = workspaceCreationFunction();
+            assertThat(beforeFunction.split("FOR UPDATE", -1)).hasSize(4);
+            assertThat(beforeFunction).doesNotContain("FOR NO KEY UPDATE");
+
+            assertThat(migrate("10", source).migrationsExecuted).isOne();
+            assertVersionTenInstalled();
+            assertThat(domainSnapshot()).isEqualTo(beforeRows);
+            assertThat(jdbc.queryForList("SELECT * FROM public.flyway_schema_history WHERE version <> '10' "
+                    + "ORDER BY installed_rank")).isEqualTo(beforeHistory);
+            assertThat(workspaceCreationFunctionOid()).isEqualTo(functionOid);
+            assertThat(workspaceCreationTriggerBinding()).isEqualTo(functionOid);
+            String expectedFunction = beforeFunction.replace("FOR UPDATE", "FOR NO KEY UPDATE");
+            assertThat(workspaceCreationFunction()).isEqualTo(expectedFunction);
+            assertThreeCreationNoKeyUpdateSites(expectedFunction);
+            String beforeEntry = functionOid + ":" + beforeFunction;
+            assertThat(beforeMetadata.get("functions").stream().filter(beforeEntry::equals).count()).isOne();
+            Map<String, List<String>> expectedMetadata = new LinkedHashMap<>(beforeMetadata);
+            expectedMetadata.put("functions", beforeMetadata.get("functions").stream()
+                    .map(entry -> entry.equals(beforeEntry) ? functionOid + ":" + expectedFunction : entry).toList());
+            assertThat(completeVersionNineMetadata()).isEqualTo(expectedMetadata);
+
+            assertThat(users.findUser(historic).status()).isEqualTo(UserStatus.SUSPENDED);
+            assertThat(products.findReadyMadeProduct(maximum).availableQuantity()).isEqualTo(Long.MAX_VALUE);
+            assertThat(products.findReadyMadeProduct(zero).availableQuantity()).isZero();
+            assertThat(products.findReadyMadeProduct(zero).status()).isEqualTo(ReadyMadeProductStatus.ARCHIVED);
+            assertThat(products.registerManualQuantityDelta(ordinary, registered, 3, actor)).isEqualTo(registeredResult);
+            assertThat(products.applyManualQuantityDelta(ordinary, applied, 2, actor)).isEqualTo(appliedResult);
+            assertThat(products.applyManualQuantityDelta(ordinary, rejected, -20, actor)).isEqualTo(rejectedResult);
+            assertThat(domainSnapshot()).as("authorized replay must preserve all historical rows").isEqualTo(beforeRows);
+            assertThat(products.applyManualQuantityDelta(ordinary, registered, 3, actor))
+                    .isEqualTo(ManualQuantityDeltaResult.applied(ordinary, registered, 3, 15));
+            assertThat(products.archiveReadyMadeProduct(ordinary, actor).status()).isEqualTo(ReadyMadeProductStatus.ARCHIVED);
+            assertThat(products.activateReadyMadeProduct(ordinary, actor).status()).isEqualTo(ReadyMadeProductStatus.ACTIVE);
+            assertThat(workspaces.createUserOwnedWorkspace(actor).ownerId()).isEqualTo(actor);
+            assertThat(workspaces.createOrganizationOwnedWorkspace(organization, actor).ownerId()).isEqualTo(organization);
+
+            Map<String, List<String>> beforeInvalidOperations = domainSnapshot();
+            assertThat(catchThrowable(() -> workspaces.createUserOwnedWorkspace(historic)))
+                    .isInstanceOf(WorkspaceCreatorNotActiveException.class);
+            assertThat(catchThrowable(() -> workspaces.createOrganizationOwnedWorkspace(organization, outsider)))
+                    .isInstanceOf(WorkspaceCreatorNotOrganizationOwnerException.class);
+            Throwable violation = catchThrowable(() -> jdbc.update(
+                    "DELETE FROM public.workspace_memberships WHERE workspace_id=? AND user_id=?", personal, historic));
+            PSQLException error = rootPostgres(violation);
+            assertThat(error.getSQLState()).isEqualTo("23514");
+            assertThat(error.getServerErrorMessage()).isNotNull();
+            assertThat(error.getServerErrorMessage().getMessage()).isEqualTo(
+                    "User-owned Workspace %s must retain its owner User %s as an ACTIVE ADMIN Workspace Membership"
+                            .formatted(personal, historic));
+            assertThat(domainSnapshot()).isEqualTo(beforeInvalidOperations);
         }
     }
 
@@ -363,6 +508,73 @@ class FoundationMigrationUpgradeIntegrationTest {
                 + "JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname='public' "
                 + "AND t.tgname IN ('organizations_require_read_committed','organization_memberships_require_read_committed',"
                 + "'workspaces_require_read_committed','workspace_memberships_require_read_committed')", Integer.class)).isZero();
+    }
+
+    private void assertVersionTenInstalled() {
+        assertThat(jdbc.queryForList("SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank",
+                String.class)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM public.flyway_schema_history WHERE NOT success", Integer.class))
+                .isZero();
+        assertThat(jdbc.queryForList("""
+                SELECT r.relname FROM pg_trigger t JOIN pg_class r ON r.oid=t.tgrelid
+                JOIN pg_namespace n ON n.oid=r.relnamespace
+                WHERE n.nspname='public' AND t.tgfoid='public.foundation_require_read_committed()'::regprocedure
+                  AND NOT t.tgisinternal AND t.tgenabled='O'
+                ORDER BY r.relname
+                """, String.class)).containsExactly("organization_memberships", "organizations",
+                        "workspace_memberships", "workspaces");
+    }
+
+    private long workspaceCreationFunctionOid() {
+        return jdbc.queryForObject("SELECT 'public.workspaces_require_initial_foundation()'::regprocedure::oid::bigint", Long.class);
+    }
+
+    private String workspaceCreationFunction() {
+        return jdbc.queryForObject("SELECT pg_get_functiondef('public.workspaces_require_initial_foundation()'::regprocedure)",
+                String.class);
+    }
+
+    private long workspaceCreationTriggerBinding() {
+        return jdbc.queryForObject("""
+                SELECT t.tgfoid::bigint FROM pg_trigger t
+                WHERE t.tgrelid='public.workspaces'::regclass
+                  AND t.tgname='workspaces_require_initial_foundation' AND NOT t.tgisinternal
+                  AND t.tgdeferrable AND t.tginitdeferred AND t.tgtype=5 AND t.tgenabled='O'
+                """, Long.class);
+    }
+
+    private void assertThreeCreationNoKeyUpdateSites(String function) {
+        assertThat(function.split("FOR NO KEY UPDATE", -1)).hasSize(4);
+        assertThat(function).doesNotContain("FOR UPDATE")
+                .contains("SELECT status INTO owner_status FROM users WHERE id = NEW.owner_user_id FOR NO KEY UPDATE;")
+                .contains("PERFORM 1 FROM organizations WHERE id = NEW.owner_organization_id FOR NO KEY UPDATE;")
+                .contains("ORDER BY u.id\n        FOR NO KEY UPDATE;");
+    }
+
+    private Map<String, List<String>> completeVersionNineMetadata() {
+        // V9's legacy comparator deliberately omits only V9's new objects. V10 must compare those too.
+        Map<String, List<String>> metadata = new LinkedHashMap<>(legacyMetadata());
+        metadata.put("functions", jdbc.queryForList("SELECT p.oid::text || ':' || pg_get_functiondef(p.oid) "
+                + "FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace "
+                + "WHERE n.nspname='public' ORDER BY p.oid", String.class));
+        metadata.put("triggers", jdbc.queryForList("""
+                SELECT t.oid::text || ':' || t.tgrelid::text || ':' || t.tgfoid::text || ':'
+                       || t.tgenabled::text || ':' || pg_get_triggerdef(t.oid, true)
+                FROM pg_trigger t JOIN pg_class r ON r.oid=t.tgrelid
+                JOIN pg_namespace n ON n.oid=r.relnamespace
+                WHERE n.nspname='public' ORDER BY t.oid
+                """, String.class));
+        metadata.put("columns", jdbc.queryForList("""
+                SELECT r.oid::text || ':' || a.attnum::text || ':' || a.attname || ':'
+                       || format_type(a.atttypid,a.atttypmod) || ':' || a.attnotnull::text || ':'
+                       || coalesce(pg_get_expr(d.adbin,d.adrelid), '')
+                FROM pg_class r JOIN pg_namespace n ON n.oid=r.relnamespace
+                JOIN pg_attribute a ON a.attrelid=r.oid
+                LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+                WHERE n.nspname='public' AND r.relkind='r' AND a.attnum>0 AND NOT a.attisdropped
+                ORDER BY r.oid,a.attnum
+                """, String.class));
+        return metadata;
     }
 
     private Map<String, List<String>> domainSnapshot() {

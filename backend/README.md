@@ -168,10 +168,55 @@ deployment-specific verification.
 
 The migration tests use only owned disposable PostgreSQL databases. A real
 deployment still requires a separately authorized drain and operational lock/
-statement deadlines; no user or deployed database rollout is claimed. The
-same-owner Workspace-creation deadlock finding (PROD-001) remains open: V9 fixes
-the isolation admission gap (PROD-002), not that creation lock protocol. V10 and
-NO KEY UPDATE changes are not included.
+statement deadlines; no user or deployed database rollout is claimed. V9 fixes
+the isolation admission gap (PROD-002), not the separate same-owner
+Workspace-creation lock problem addressed by the V10 candidate below.
+
+### Workspace creation lock compatibility and V10
+
+V10 replaces only `public.workspaces_require_initial_foundation()` in place.
+The owner User, owner Organization, and ordered ADMIN User creation locks use
+`FOR NO KEY UPDATE` instead of `FOR UPDATE`. The predicates, exception semantics,
+UUID ordering, deferred timing, and subsequent structural validation remain
+unchanged. Function OID and the existing trigger binding are preserved. V1–V9
+migration files, last OWNER/ADMIN preservation locks, Ready-Made Product lock
+protocols, transaction propagation, and the V9 READ COMMITTED-only contract are
+unchanged.
+
+The regression reproduces the original V9 `40P01` with two coherent public
+creation calls awaiting normal commit, then proves two successful V10 commits
+without retry for a shared User owner or Organization with distinct OWNER
+actors. Controls include distinct owners, distinct Organizations sharing an
+actor, mixed User/Organization creation, and exact PID-directed forced-constraint
+waiting. A forced-constraint control alone is not the RED discriminator.
+
+Interaction coverage keeps the real public services and checks both lock orders
+against User status changes, Organization OWNER removal, and Ready-Made Product
+creation, archive, and activation in an existing Workspace. Existing Workspace
+Membership mutation has an independent-completion control. Queued status/OWNER
+writers must not prevent already-coherent creators from committing; exact
+writer-to-creator waits are observed successively because a PostgreSQL MultiXact
+wait need not expose all conflicting members at once. Creation-time rejection
+and permanent structural preservation remain strict `23514` outcomes, not
+generic exceptions, deadlocks, or timeouts.
+
+Manual-delta interaction uses the actual public `REQUIRES_NEW` entry points.
+A test-only wrapping spy invokes the real repository method exactly once,
+captures the bound inner transaction PID before lock acquisition, and holds
+after the real operation but before return and commit. It proves both directed
+wait orders, a distinct suspended outer PID, and inner COMMITTED completion.
+Registration, application, authorized retry, and terminal APPLIED/REJECTED
+replay are checked against committed command rows and exact quantity; replay
+fixtures have a different current quantity from their stored historical result.
+Null/wrong PID, unrelated blocked backends, early failures, and absent overlap
+cannot satisfy the observer. Worker SQL, pool acquisition, gates, polling,
+futures, and cleanup are bounded; tests add no production retry or lock changes.
+
+This is a bounded lock-compatibility candidate, not global deadlock freedom,
+support for non-READ-COMMITTED foundation writes, or a claim of production
+rollout. PROD-001 remains subject to independent review and integration;
+contention and arbitrary multi-operation transaction ordering still require
+separate consideration.
 
 ### Ready-Made Product creation lock protocol
 
@@ -361,7 +406,7 @@ removal, and User-owned as well as Organization-owned creation versus a
 concurrent User `ACTIVE` → non-`ACTIVE` status change), each of which must
 leave the Workspace foundation intact.
 
-They also prove the Ready-Made Product structural foundation: the exact V1 → V9
+They also prove the Ready-Made Product structural foundation: the exact V1 → V10
 migration history, the exact schema (columns, types, nullability, absence of
 defaults, primary key, `RESTRICT` foreign keys, closed lifecycle check set, and
 absence of speculative indexes), the Spring wiring down to real PostgreSQL, a
@@ -406,6 +451,13 @@ overlap proves actual PID-directed waiting on the partial barrier, fresh
 validation after the writer commits, and complete migration rollback. Core
 concurrency and overlap cases run three times sequentially with bounded waits;
 timeouts or unrelated errors are not accepted as invariant evidence.
+
+V10 upgrade coverage adds fresh V1 → V10, populated V9 → V10, and populated
+V8 → V9 → V10. It permits exactly the three creation-lock substitutions in one
+function while comparing its OID, trigger binding, all other functions,
+triggers, constraints, indexes, columns, domain rows, and command outcomes.
+The existing V9 atomicity, advisory-locking, admission, and upgrade cases retain
+their explicit V9 targets and assertions.
 
 ### Identity and authentication boundary
 
