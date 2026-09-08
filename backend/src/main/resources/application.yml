@@ -7,6 +7,10 @@ spring:
     password: ${CREASTRIX_DB_PASSWORD}
   flyway:
     enabled: true
+    execute-in-transaction: true
+    group: false
+    postgresql:
+      transactional-lock: false
 
 management:
   endpoints:

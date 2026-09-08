@@ -217,15 +217,17 @@ class OrganizationFoundationIntegrationTest {
                         + "'organization_memberships'::regclass) "
                         + "ORDER BY tgname");
 
-        // V3 triggers plus the V4 Workspace-foundation triggers added on the
-        // existing organization_memberships table (V3 itself is unchanged).
-        // The V4 triggers are verified in detail by the Workspace tests.
+        // Preserve the five V3/V4 triggers and include the two V9 isolation guards.
+        // Workspace tests verify V4; FoundationIsolationIntegrationTest verifies V9.
+        // V3 and V4 themselves are unchanged.
         assertThat(triggers).extracting(row -> row.get("tgname")).containsExactlyInAnyOrder(
                 "organizations_require_active_owner",
                 "organization_memberships_preserve_active_owner",
                 "organization_memberships_preserve_active_owner_on_truncate",
                 "organization_memberships_preserve_workspace_foundation",
-                "organization_memberships_preserve_workspaces_on_truncate");
+                "organization_memberships_preserve_workspaces_on_truncate",
+                "organizations_require_read_committed",
+                "organization_memberships_require_read_committed");
 
         var requireOwner = trigger(triggers, "organizations_require_active_owner");
         assertThat(requireOwner.get("relation")).isEqualTo("organizations");

@@ -115,12 +115,12 @@ class ReadyMadeProductFoundationIntegrationTest {
     }
 
     @Test
-    void flywayHistoryIsExactThroughManualQuantityDeltaV8() {
+    void flywayHistoryIsExactThroughFoundationIsolationV9() {
         var versions = jdbcTemplate.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success = true "
                         + "AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
     }
 
     @Test
