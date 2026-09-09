@@ -84,6 +84,27 @@ Order Item, Shipment, Payment and other commerce integrations, list, search and
 paging, and an HTTP API. This documentation step does not select or begin a next
 implementation slice.
 
+### Integrated Foundation Concurrency Corrections
+
+Foundation V9 / PROD-002 and V10 / PROD-001 are integrated separately from the
+Ready-Made Product IMPLEMENTATION 005A/V6, 005B/V7, and 005C/V8 slices.
+V9 enforces a `READ COMMITTED`-only write contract on `organizations`,
+`organization_memberships`, `workspaces`, and `workspace_memberships`, rejecting
+unsupported isolation. V10 fixes the reproduced FK-lock upgrade deadlock in
+the tested concurrent Workspace creation scenarios while preserving deferred
+validation. Neither correction establishes global deadlock freedom or a universal
+retry policy. See the [backend concurrency details](backend/README.md#foundation-write-isolation-contract-and-v9-upgrade)
+for the verified Flyway atomicity/advisory-locking boundary and Hikari limitations.
+
+[PR #24](https://github.com/creastrix-svg/creastrix-platform/pull/24) and its
+[post-merge Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/34280907486)
+confirm the integrated baseline: 426 tests, zero failures/errors/skipped, tests
+and package `BUILD SUCCESS`, PostgreSQL `18.4-alpine`, and Flyway V1 → V10.
+PROD-001 and PROD-002 are fixed within their agreed boundaries, not a closure of
+FULL AUDIT 001 or proof that other risks are absent. The accepted MIN-01 coverage
+limitation remains; coverage is not complete. Integration is not rollout:
+user and external databases were not updated.
+
 ### Remaining DRAFT Domain Areas
 
 The downstream Listing, Order Item, Shipment, and other remaining DRAFT domain
