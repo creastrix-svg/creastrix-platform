@@ -26,6 +26,10 @@
             managed by Spring Boot 4.1.0 (42.7.11). Do not remove without review.
         -->
         <postgresql.version>42.7.13</postgresql.version>
+        <tomcat.version>11.0.25</tomcat.version>
+        <jackson-bom.version>3.1.6</jackson-bom.version>
+        <log4j2.version>2.25.5</log4j2.version>
+        <logback.version>1.6.3</logback.version>
     </properties>
 
     <dependencies>
