@@ -105,6 +105,19 @@ FULL AUDIT 001 or proof that other risks are absent. The accepted MIN-01 coverag
 limitation remains; coverage is not complete. Integration is not rollout:
 user and external databases were not updated.
 
+### Integrated Runtime Dependency Update
+
+[PR #26](https://github.com/creastrix-svg/creastrix-platform/pull/26) integrated
+four explicit POM overrides affecting nine runtime artifacts; Boot/Spring and
+the remaining resolved coordinates are unchanged. See the
+[runtime override details](backend/README.md#runtime-dependency-overrides).
+Independent compatibility verification preceded integration; the subsequent
+[post-merge Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/34392178931)
+confirmed 426 tests, zero failures/errors/skipped, and tests/package `BUILD SUCCESS`.
+SC-01 is fixed in main within the agreed dependency-update scope, not a claim
+that the entire dependency graph is free of vulnerabilities. External deployments
+and running applications were not updated; integration is not rollout.
+
 ### Remaining DRAFT Domain Areas
 
 The downstream Listing, Order Item, Shipment, and other remaining DRAFT domain
