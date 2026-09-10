@@ -170,7 +170,7 @@ The migration tests use only owned disposable PostgreSQL databases. A real
 deployment still requires a separately authorized drain and operational lock/
 statement deadlines; no user or deployed database rollout is claimed. V9 fixes
 the isolation admission gap (PROD-002), not the separate same-owner
-Workspace-creation lock problem addressed by the V10 candidate below.
+Workspace-creation lock problem addressed by the integrated V10 correction below.
 
 ### Workspace creation lock compatibility and V10
 
@@ -212,11 +212,13 @@ Null/wrong PID, unrelated blocked backends, early failures, and absent overlap
 cannot satisfy the observer. Worker SQL, pool acquisition, gates, polling,
 futures, and cleanup are bounded; tests add no production retry or lock changes.
 
-This is a bounded lock-compatibility candidate, not global deadlock freedom,
+This is an integrated, bounded lock-compatibility correction, not global deadlock freedom,
 support for non-READ-COMMITTED foundation writes, or a claim of production
-rollout. PROD-001 remains subject to independent review and integration;
+rollout. PROD-001 is fixed in main within the tested Workspace-creation scope;
 contention and arbitrary multi-operation transaction ordering still require
-separate consideration.
+separate consideration. MIN-01 remains an accepted nonblocking coverage limitation:
+the defensive early-admission test branch did not execute, while required
+queued-writer scenarios were verified.
 
 ### Ready-Made Product creation lock protocol
 
@@ -380,6 +382,27 @@ The PostgreSQL JDBC driver is intentionally pinned to `42.7.13`, above the
 version currently managed by Spring Boot 4.1.0 (`42.7.11`). This is a
 deliberate security/maintenance override defined via the `postgresql.version`
 property in `pom.xml`. Do not remove it without review.
+
+## Runtime dependency overrides
+
+The integrated SC-01 update defines four additional explicit properties in
+[pom.xml](pom.xml), affecting nine runtime artifacts:
+
+- `tomcat.version`: `11.0.25` — `tomcat-embed-core`, `tomcat-embed-el`,
+  and `tomcat-embed-websocket`;
+- `jackson-bom.version`: `3.1.6` — `tools.jackson.core:jackson-core`
+  and `tools.jackson.core:jackson-databind`;
+- `log4j2.version`: `2.25.5` — `log4j-api` and `log4j-to-slf4j`;
+- `logback.version`: `1.6.3` — `logback-core` and `logback-classic`.
+
+These are project overrides, not versions supplied automatically by the unchanged
+Spring Boot 4.1.0 BOM. The independent compatibility comparison confirmed only
+these nine runtime-artifact updates: Boot/Spring and the remaining resolved
+coordinates and scopes were unchanged, with no additions or removals. The
+existing PostgreSQL JDBC override remains unchanged. See the
+[integration and post-merge verification summary](../README.md#integrated-runtime-dependency-update)
+for the bounded SC-01 result; compatibility verification and integration do not
+constitute rollout to external applications or proof of a vulnerability-free graph.
 
 ## Running tests
 
