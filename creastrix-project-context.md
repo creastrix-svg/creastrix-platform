@@ -92,6 +92,51 @@ Ready-Made Product references to the DRAFT Listing, Order Item, and Shipment spe
 
 The remaining DRAFT domains are active architecture work and require their own architecture review and independent specification approval before implementation.
 
+### Authorized authentication backend WIP
+
+The owner authorized AUTH-FIRST-LOGIN-001 against reviewed AUTH-SELECTION-003:
+single-instance backend/nonproduction database, fixed loopback backend and
+browser-origin contract, exact issuer/subject admission with controlled restart,
+server-side OIDC/HttpOnly session, 30-minute idle and 8-hour absolute limits.
+The current `solar_wind/auth-first-login-backend` WIP adds the bounded V11 identity
+binding and account HTTP path. Historical AUTH-001-R1 backend B passed
+local author verification: 91 policy tests, 20 PostgreSQL authentication tests,
+113 real HTTP/test-IdP cases, one complete 650-test suite with zero
+failures/errors/skipped, and package BUILD SUCCESS. These and the earlier native
+IDE policy 91/91 and HTTP 113/113 are not fresh AUTH-001-R2 results.
+The owner-authorized 2026-09-14 R2 contract keeps per-session callback ownership
+and a short local client-save, standard Spring session-ID/CSRF rotation,
+SecurityContext and outcome-selection section coordinated with cooperative logout.
+Publication is not physical HTTP commit or browser delivery; one second bounds
+coordinator-lock acquisition, not all Servlet operations or HTTP I/O. Cancellation
+before publication prevents client/principal save. Detected cancellation during
+publication requires that the rejected, still-uncommitted failure 303 contain no
+setting/deletion session cookie owned by that attempt, while unrelated cookies
+and any newer session/flow/client/principal remain untouched. The callback stays
+pinned to its original session, and durable identity-binding commits are not undone.
+Fresh R2 author verification passed three consecutive 27-case focused runs and
+one complete 658-test suite (policy 97, PostgreSQL authentication 20, HTTP/OIDC 115
+within that suite), with zero failures/errors/skipped and package BUILD SUCCESS.
+All 650 preceding testcase identities remain. This is not fresh IDE verification,
+independent approval or closure of the separate cookie follow-up below.
+The change is neither independently approved nor integrated. See the
+[authentication boundary](docs/authentication-pilot.md). React/browser F and
+real Auth0 walkthrough P have not been performed. No Workspace is created by
+login; no Workspace/RMP API, account linking or new commerce decision is added.
+
+`AUTH-COOKIE-FOLLOWUP-001`: **OPEN — TEMPORARILY ACCEPTED FOR LOCAL NONPUBLIC PILOT ONLY**
+by the owner on 2026-09-14. After the last successful check/local success selection,
+logout or invalidation can occur before HTTP commit, including cooperative logout;
+a late success cookie can disturb a newer login. This residual risk is not fixed,
+already-committed responses cannot be recalled and delivery order is not guaranteed.
+Real browser behavior and frequency are unverified; account takeover is not proven.
+Revisit at React/dev-proxy/browser authentication verification, and mandatorily
+before any public access, external-user invitations or rollout through a separate
+owner/security decision and independent assessment. Local acceptance does not extend
+to public operation. Assess actual browser/cookie behavior and protection, not just
+Redux error hiding. Neither merge, test count nor the late-failure correction closes
+this item; no future mechanism or follow-up implementation is selected here.
+
 ## Domain Principles
 
 - Domain first.
