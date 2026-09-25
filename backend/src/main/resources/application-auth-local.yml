@@ -1,0 +1,17 @@
+# Explicit single-instance, loopback-only technical mode; not a rollout profile.
+server:
+  address: 127.0.0.1
+  port: 8080
+  servlet:
+    session:
+      cookie:
+        secure: false
+
+creastrix:
+  auth:
+    enabled: true
+    issuer: ${CREASTRIX_AUTH_ISSUER}
+    client-id: ${CREASTRIX_AUTH_CLIENT_ID}
+    client-secret: ${CREASTRIX_AUTH_CLIENT_SECRET}
+    browser-origin: http://localhost:3000
+    allowed-subjects: ${CREASTRIX_AUTH_ALLOWED_SUBJECTS:}

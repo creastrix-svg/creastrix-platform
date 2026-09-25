@@ -1,4 +1,8 @@
 spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
+      - org.springframework.boot.security.oauth2.client.autoconfigure.OAuth2ClientAutoConfiguration
   application:
     name: creastrix-backend
   datasource:
@@ -11,6 +15,22 @@ spring:
     group: false
     postgresql:
       transactional-lock: false
+
+server:
+  forward-headers-strategy: none
+  servlet:
+    session:
+      timeout: 30m
+      tracking-modes: cookie
+      cookie:
+        http-only: true
+        secure: true
+        same-site: lax
+        path: /
+
+creastrix:
+  auth:
+    enabled: false
 
 management:
   endpoints:

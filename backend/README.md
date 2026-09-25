@@ -295,8 +295,9 @@ PostgreSQL V7 enforces only the structural transition set. The migration owner
 and runtime database role currently coincide, so a client with runtime database
 credentials can execute a structurally valid raw transition without proving an
 actor. The supported Java/JDBC path proves authorization for the represented
-actor identity, but authentication and proven external caller identity remain
-absent. Database-role separation is deferred to a dedicated security task.
+actor identity, but it is not connected to an authenticated Workspace/RMP HTTP
+API. The authentication WIP below does not expose those services. Database-role
+separation is deferred to a dedicated security task.
 
 ### Ready-Made Product manual quantity-delta protocol
 
@@ -314,8 +315,8 @@ when an ACTIVE `EDITOR` requires one → actor User → Product → the exact co
 row or insert conflict. Command existence, binding, state, and outcome are not
 read before this authorization boundary succeeds. Missing Product, missing or
 inactive actor, and ineffective authorization use the same opaque internal
-access failure. Authentication, HTTP mapping, and proven caller identity remain
-absent, while privileged raw SQL remains outside actor authorization because
+access failure. Authenticated HTTP mapping and proven caller identity for these
+Product operations remain absent, while privileged raw SQL remains outside actor authorization because
 the runtime role is not separated from the migration owner.
 
 For a still-`REGISTERED` command, the locked available quantity is changed with
@@ -337,10 +338,12 @@ is claimed here.
 
 Intentionally not implemented yet:
 
-- authentication and login (no credentials, no OAuth, no MFA);
+- complete user-facing login (the backend-only WIP below is not integrated or
+  fully verified; React/browser, real provider walkthrough and MFA are absent);
 - concrete User Profile personal fields, which remain unimplemented until the
   approved specification defines them;
-- any HTTP API for User, Organization, or Workspace;
+- domain mutation HTTP APIs for User, Organization, or Workspace (the WIP
+  `/api/me` is only the current authenticated account read);
 - general Organization authorization and delegation;
 - Organization recovery;
 - Organization invitations;
@@ -429,7 +432,9 @@ removal, and User-owned as well as Organization-owned creation versus a
 concurrent User `ACTIVE` → non-`ACTIVE` status change), each of which must
 leave the Workspace foundation intact.
 
-They also prove the Ready-Made Product structural foundation: the exact V1 → V10
+The all-current history assertions executed in the preceding WIP author gate verify
+V1 → V11; historical target=8/9/10 proofs remain pinned and passed unchanged.
+The tests also prove the Ready-Made Product structural foundation: the exact current
 migration history, the exact schema (columns, types, nullability, absence of
 defaults, primary key, `RESTRICT` foreign keys, closed lifecycle check set, and
 absence of speculative indexes), the Spring wiring down to real PostgreSQL, a
@@ -484,11 +489,82 @@ their explicit V9 targets and assertions.
 
 ### Identity and authentication boundary
 
-Authentication and external caller identity proof are not implemented. A
-creator or lifecycle actor User identity presented to the application is not a
-proven identity of an authenticated HTTP session, so neither the application
-service nor PostgreSQL proves who the external caller is. The supported path
-only proves that the represented identity holds the required authorization.
+The accepted integrated baseline has no authentication. AUTH-FIRST-LOGIN-001
+adds unintegrated backend authentication on this branch, with historical author
+verification and a separate current AUTH-001-R2 remediation gate.
+The [bounded authentication contract](../docs/authentication-pilot.md)
+separates backend B, future React/browser F and actual Auth0 walkthrough P.
+
+Historical AUTH-001-R1 author verification passed AuthenticationPolicyTest 91/91,
+UserAuthenticationIntegrationTest 20/20, AuthenticationHttpIntegrationTest
+113/113, and one complete 650-test suite with
+zero failures/errors/skipped; tests and package completed with BUILD SUCCESS.
+These runs used owned PostgreSQL 18.4 Testcontainers, Flyway V1 → V11 and a
+local signed test IdP, including full-login recovery while a prior transaction
+is in flight or after physical commit acknowledgement loss. They are not a real
+Auth0 run, browser/proxy proof, independent approval or integration into main.
+The earlier native IDE policy 91/91 and HTTP 113/113 results are also historical;
+neither they nor the 650-test run are fresh verification of R2.
+
+Fresh AUTH-001-R2 author verification passed three consecutive 27-case focused
+runs, then one complete 658-test `clean test` and package BUILD SUCCESS, all with
+exit code 0 and no test failures/errors/skipped. The fresh authentication counts
+are policy 97, PostgreSQL authentication 20 and HTTP/OIDC 115; all preceding 650
+testcase identities remain. The runs used PostgreSQL 18.4 (`postgres:18.4-alpine`),
+Flyway 12.4.0 with V1 → V11, Tomcat 11.0.25 and the synthetic local IdP.
+The [authentication contract](../docs/authentication-pilot.md#verification-gates)
+records the real late-failure RED/GREEN boundary. These are author results, not
+a fresh IDE gate, independent review or browser/Auth0 proof; the follow-up stays OPEN.
+
+An atomic per-logical-session callback lease captures its saved flow before
+provider/DB work; only its owner can publish authorized-client/session state.
+Under the owner's 2026-09-14 pilot contract, the local publication section starts
+before Spring's first client save and covers normal session-ID/CSRF rotation,
+SecurityContext save and callback outcome selection, coordinated with cooperative
+logout. It does not include physical HTTP commit or delivery. One second bounds
+coordinator-lock acquisition, not Servlet operations or HTTP I/O. Logout remains
+available during provider/DB waits. Cancellation before publication prevents save;
+detected cancellation during publication requires the rejected uncommitted failure
+303 to carry no setting/deletion session cookie owned by that attempt. Cleanup
+identifies exact cookie name, Path/Domain and ownership in real pending container
+headers; it preserves unrelated cookies and newer login state without compensating
+deletion, whole-response reset or forced flush. No physically committed binding is
+erased, and committed headers/transport failures are not claimed to be repaired.
+Busy/already-authenticated callback conflicts use fixed failure 303 without
+damaging the current principal/client/cookie; authenticated entry retains 409.
+The historical R1 focused callback/cleanup regressions passed three consecutive 16-case
+runs. Earlier 611/638 results remain historical evidence in the contract, not
+fresh R2 results. This is single-instance coordination, not a distributed session
+protocol or a guarantee of network response delivery order. After the last successful
+check/local success selection, even cooperative logout can precede HTTP commit and
+a late success cookie can disturb a newer login. `AUTH-COOKIE-FOLLOWUP-001` remains
+OPEN, temporarily accepted only for the local nonpublic pilot, not fixed or closed.
+It must return at React/dev-proxy/browser verification and before public access,
+external-user invitations or rollout through a separate owner/security decision.
+
+Only `GET /api/me` exposes the current account, after session, current exact
+issuer/subject admission and ACTIVE checks. No existing Workspace/RMP service
+is exposed as an authenticated HTTP API. A creator or actor UUID supplied to
+those internal services still represents an identity; it is not itself proof
+of the external caller. Raw SQL remains outside actor authentication.
+
+The auth-disabled default serves only minimal `GET /actuator/health`, denying
+other routes without form/basic login or generated-password fallback. OIDC
+properties, discovery and HTTP handlers are conditional on enabled servlet mode;
+non-web migration/domain contexts require no Auth0 configuration or network.
+The local profile keeps the backend on `127.0.0.1:8080` and trusts only the fixed
+future browser origin `http://localhost:3000`. It does not create a dev proxy.
+It requires external `CREASTRIX_AUTH_ISSUER`, `CREASTRIX_AUTH_CLIENT_ID`, and
+`CREASTRIX_AUTH_CLIENT_SECRET`; `CREASTRIX_AUTH_ALLOWED_SUBJECTS` is an exact
+issuer-scoped list, empty meaning no admitted users. Change admission only by
+controlled restart, which also discards in-memory sessions. No real provider
+setup or application launch is authorized by this documentation.
+
+ID/access tokens remain server-side in the session. Local cookies are host-only,
+HttpOnly, SameSite=Lax, Path `/`; Secure=false is confined to explicit loopback
+mode, while defaults remain Secure=true. Idle expiry uses the servlet container
+(30 minutes), absolute expiry uses an injected Clock (8 hours). Local logout
+is not global provider logout or immediate revocation after password reset.
 
 ## Running the application
 

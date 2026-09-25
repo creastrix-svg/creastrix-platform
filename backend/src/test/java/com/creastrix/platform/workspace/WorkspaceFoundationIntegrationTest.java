@@ -102,15 +102,15 @@ class WorkspaceFoundationIntegrationTest {
     // ------------------------------------------------------------------
 
     @Test
-    void flywayHistoryRemainsExactAfterWorkspaceCreationLocksV10() {
+    void flywayHistoryRemainsExactThroughIdentityBindingV11() {
         var versions = jdbcTemplate.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success = true "
                         + "AND version IS NOT NULL ORDER BY installed_rank",
                 String.class);
         // The exact ordered history is asserted, including the V6 foundation,
         // V7 lifecycle, V8 manual quantity-delta, V9 foundation isolation,
-        // and V10 creation-lock migrations. No earlier assertion is weakened.
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+        // V10 creation-lock and V11 identity-binding migrations. No earlier assertion is weakened.
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
     }
 
     /**
