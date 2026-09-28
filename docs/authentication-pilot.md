@@ -1,9 +1,11 @@
 # Backend authentication pilot contract
 
-AUTH-FIRST-LOGIN-001 implements an owner-authorized, bounded technical proposal
-on `solar_wind/auth-first-login-backend`. It is WIP, not an APPROVED domain
-specification or an integrated release. Earlier backend result B passed local
-author verification; the current AUTH-001-R2 remediation has its own verification gate.
+AUTH-FIRST-LOGIN-001 is integrated in main through
+[PR #28](https://github.com/creastrix-svg/creastrix-platform/pull/28). This document
+records its owner-authorized, bounded technical contract for a single-instance
+local nonpublic pilot, not an APPROVED domain specification or public release.
+Backend result B passed author, native IDE, independent R2 re-review and CI gates;
+the distinct evidence is recorded below under verification gates.
 React/browser result F and actual Auth0 walkthrough P
 are not done; backend tests do not prove working user-facing login.
 
@@ -155,9 +157,11 @@ Return to this open item at both required gates:
    assessment. Local-only acceptance does not extend to that operating mode.
 
 A merge, test count or the narrow late-failure fix does not close this follow-up.
-No future mechanism is selected or implemented here. R1-REV-001 still requires
-the actual narrow fix, executable verification and subsequent independent review;
-changing this contract alone is not remediation proof.
+No future mechanism is selected or implemented here. Independent R2 re-review
+confirmed R1-REV-001 resolved only for the rejected callback's still-uncommitted
+response: the owned late-failure cookie is removed while newer login state and
+unrelated cookies are preserved. This integrated narrow correction neither
+repairs an already-sent response nor resolves the separate stale-success risk.
 
 ### Callback navigation and opaque errors
 
@@ -244,7 +248,7 @@ not fresh AUTH-001-R2 results, independent approval or a claim that the complete
 security surface was audited. The earlier native IDE policy 91/91 and HTTP 113/113
 results likewise belong to the preceding gate, not this remediation.
 
-Fresh AUTH-001-R2 pilot author verification on 2026-09-14 reproduced the
+Historical AUTH-001-R2 pilot author verification on 2026-09-14 reproduced the
 late-failure cookie defect against the original R1 production code: two cases,
 two behavioral assertion failures and zero errors. The same HTTP test source
 remained unchanged through RED and GREEN. After the narrow fix, the final focused
@@ -266,4 +270,28 @@ Free EU setup, hosted DB signup, verification/reset delivery and relogin. No
 real Auth0/Google/Apple interaction, tenant/client setup, paid resource, frontend,
 rollout, Workspace/RMP API, receipt protocol or commerce work is included here.
 
-Remediation IDE verification, independent re-review and publication are separate future gates.
+### Completed verification and integration
+
+These are distinct completed checks, not new executions by this documentation change:
+
+- Author-side native IntelliJ verification on 2026-09-14: policy 97/97 and
+  HTTP/OIDC 115/115, failures/errors/skipped 0/0/0, both exit 0; editor/Markdown
+  and diagnostics checks completed. Earlier incomplete passes remain historical.
+- Independent narrow R2 re-review completed on 2026-09-25 without
+  BLOCKER/IMPORTANT/MINOR findings in its agreed scope: three focused 27/27 runs,
+  full 658/658, failures/errors/skipped 0/0/0 and package BUILD SUCCESS. It confirmed
+  the rejected/uncommitted late-failure correction, not universal race freedom.
+- [PR Backend CI 36113025923](https://github.com/creastrix-svg/creastrix-platform/actions/runs/36113025923):
+  `pull_request`, feature SHA `ae8f2b96ed1d13513a07f309e45237357616919a`, SUCCESS;
+  658 tests, failures/errors/skipped 0/0/0, tests/package BUILD SUCCESS.
+- [PR #28](https://github.com/creastrix-svg/creastrix-platform/pull/28) merged on
+  2026-09-25 as `a868b517bf2b78d77bedba3dd1374241c3def6f4`, with the reviewed
+  feature tree unchanged. Repository integration is not deployment.
+- [Post-merge Backend CI 36115810224](https://github.com/creastrix-svg/creastrix-platform/actions/runs/36115810224):
+  `push`, branch `main`, exact head `a868b517bf2b78d77bedba3dd1374241c3def6f4`,
+  SUCCESS; 658 tests, failures/errors/skipped 0/0/0, tests/package BUILD SUCCESS,
+  actual PostgreSQL 18.4 (`postgres:18.4-alpine`) and successful Flyway V1 → V11.
+
+Backend B is verified within this local nonpublic contract; F and P remain
+unverified. AUTH-COOKIE-FOLLOWUP-001 remains OPEN under the required browser and
+pre-public-access gates above. No next implementation slice or rollout is selected.

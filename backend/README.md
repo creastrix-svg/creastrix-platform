@@ -296,7 +296,7 @@ and runtime database role currently coincide, so a client with runtime database
 credentials can execute a structurally valid raw transition without proving an
 actor. The supported Java/JDBC path proves authorization for the represented
 actor identity, but it is not connected to an authenticated Workspace/RMP HTTP
-API. The authentication WIP below does not expose those services. Database-role
+API. The integrated authentication pilot below does not expose those services. Database-role
 separation is deferred to a dedicated security task.
 
 ### Ready-Made Product manual quantity-delta protocol
@@ -338,11 +338,11 @@ is claimed here.
 
 Intentionally not implemented yet:
 
-- complete user-facing login (the backend-only WIP below is not integrated or
-  fully verified; React/browser, real provider walkthrough and MFA are absent);
+- complete user-facing login (backend B is integrated and verified within the
+  pilot boundary; React/browser F, real provider walkthrough P and MFA remain absent);
 - concrete User Profile personal fields, which remain unimplemented until the
   approved specification defines them;
-- domain mutation HTTP APIs for User, Organization, or Workspace (the WIP
+- domain mutation HTTP APIs for User, Organization, or Workspace (the integrated
   `/api/me` is only the current authenticated account read);
 - general Organization authorization and delegation;
 - Organization recovery;
@@ -432,7 +432,7 @@ removal, and User-owned as well as Organization-owned creation versus a
 concurrent User `ACTIVE` → non-`ACTIVE` status change), each of which must
 leave the Workspace foundation intact.
 
-The all-current history assertions executed in the preceding WIP author gate verify
+The all-current history assertions passed in post-merge CI and verify
 V1 → V11; historical target=8/9/10 proofs remain pinned and passed unchanged.
 The tests also prove the Ready-Made Product structural foundation: the exact current
 migration history, the exact schema (columns, types, nullability, absence of
@@ -489,9 +489,13 @@ their explicit V9 targets and assertions.
 
 ### Identity and authentication boundary
 
-The accepted integrated baseline has no authentication. AUTH-FIRST-LOGIN-001
-adds unintegrated backend authentication on this branch, with historical author
-verification and a separate current AUTH-001-R2 remediation gate.
+AUTH-FIRST-LOGIN-001 is integrated in main through
+[PR #28](https://github.com/creastrix-svg/creastrix-platform/pull/28), after completed
+author-side native IDE verification and independent R2 re-review. Its separate
+[post-merge Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/36115810224)
+passed 658/658, failures/errors/skipped 0/0/0, tests/package BUILD SUCCESS,
+PostgreSQL 18.4 and Flyway V1 → V11. This is the single-instance local nonpublic
+backend pilot, not a complete user-facing login or rollout.
 The [bounded authentication contract](../docs/authentication-pilot.md)
 separates backend B, future React/browser F and actual Auth0 walkthrough P.
 
@@ -506,15 +510,17 @@ Auth0 run, browser/proxy proof, independent approval or integration into main.
 The earlier native IDE policy 91/91 and HTTP 113/113 results are also historical;
 neither they nor the 650-test run are fresh verification of R2.
 
-Fresh AUTH-001-R2 author verification passed three consecutive 27-case focused
+Historical AUTH-001-R2 author verification on 2026-09-14 passed three consecutive 27-case focused
 runs, then one complete 658-test `clean test` and package BUILD SUCCESS, all with
-exit code 0 and no test failures/errors/skipped. The fresh authentication counts
+exit code 0 and no test failures/errors/skipped. Its authentication counts
 are policy 97, PostgreSQL authentication 20 and HTTP/OIDC 115; all preceding 650
 testcase identities remain. The runs used PostgreSQL 18.4 (`postgres:18.4-alpine`),
 Flyway 12.4.0 with V1 → V11, Tomcat 11.0.25 and the synthetic local IdP.
 The [authentication contract](../docs/authentication-pilot.md#verification-gates)
-records the real late-failure RED/GREEN boundary. These are author results, not
-a fresh IDE gate, independent review or browser/Auth0 proof; the follow-up stays OPEN.
+records the real late-failure RED/GREEN boundary, later native IDE and independent
+results, and exact PR/merge CI evidence. These author runs are not those later
+checks or browser/Auth0 proof. No tests were rerun for this documentation change;
+the follow-up stays OPEN.
 
 An atomic per-logical-session callback lease captures its saved flow before
 provider/DB work; only its owner can publish authorized-client/session state.

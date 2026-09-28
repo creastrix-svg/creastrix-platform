@@ -73,15 +73,15 @@ unimplemented; manual delta is not a complete stock or commerce workflow.
 one, and an outer transaction holding locks needed by the inner operation can
 prevent completion. Independent commit boundaries do not remove those constraints.
 
-The accepted integrated foundation does not provide authentication or proven external caller
-identity. Raw SQL is structurally constrained but not actor-authorized, migration/table-owner
+The integrated local authentication pilot is described below; authenticated
+Workspace/RMP HTTP APIs remain unimplemented. Raw SQL is structurally constrained but not actor-authorized, migration/table-owner
 privileges are not separated from the runtime database role, and global
 deadlock freedom or a general SQLSTATE `40P01` retry policy is not established.
 Deferred behavior includes generic editing, Order Item confirmation-time
 allocation, eligible pre-dispatch exact release,
 dispatch accounting and serialization with Shipment `SHIPPED`, Listing, Order,
 Order Item, Shipment, Payment and other commerce integrations, list, search and
-paging, and an HTTP API. This documentation step does not select or begin a next
+paging, and a Ready-Made Product HTTP API. This documentation step does not select or begin a next
 implementation slice.
 
 ### Integrated Foundation Concurrency Corrections
@@ -126,16 +126,19 @@ approval before ordinary production implementation. Neither the Workspace and
 Workspace Membership structural foundation nor Ready-Made Product approval
 approves any downstream DRAFT specification.
 
-### Authentication Backend Work in Progress
+### Integrated Authentication Backend Pilot
 
-AUTH-FIRST-LOGIN-001 on `solar_wind/auth-first-login-backend` implements a bounded
+AUTH-FIRST-LOGIN-001 is integrated in main through
+[PR #28](https://github.com/creastrix-svg/creastrix-platform/pull/28). It implements a bounded
 server-side OIDC/session backend, exact external identity binding through V11,
-and the account/CSRF/login/logout HTTP contract. This branch is not integrated
-or independently approved. Historical AUTH-001-R1 backend B author verification
-passed 650 tests with
-zero failures/errors/skipped and package BUILD SUCCESS; see the
+and the account/CSRF/login/logout HTTP contract for a single-instance local
+nonpublic pilot. Author-side native IDE verification and independent R2 re-review
+are complete. The separate
+[post-merge Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/36115810224)
+passed 658 tests, zero failures/errors/skipped, tests/package BUILD SUCCESS,
+PostgreSQL 18.4 and Flyway V1 → V11; see the exact merge and historical evidence in the
 [authentication contract and verification boundary](docs/authentication-pilot.md).
-Those counts are not a fresh AUTH-001-R2 result. The owner's 2026-09-14 local-pilot
+No tests were rerun by this documentation change. The owner's 2026-09-14 local-pilot
 contract bounds publication to a short client/session/context/outcome section,
 not physical HTTP commit or browser delivery. The R2 remediation targets only the
 rejected attempt's session cookie on an uncommitted failure response and preserves
@@ -144,10 +147,8 @@ including cooperative logout before HTTP commit, remains temporarily accepted
 only for the local nonpublic pilot under `AUTH-COOKIE-FOLLOWUP-001` (OPEN).
 It must be revisited during browser verification and before any public access,
 external-user invitations or rollout; test counts and merge cannot close it.
-Fresh R2 author verification passed one 658-test suite with zero
-failures/errors/skipped and package BUILD SUCCESS, preserving all 650 earlier
-testcase identities. This is not IDE verification or independent approval and
-does not close the cookie follow-up.
+Author verification, native IDE execution, independent re-review, PR CI and
+post-merge CI are distinct evidence; none closes the cookie follow-up.
 React/Redux, its dev proxy and browser integration F are not implemented here;
 the real Auth0 walkthrough P, tenant setup and rollout have not been performed.
 Login does not create a Workspace. No Workspace/RMP HTTP API, linking, social
