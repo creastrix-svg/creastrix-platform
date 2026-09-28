@@ -66,7 +66,7 @@ The `main` branch currently contains these backend foundations:
 
 This is not a full product implementation and does not mean that all behavior in the approved specifications has been delivered.
 
-The merged Workspace foundation is partial implementation coverage of the independently APPROVED 1.0 Workspace and Workspace Membership specifications, not complete delivery of every approved rule or workflow. It does not implement authentication or external caller identity proof, HTTP APIs, invitations or invitation acceptance, general Workspace Membership creation or mutation workflows beyond the atomic initial Membership, ownership transfer, Workspace deletion or archival workflows, or recovery. The Workspace implementation does not approve any downstream DRAFT specification.
+The merged Workspace foundation is partial implementation coverage of the independently APPROVED 1.0 Workspace and Workspace Membership specifications, not complete delivery of every approved rule or workflow. It is not exposed through an authenticated Workspace HTTP API; invitations or invitation acceptance, general Workspace Membership creation or mutation workflows beyond the atomic initial Membership, ownership transfer, Workspace deletion or archival workflows, and recovery remain unimplemented. The Workspace implementation does not approve any downstream DRAFT specification.
 
 Foundation V9 / PROD-002 and V10 / PROD-001 are integrated corrections, separate from the Ready-Made Product IMPLEMENTATION 005A/V6, 005B/V7, and 005C/V8 slices. V9 permits writes to `organizations`, `organization_memberships`, `workspaces`, and `workspace_memberships` only at actual READ COMMITTED isolation; guards reject unsupported isolation with SQLSTATE `0A000`. This is a contract for those four foundation tables, not support for arbitrary operations at other isolation levels.
 
@@ -86,19 +86,19 @@ IMPLEMENTATION 005C adds bounded durable manual quantity-delta commands for both
 
 Allocation persistence is absent, so reachable outstanding allocated quantity is zero and accounted physical quantity currently equals available quantity. Integration of accounted quantity with Order Item allocation, eligible release, and Shipment dispatch remains unimplemented. IMPLEMENTATION 005C is partial coverage of APPROVED 1.1, not a complete stock or commerce workflow.
 
-Ready-Made Product implementation still does not provide authentication or proven external caller identity. Raw SQL is structurally constrained but not actor-authorized, migration/table-owner privileges are not separated from the runtime database role, and global deadlock freedom or a general SQLSTATE 40P01 retry policy is not established. Generic editing, Order Item confirmation-time allocation, eligible pre-dispatch exact release, dispatch accounting and serialization with Shipment SHIPPED, Listing, Order, Order Item, Shipment, Payment or other commerce integration, list, search and paging, and an HTTP API remain unimplemented. No next Ready-Made Product implementation slice is selected or started here.
+Ready-Made Product services are not exposed through an authenticated HTTP API; the integrated authentication pilot below does not provide caller identity proof for those operations. Raw SQL is structurally constrained but not actor-authorized, migration/table-owner privileges are not separated from the runtime database role, and global deadlock freedom or a general SQLSTATE 40P01 retry policy is not established. Generic editing, Order Item confirmation-time allocation, eligible pre-dispatch exact release, dispatch accounting and serialization with Shipment SHIPPED, Listing, Order, Order Item, Shipment, Payment or other commerce integration, list, search and paging, and a Ready-Made Product HTTP API remain unimplemented. No next Ready-Made Product implementation slice is selected or started here.
 
 Ready-Made Product references to the DRAFT Listing, Order Item, and Shipment specifications preserve accepted Ready-Made Product boundaries only; they do not approve those specifications or authorize their production implementation.
 
 The remaining DRAFT domains are active architecture work and require their own architecture review and independent specification approval before implementation.
 
-### Authorized authentication backend WIP
+### Integrated authentication backend pilot
 
 The owner authorized AUTH-FIRST-LOGIN-001 against reviewed AUTH-SELECTION-003:
 single-instance backend/nonproduction database, fixed loopback backend and
 browser-origin contract, exact issuer/subject admission with controlled restart,
 server-side OIDC/HttpOnly session, 30-minute idle and 8-hour absolute limits.
-The current `solar_wind/auth-first-login-backend` WIP adds the bounded V11 identity
+The integrated AUTH-FIRST-LOGIN-001 adds the bounded V11 identity
 binding and account HTTP path. Historical AUTH-001-R1 backend B passed
 local author verification: 91 policy tests, 20 PostgreSQL authentication tests,
 113 real HTTP/test-IdP cases, one complete 650-test suite with zero
@@ -114,13 +114,19 @@ publication requires that the rejected, still-uncommitted failure 303 contain no
 setting/deletion session cookie owned by that attempt, while unrelated cookies
 and any newer session/flow/client/principal remain untouched. The callback stays
 pinned to its original session, and durable identity-binding commits are not undone.
-Fresh R2 author verification passed three consecutive 27-case focused runs and
+Historical R2 author verification on 2026-09-14 passed three consecutive 27-case focused runs and
 one complete 658-test suite (policy 97, PostgreSQL authentication 20, HTTP/OIDC 115
 within that suite), with zero failures/errors/skipped and package BUILD SUCCESS.
-All 650 preceding testcase identities remain. This is not fresh IDE verification,
-independent approval or closure of the separate cookie follow-up below.
-The change is neither independently approved nor integrated. See the
-[authentication boundary](docs/authentication-pilot.md). React/browser F and
+All 650 preceding testcase identities remain. Subsequent author-side native IDE
+verification (policy 97/97, HTTP 115/115) and independent R2 re-review completed.
+[PR #28](https://github.com/creastrix-svg/creastrix-platform/pull/28) integrated the
+reviewed change; its separate
+[post-merge CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/36115810224)
+passed 658/658, failures/errors/skipped 0/0/0, tests/package BUILD SUCCESS,
+PostgreSQL 18.4 and Flyway V1 → V11. See the exact merge and distinct verification
+evidence in the [authentication boundary](docs/authentication-pilot.md#verification-gates).
+No tests were rerun by this documentation change; none of these results closes
+the separate cookie follow-up below. React/browser F and
 real Auth0 walkthrough P have not been performed. No Workspace is created by
 login; no Workspace/RMP API, account linking or new commerce decision is added.
 
