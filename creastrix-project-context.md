@@ -143,6 +143,22 @@ to public operation. Assess actual browser/cookie behavior and protection, not j
 Redux error hiding. Neither merge, test count nor the late-failure correction closes
 this item; no future mechanism or follow-up implementation is selected here.
 
+### Frontend UI foundation
+
+FRONTEND-BOOTSTRAP-001 provides a UI-only scaffold in a separately built `frontend` directory in
+the existing repository: React 19.3.0, TypeScript 6.0.3, Vite 8.3.1, Redux Toolkit
+2.13.0 / React Redux 9.3.0 and React Router 7.18.4, using pinned Node 22.14.0 /
+npm 10.9.2 and a lockfile. Redux holds only the shared DE/EN UI preference.
+The selected 3C / SYMMETRY logo accompanies a neutral light demo; the final colour
+palette and Atelier/Studio choice remain open. `/`, `/login` and `/account` are
+UI-only routes with a fictional profile, disabled future sign-in methods and
+voluntary Workspace messaging. No backend proxy, Auth0 connection, credentials,
+real authentication, Workspace/RMP forms, domain records or rollout are added.
+The local server is loopback-only on strict port 3000. See the
+[frontend guide](frontend/README.md) for commands and the path-filtered frontend CI.
+This scaffold is not production-ready or authentication F/P evidence;
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN. No domain/business decision is changed.
+
 ## Domain Principles
 
 - Domain first.

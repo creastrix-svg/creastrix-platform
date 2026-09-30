@@ -149,11 +149,34 @@ It must be revisited during browser verification and before any public access,
 external-user invitations or rollout; test counts and merge cannot close it.
 Author verification, native IDE execution, independent re-review, PR CI and
 post-merge CI are distinct evidence; none closes the cookie follow-up.
-React/Redux, its dev proxy and browser integration F are not implemented here;
+React/Redux authentication integration, its dev proxy and browser verification F are not implemented here;
 the real Auth0 walkthrough P, tenant setup and rollout have not been performed.
 Login does not create a Workspace. No Workspace/RMP HTTP API, linking, social
 login or commerce implementation is included, and no working user-facing login
 or complete authentication/MVP delivery is claimed.
+
+## Frontend UI Foundation
+
+FRONTEND-BOOTSTRAP-001 provides a separately built [frontend](frontend/README.md)
+in this repository: React/TypeScript/Vite, Redux Toolkit for the shared DE/EN UI
+preference, the selected 3C logo and neutral demo routes `/`, `/login`, `/account`.
+This is a UI-only scaffold, not a production-ready account area. The demo account
+is public and fictional; planned sign-in methods are disabled. A Workspace remains optional.
+There is no backend/Auth0 connection, proxy, credential collection, real sign-in,
+Workspace/RMP API or rollout. This does not verify authentication F/P or close
+`AUTH-COOKIE-FOLLOWUP-001` (OPEN).
+
+Using Node 22.14.0 / npm 10.9.2, run from `frontend`:
+
+```sh
+npm ci
+npm run dev
+```
+
+The UI is local-only at `http://localhost:3000` (loopback, strict port).
+Separate checks: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.
+Frontend CI runs locked install, typecheck, lint, tests and build for changes under
+`frontend/**` or to `.github/workflows/frontend-ci.yml`; backend CI has separate filters.
 
 ## Architecture and Technology
 
@@ -170,3 +193,4 @@ or complete authentication/MVP delivery is claimed.
 - [Team code](creastrix-team-code.md)
 - [Domain specifications](docs/domain/README.md)
 - [Backend](backend/README.md)
+- [Frontend UI scaffold](frontend/README.md)
