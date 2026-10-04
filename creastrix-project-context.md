@@ -25,6 +25,7 @@ protecting creator ownership and customer trust.
 - Workspace
 - Workspace Membership
 - Ready-Made Product
+- [Platform Access Grant](docs/domain/platform-access-grant.md) — APPROVED 1.0
 
 ## Current Draft Domain Specifications
 
@@ -91,6 +92,25 @@ Ready-Made Product services are not exposed through an authenticated HTTP API; t
 Ready-Made Product references to the DRAFT Listing, Order Item, and Shipment specifications preserve accepted Ready-Made Product boundaries only; they do not approve those specifications or authorize their production implementation.
 
 The remaining DRAFT domains are active architecture work and require their own architecture review and independent specification approval before implementation.
+
+### Platform Access Grant: partial I1 coverage
+
+Platform Access Grant APPROVED 1.0 is separately accepted architecture. The
+platform-access foundation in this checkout provides six pure policy production-source files and two unit-test
+classes: immutable supplied snapshots, a finite two-role/six-permission catalog,
+exact resource/reason predicates, bounded delegation, validity and assurance checks.
+This is partial specification coverage, not live authorization or complete delivery.
+See the [backend I1 boundary](backend/README.md#platform-access-policy-foundation).
+
+Verification and integration status are established by separate delivery evidence;
+specification approval is not runtime enforcement or real authority.
+A model `ALLOW` does not prove trusted current facts or commit.
+Spring/HTTP wiring, grant persistence and slot uniqueness, invitation acceptance,
+authoritative eligibility/session generations, real MFA/step-up, live revocation,
+atomic durable audit and maintenance execution remain unimplemented. No real
+privileges or rollout are activated and no next slice is selected.
+`AUTH-COOKIE-FOLLOWUP-001` stays OPEN; browser proof remains INCOMPLETE and S003
+browser scenarios NOT RUN. Specification approval and this pure core do not close them.
 
 ### Integrated authentication backend pilot
 
