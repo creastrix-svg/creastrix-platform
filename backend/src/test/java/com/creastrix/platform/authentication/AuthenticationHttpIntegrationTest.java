@@ -255,6 +255,9 @@ class AuthenticationHttpIntegrationTest {
                 .as("All log non-disclosure controls contain actual generated values").isTrue();
         assertThat(privateValues.stream().noneMatch(logs.getAll()::contains))
                 .as("Captured logs contain no issued tokens, cookies, CSRF or OIDC flow credentials").isTrue();
+        assertThat(Stream.of("event=LOGIN_RESULT reason=LOGIN_INTENT_ACCEPTED",
+                "event=LOGIN_RESULT reason=LOCAL_SUCCESS_SELECTED", "event=HTTP_COMPLETED route=CALLBACK")
+                .allMatch(logs.getAll()::contains)).as("All expected login diagnostic codes are present").isTrue();
     }
 
     static Stream<Arguments> rawClaimFailures() {
@@ -458,7 +461,7 @@ class AuthenticationHttpIntegrationTest {
     }
 
     @Test
-    void logoutDestroysServerSessionAndClientStateAndOldCookieCannotReturn() throws Exception {
+    void logoutDestroysServerSessionAndClientStateAndOldCookieCannotReturn(CapturedOutput logs) throws Exception {
         Browser browser = browser();
         complete(browser);
         String oldId = browser.sessionId();
@@ -480,6 +483,8 @@ class AuthenticationHttpIntegrationTest {
         Browser stale = browser();
         assertJsonError(stale.get("/api/me", Map.of("Cookie", "JSESSIONID=" + oldId)), 401);
         assertJsonError(browser.get("/api/me"), 401);
+        assertThat(logs.getAll().contains("event=LOGOUT_RESULT reason=LOCAL_LOGOUT_COMPLETED"))
+                .as("Local logout completion is observed").isTrue();
     }
 
     @Test
@@ -515,7 +520,7 @@ class AuthenticationHttpIntegrationTest {
     }
 
     @Test
-    void idleAndAbsoluteExpiryDestroyClientStateAndNeverReturnPrivateData() throws Exception {
+    void idleAndAbsoluteExpiryDestroyClientStateAndNeverReturnPrivateData(CapturedOutput logs) throws Exception {
         Browser idle = browser();
         complete(idle);
         String idleId = idle.sessionId();
@@ -537,10 +542,12 @@ class AuthenticationHttpIntegrationTest {
         CLOCK.advance(Duration.ofMinutes(25));
         assertJsonError(absolute.get("/api/me"), 401);
         assertThat(probe().sessions).doesNotContainKey(absoluteId);
+        assertThat(logs.getAll().contains("event=SESSION_EXPIRED reason=ABSOLUTE_LIFETIME_EXPIRED"))
+                .as("Observed absolute expiry is classified").isTrue();
     }
 
     @Test
-    void databaseAcquisitionFailureFailsClosedAndDoesNotPretendSessionWasDestroyed() throws Exception {
+    void databaseAcquisitionFailureFailsClosedAndDoesNotPretendSessionWasDestroyed(CapturedOutput logs) throws Exception {
         Browser browser = browser();
         complete(browser);
         String id = browser.sessionId();
@@ -548,6 +555,12 @@ class AuthenticationHttpIntegrationTest {
         try {
             assertJsonError(browser.get("/api/me"), 503);
             assertThat(probe().sessions).containsKey(id);
+            assertThat(logs.getAll().contains("event=REQUEST_FAILURE reason=DATABASE_UNAVAILABLE"))
+                    .as("Database failure has a bounded diagnostic reason").isTrue();
+            assertThat(logs.getAll().contains("Test-only connection acquisition unavailable"))
+                    .as("Raw driver diagnostic is not disclosed by observability").isFalse();
+            assertThat(logs.getAll().contains("event=LOGOUT_RESULT"))
+                    .as("Unknown database state is not logout").isFalse();
         }
         finally {
             FAULTS.failAcquisition.set(false);
@@ -556,7 +569,7 @@ class AuthenticationHttpIntegrationTest {
     }
 
     @Test
-    void failedLogoutIsNotReportedAsSuccessAndDoesNotInvalidateSession() throws Exception {
+    void failedLogoutIsNotReportedAsSuccessAndDoesNotInvalidateSession(CapturedOutput logs) throws Exception {
         Browser browser = browser();
         complete(browser);
         String oldId = browser.sessionId();
@@ -564,6 +577,8 @@ class AuthenticationHttpIntegrationTest {
                 Map.of("Origin", origin, "X-CSRF-TOKEN", "invalid")), 403);
         assertThat(probe().sessions).containsKey(oldId);
         assertThat(browser.get("/api/me").statusCode()).isEqualTo(200);
+        assertThat(logs.getAll().contains("event=LOGOUT_RESULT"))
+                .as("Failed CSRF logout does not report success").isFalse();
     }
 
     @Test

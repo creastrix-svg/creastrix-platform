@@ -3,6 +3,8 @@ package com.creastrix.platform.organization.application;
 import java.util.List;
 import java.util.UUID;
 
+import com.creastrix.platform.observability.TransactionDiagnostics;
+import com.creastrix.platform.observability.TransactionDiagnostics.Operation;
 import com.creastrix.platform.organization.application.port.OrganizationRepository;
 import com.creastrix.platform.organization.domain.Organization;
 import com.creastrix.platform.organization.domain.OrganizationCreatorNotActiveException;
@@ -22,10 +24,10 @@ import org.springframework.transaction.annotation.Transactional;
  * service never touches User persistence directly.
  *
  * <p>Authorization boundary: this slice proves that the creator User exists and
- * is ACTIVE. Authentication and caller identity proof are not implemented, so
- * this service does not prove that the caller actually is the creator. General
- * Organization authority and future delegation rules remain outside this
- * slice's scope.
+ * is ACTIVE. These operations have no authenticated HTTP API or caller identity
+ * proof; the separate authentication pilot does not prove that their caller is
+ * the creator. General Organization authority and future delegation rules
+ * remain outside this slice's scope.
  */
 @Service
 public class OrganizationService {
@@ -55,7 +57,8 @@ public class OrganizationService {
         }
         UUID id = UUID.randomUUID();
         organizations.create(id, creator.id());
-        return organizations.findById(id).orElseThrow(() -> new OrganizationNotFoundException(id));
+        return TransactionDiagnostics.returned(Operation.ORGANIZATION_CREATE,
+                organizations.findById(id).orElseThrow(() -> new OrganizationNotFoundException(id)));
     }
 
     @Transactional(readOnly = true)

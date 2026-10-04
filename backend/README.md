@@ -407,6 +407,96 @@ existing PostgreSQL JDBC override remains unchanged. See the
 for the bounded SC-01 result; compatibility verification and integration do not
 constitute rollout to external applications or proof of a vulnerability-free graph.
 
+## Bounded application diagnostics
+
+This section describes the bounded application diagnostics in this checkout.
+Verification and integration status must be established from the separate delivery
+evidence; this section does not report a new test run or establish integration.
+The diagnostics use the existing
+SLF4J and Logback dependencies; no logging service, collector, file sink or audit table
+is introduced. The console configuration keeps INFO as the default and includes
+the server-generated request correlation ID. Do not enable global DEBUG/TRACE,
+SQL parameter logging or request/body/header dumps to diagnose authentication.
+
+The application logger is `com.creastrix.platform.diagnostics`. Its fixed
+vocabulary separates observed results from inferred effects:
+
+| Event | Meaning and bounded fields |
+| --- | --- |
+| `HTTP_COMPLETED` | One synchronous request-chain return/throw; route category, method category, selected status, elapsed `duration_ms`, `RETURNED` or `THREW` |
+| `LOGIN_RESULT` | Explicit intent accepted, local success selected, protocol rejection, admission denial, callback conflict or safely classified resolution failure |
+| `ACCESS_DENIED` | Missing authenticated session, current-user/admission denial, already-authenticated entry, missing intent or generic request-boundary rejection |
+| `SESSION_EXPIRED` | Observed absolute lifetime exceeded; never inferred idle expiry from a missing session |
+| `LOGOUT_RESULT` | Local logout handler completed; not provider/global logout or proof of cookie delivery |
+| `REQUEST_FAILURE` | Safe technical failure category; a later failure retains bounded `prior_event` / `prior_reason` (or `NONE`), without exception text |
+| `DOMAIN_TRANSACTION` | Completion of the transaction containing a successfully returned supported operation; operation code and completion only |
+| `DIAGNOSTIC_LIMIT` | Request-local transaction observations exceeded the fixed limit; reason `REQUEST_TRANSACTION_LIMIT` |
+
+Reason codes include `LOGIN_INTENT_ACCEPTED`, `LOCAL_SUCCESS_SELECTED`,
+`PROTOCOL_REJECTED`, `NO_AUTHENTICATED_SESSION`, `ABSOLUTE_LIFETIME_EXPIRED`,
+`ADMISSION_DENIED`, `CURRENT_USER_DENIED`, `REQUEST_BOUNDARY_REJECTED`,
+`ALREADY_AUTHENTICATED`, `CALLBACK_CONFLICT`, `LOGIN_INTENT_REQUIRED` and
+`LOCAL_LOGOUT_COMPLETED`. These expected outcomes use INFO, not ERROR.
+`SESSION_COORDINATION_UNAVAILABLE`, `IDENTITY_RESOLUTION_UNAVAILABLE`,
+`DATABASE_UNAVAILABLE`, `DEADLINE_EXCEEDED` and `INTERRUPTED` use WARN;
+`UNEXPECTED_FAILURE` uses ERROR. Transaction `COMMITTED` and `ROLLED_BACK` use
+INFO; `UNKNOWN` and `NOT_OBSERVED`, and a diagnostic-limit event, use WARN.
+Internal `ClassifiedFailure` exceptions supply a closed reason; other failure
+classification examines bounded exception types/causes without printing
+messages, SQL details or throwable chains. Existing domain rejection types and
+opaque authentication exceptions remain distinct; invalid configuration names
+the relevant field, never its supplied value. HTTP status, fixed JSON error and
+redirect contracts are unchanged; internal messages do not become API responses.
+
+Every request gets a new server-generated ID in the `requestId` MDC field;
+incoming correlation headers are not trusted or copied. The authentication
+virtual worker receives only that ID explicitly, not the principal or complete
+MDC. Request completion and worker scopes clean up their own context. Route and
+method fields are closed categories, not raw URLs or caller text. No log field
+accepts passwords, client secrets, tokens, cookies/session IDs, Authorization,
+CSRF values, OAuth code/state/nonce/PKCE, claims, issuer/subject, email or other
+personal data, request/query/body content, SQL parameters or connection strings.
+Application diagnostics never stringify principals, configuration or exceptions.
+
+Authentication markers only stage fixed codes while the security chain is
+running. The first specific marker wins over later generic handling, but a later
+more severe technical marker takes precedence and retains the prior codes.
+An escaping failure also takes precedence over an earlier selection/denial and
+retains its codes; neither handled nor escaping failures are hidden by success.
+Output is deferred until the chain unwinds and its session/publication locks are released.
+An HTTP request stages at most 16 transaction records, then emits a limit warning
+instead of growing an unbounded queue. Domain observations outside that
+request-local context, including the identity-resolution worker, emit at their
+transaction-completion boundary, outside the authentication publication lock.
+Configured transaction/lock deadlines are unchanged. Synchronous output can
+delay completion/cleanup; no total completion-latency bound or lossless delivery
+is claimed.
+
+One transaction synchronization coalesces repeated returns into at most ten
+operation codes: `USER_CREATE`, `USER_STATUS_CHANGE`, `ORGANIZATION_CREATE`,
+`USER_WORKSPACE_CREATE`, `ORGANIZATION_WORKSPACE_CREATE`, `PRODUCT_CREATE`,
+`PRODUCT_ARCHIVE`, `PRODUCT_ACTIVATE`, `DELTA_REGISTER`, and
+`DELTA_APPLY_OR_REPLAY`. Only `afterCompletion` observes completion.
+Spring can report ROLLED_BACK after commit acknowledgement loss even when the
+database committed. Once `beforeCommit` has run, any non-COMMITTED completion
+is conservatively UNKNOWN, including a real rollback late in that phase.
+Before that phase, ROLLED_BACK is retained; unavailable completion is UNKNOWN.
+Without an observable active physical transaction, the result is NOT_OBSERVED,
+never a fabricated commit. A Spring-observed
+savepoint rollback conservatively yields UNKNOWN even if the outer transaction
+later commits; direct JDBC savepoints bypass that observer and remain a coverage
+gap. These are transaction observations after successful operation returns, not
+a count of new records or changed rows: registration/application may return a
+retained manual-delta result, and replay is not a fresh quantity application.
+Failed methods and privileged raw SQL are not a complete mutation event stream.
+
+A selected OIDC success/redirect does not establish HTTP commit, cookie delivery
+or the browser's final account. Missing session state may follow idle expiry,
+logout or restart; only observed absolute expiry is labelled SESSION_EXPIRED.
+Commit-unknown identity resolution requires the unchanged reconciliation through
+a new full login. Diagnostics provide no durable audit guarantee or stale-cookie
+protection; `AUTH-COOKIE-FOLLOWUP-001` remains OPEN.
+
 ## Running tests
 
 ```

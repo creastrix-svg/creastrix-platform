@@ -3,6 +3,8 @@ package com.creastrix.platform.readymadeproduct.application;
 import java.util.Objects;
 import java.util.UUID;
 
+import com.creastrix.platform.observability.TransactionDiagnostics;
+import com.creastrix.platform.observability.TransactionDiagnostics.Operation;
 import com.creastrix.platform.readymadeproduct.application.port.ReadyMadeProductRepository;
 import com.creastrix.platform.readymadeproduct.domain.ManualQuantityDeltaResult;
 import com.creastrix.platform.readymadeproduct.domain.ReadyMadeProduct;
@@ -35,8 +37,9 @@ import org.springframework.transaction.annotation.Transactional;
  * is reimplemented here. Database enforcement remains authoritative against
  * races after these application-level validations.
  *
- * <p>Identity boundary: authentication and external caller identity proof are
- * not implemented. {@code creatorUserId} is the identity presented to the
+ * <p>Identity boundary: these Product operations have no authenticated HTTP API
+ * or external caller identity proof; the separate authentication pilot does not
+ * authorize them. {@code creatorUserId} is the identity presented to the
  * application, not an identity proven by an authenticated HTTP session. This
  * service therefore proves that the presented creator identity exists, is
  * ACTIVE, and holds effective READY_MADE_PRODUCTS write authorization, but it
@@ -114,8 +117,9 @@ public class ReadyMadeProductService {
         readyMadeProducts.create(
                 intended.id(), intended.workspaceId(), intended.createdByUserId(),
                 intended.availableQuantity());
-        return readyMadeProducts.findById(id)
-                .orElseThrow(() -> new ReadyMadeProductNotFoundException(id));
+        return TransactionDiagnostics.returned(Operation.PRODUCT_CREATE,
+                readyMadeProducts.findById(id)
+                        .orElseThrow(() -> new ReadyMadeProductNotFoundException(id)));
     }
 
     @Transactional(readOnly = true)
@@ -129,17 +133,17 @@ public class ReadyMadeProductService {
      *
      * <p>Error precedence is intentional for this internal application layer:
      * Product existence is checked before actor existence, authorization, and
-     * lifecycle state. Authentication and HTTP do not exist yet; when they are
-     * introduced, this disclosure boundary must be reviewed at that boundary.
+     * lifecycle state. An authenticated HTTP API for this operation is absent;
+     * introducing one requires review of this disclosure boundary.
      */
     @Transactional
     public ReadyMadeProduct archiveReadyMadeProduct(
             UUID readyMadeProductId, UUID actorUserId) {
-        return transitionReadyMadeProduct(
+        return TransactionDiagnostics.returned(Operation.PRODUCT_ARCHIVE, transitionReadyMadeProduct(
                 readyMadeProductId,
                 actorUserId,
                 ReadyMadeProductStatus.ACTIVE,
-                ReadyMadeProductStatus.ARCHIVED);
+                ReadyMadeProductStatus.ARCHIVED));
     }
 
     /**
@@ -147,17 +151,17 @@ public class ReadyMadeProductService {
      *
      * <p>Error precedence is intentional for this internal application layer:
      * Product existence is checked before actor existence, authorization, and
-     * lifecycle state. Authentication and HTTP do not exist yet; when they are
-     * introduced, this disclosure boundary must be reviewed at that boundary.
+     * lifecycle state. An authenticated HTTP API for this operation is absent;
+     * introducing one requires review of this disclosure boundary.
      */
     @Transactional
     public ReadyMadeProduct activateReadyMadeProduct(
             UUID readyMadeProductId, UUID actorUserId) {
-        return transitionReadyMadeProduct(
+        return TransactionDiagnostics.returned(Operation.PRODUCT_ACTIVATE, transitionReadyMadeProduct(
                 readyMadeProductId,
                 actorUserId,
                 ReadyMadeProductStatus.ARCHIVED,
-                ReadyMadeProductStatus.ACTIVE);
+                ReadyMadeProductStatus.ACTIVE));
     }
 
     /**
@@ -169,8 +173,9 @@ public class ReadyMadeProductService {
     public ManualQuantityDeltaResult registerManualQuantityDelta(
             UUID readyMadeProductId, UUID commandId, long delta, UUID actorUserId) {
         validateManualQuantityDeltaInput(readyMadeProductId, commandId, delta, actorUserId);
-        return readyMadeProducts.registerManualQuantityDelta(
-                readyMadeProductId, commandId, delta, actorUserId);
+        return TransactionDiagnostics.returned(Operation.DELTA_REGISTER,
+                readyMadeProducts.registerManualQuantityDelta(
+                        readyMadeProductId, commandId, delta, actorUserId));
     }
 
     /**
@@ -182,8 +187,9 @@ public class ReadyMadeProductService {
     public ManualQuantityDeltaResult applyManualQuantityDelta(
             UUID readyMadeProductId, UUID commandId, long delta, UUID actorUserId) {
         validateManualQuantityDeltaInput(readyMadeProductId, commandId, delta, actorUserId);
-        return readyMadeProducts.applyManualQuantityDelta(
-                readyMadeProductId, commandId, delta, actorUserId);
+        return TransactionDiagnostics.returned(Operation.DELTA_APPLY_OR_REPLAY,
+                readyMadeProducts.applyManualQuantityDelta(
+                        readyMadeProductId, commandId, delta, actorUserId));
     }
 
     private ReadyMadeProduct transitionReadyMadeProduct(

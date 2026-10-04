@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.Set;
 import java.util.function.Function;
 
+import com.creastrix.platform.observability.Diagnostics;
 import com.creastrix.platform.user.application.AuthenticatedUserService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -82,7 +83,7 @@ public class AuthenticationConfiguration {
         return factory -> {
             String mode = environment.getProperty("creastrix.auth.enabled", "false");
             if (!("true".equalsIgnoreCase(mode) || "false".equalsIgnoreCase(mode))) {
-                throw new IllegalArgumentException("Authentication mode must be explicitly true or false");
+                throw new IllegalArgumentException("Authentication mode must be explicitly true or false (creastrix.auth.enabled)");
             }
         };
     }
@@ -196,8 +197,11 @@ public class AuthenticationConfiguration {
                             .successHandler((request, response, authentication) -> {
                                 request.getSession().setMaxInactiveInterval((int) AuthenticationProperties.IDLE_LIFETIME.toSeconds());
                                 redirect(response, properties.successUri());
+                                // Staging only: the publication lock is still held, and delivery is not proven.
+                                Diagnostics.mark(Diagnostics.Event.LOGIN_RESULT, Diagnostics.Reason.LOCAL_SUCCESS_SELECTED);
                             })
                             .failureHandler((request, response, failure) -> {
+                                Diagnostics.mark(Diagnostics.Event.LOGIN_RESULT, Diagnostics.Reason.PROTOCOL_REJECTED);
                                 var attempt = AuthenticationAttemptCoordinator.attempt(request);
                                 if (attempt != null) {
                                     attempt.reject();
@@ -215,7 +219,10 @@ public class AuthenticationConfiguration {
                                 AuthenticationAttemptCoordinator.revoke(request.getSession(false));
                                 expireCookie(response, properties);
                             })
-                            .logoutSuccessHandler((request, response, authentication) -> response.setStatus(204)))
+                            .logoutSuccessHandler((request, response, authentication) -> {
+                                response.setStatus(204);
+                                Diagnostics.mark(Diagnostics.Event.LOGOUT_RESULT, Diagnostics.Reason.LOCAL_LOGOUT_COMPLETED);
+                            }))
                     // Load the current principal first, but gate before CSRF, logout and OAuth processing.
                     .addFilterAfter(new RequestBoundary(properties, clock, requests), SecurityContextHolderFilter.class)
                     .addFilterBefore(new CurrentUserAccessFilter(internalUsers, properties, clock), AuthorizationFilter.class);
@@ -435,6 +442,7 @@ public class AuthenticationConfiguration {
             if (entry && authentication != null && authentication.isAuthenticated()
                     && !(authentication instanceof AnonymousAuthenticationToken)) {
                 // Entry is not callback navigation; keep the fixed JSON conflict for this endpoint.
+                Diagnostics.mark(Diagnostics.Event.ACCESS_DENIED, Diagnostics.Reason.ALREADY_AUTHENTICATED);
                 jsonError(response, 409);
                 return;
             }
@@ -447,6 +455,7 @@ public class AuthenticationConfiguration {
                 if (!"GET".equals(request.getMethod()) || !(intent instanceof Instant start)
                         || start.isAfter(clock.instant())
                         || !clock.instant().isBefore(start.plus(AuthenticationProperties.FLOW_LIFETIME))) {
+                    Diagnostics.mark(Diagnostics.Event.ACCESS_DENIED, Diagnostics.Reason.LOGIN_INTENT_REQUIRED);
                     jsonError(response, 403);
                     return;
                 }
@@ -456,6 +465,7 @@ public class AuthenticationConfiguration {
                 if (callback) {
                     attempt = requests.admit(request, response);
                     if (attempt == null) {
+                        Diagnostics.mark(Diagnostics.Event.LOGIN_RESULT, Diagnostics.Reason.CALLBACK_CONFLICT);
                         requests.discardConflicting(request, response);
                         redirect(response, properties.failureUri());
                         return;
@@ -465,6 +475,7 @@ public class AuthenticationConfiguration {
                 chain.doFilter(request, response);
             }
             catch (AuthenticationAttemptCoordinator.Unavailable contention) {
+                Diagnostics.mark(Diagnostics.Event.REQUEST_FAILURE, Diagnostics.Reason.SESSION_COORDINATION_UNAVAILABLE);
                 if (attempt != null) {
                     attempt.reject();
                 }
@@ -480,6 +491,7 @@ public class AuthenticationConfiguration {
                 }
             }
             catch (OAuth2AuthenticationException rejected) {
+                Diagnostics.mark(Diagnostics.Event.LOGIN_RESULT, Diagnostics.Reason.PROTOCOL_REJECTED);
                 if (attempt != null) {
                     attempt.reject();
                 }
