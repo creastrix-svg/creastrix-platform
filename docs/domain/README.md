@@ -18,7 +18,7 @@ Such a reference does not promote the referenced specification to APPROVED and d
 
 If a DRAFT or PLANNED dependency changes incompatibly with an APPROVED specification, the affected APPROVED specification must be explicitly reviewed, updated, versioned, and approved before the change is accepted as consistent.
 
-The accepted integrated baseline currently contains 7 APPROVED and 14 DRAFT specifications.
+The accepted specification set recorded here contains 8 APPROVED and 14 DRAFT specifications; 6 additional concepts remain PLANNED. Specification approval does not by itself establish implementation coverage or integration into main.
 
 ## Approved entities
 
@@ -29,6 +29,7 @@ The accepted integrated baseline currently contains 7 APPROVED and 14 DRAFT spec
 - [Workspace](workspace.md) — APPROVED 1.0
 - [Workspace Membership](workspace-membership.md) — APPROVED 1.0
 - [Ready-Made Product](ready-made-product.md) — APPROVED 1.1
+- [Platform Access Grant](platform-access-grant.md) — APPROVED 1.0
 
 ## Draft specifications
 

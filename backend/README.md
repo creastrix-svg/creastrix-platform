@@ -366,6 +366,67 @@ Intentionally not implemented yet:
 - Ready-Made Product list, search, and paging APIs;
 - destructive deletion of a Ready-Made Product.
 
+## Platform access policy foundation
+
+The platform-access foundation in this checkout provides the unwired pure-policy subset of
+[Platform Access Grant APPROVED 1.0](../docs/domain/platform-access-grant.md).
+Verification and integration status are established by separate delivery evidence;
+specification approval is not runtime enforcement or real authority.
+Its six main-source types are `PlatformPermission`, `PlatformRole`,
+`PlatformAccessGrant`, `PlatformAccessContext`, `PlatformAccessDecision`, and
+`PlatformAccessPolicy`; the two unit-test classes are `PlatformAccessPolicyTest`
+and `PlatformAccessDelegationTest`.
+
+The finite v1 catalog contains `STAFF_GRANTS_READ`, `STAFF_INVITE`,
+`STAFF_GRANT_CHANGE`, `STAFF_GRANT_SUSPEND_REVOKE`, `USER_SECURITY_READ`, and
+`SECURITY_AUDIT_READ`. `PLATFORM_OWNER` explicitly contains those six;
+`SUPPORT_READ` contains only `USER_SECURITY_READ`, restricted to its exact
+1–100 target-User scope and permitted user-security projection. There is no
+wildcard, implicit future permission, role union, provider-role authority, or
+Workspace/Organization bypass.
+
+Delivered coverage is deterministic evaluation of immutable supplied facts:
+actor/grant/slot consistency, finite resource and read-reason predicates,
+ordinary owner-to-other-User SUPPORT_READ changes, lifecycle and expiry bounds,
+frozen invitation terms, checked prospective revision, and exact
+actor/account-eligibility/session/grant stamps with the 10/5/5-minute assurance
+bounds. Time is an explicit input. No policy call mutates state, refreshes
+activity, sends or accepts an invitation, issues a grant, or discloses data.
+ALLOW and its permitted projection describe only the supplied model; they do
+not prove authentication, authoritative freshness, physical single-slot
+uniqueness, current revocation, or a transaction commit.
+
+Expected denials use finite typed decision/reason codes rather than raw input
+or exception text. Model contracts and bounded exception messages remain in
+English; caller values, claims, credentials, and session data are not diagnostics.
+The pure core has no logging side effects. Future technical logging belongs at
+the responsible application/HTTP boundary with the existing safe-field rules;
+it cannot replace the separately required durable security audit, atomic
+mutation/audit outcome, or read-admission audit.
+
+Deferred coverage includes Spring wiring and HTTP endpoints, trusted
+authentication/assurance adapters, real provider MFA/step-up and generation
+issuance, grant persistence and concurrent final admission, invitation
+redemption/single use, physical transaction and commit-unknown reconciliation,
+durable audit storage, and every bootstrap/recovery/maintenance executor.
+No schema, migration, dependency, live owner/staff assignment, or rollout is
+provided by this foundation. Existing authentication and domain contracts remain
+separate and unchanged.
+
+From `backend`, the focused offline unit command is:
+
+```shell
+./mvnw -o -Dtest=PlatformAccessPolicyTest,PlatformAccessDelegationTest test
+```
+
+This command selects the two pure-policy test classes; the local Maven cache
+must already contain the required artifacts. Execution results and subsequent
+integration/CI evidence belong to the separate delivery report, not this command
+listing. Existing historical test and CI results below are not new I1 runs.
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN; fresh browser proof remains INCOMPLETE
+and S003 browser scenarios NOT RUN. This policy slice does not close those gates
+or establish real Auth0, browser authentication, or production readiness.
+
 ## Technology baseline
 
 - Java 25 (required)
