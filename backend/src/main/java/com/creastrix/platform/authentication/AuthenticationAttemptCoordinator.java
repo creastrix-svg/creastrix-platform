@@ -4,6 +4,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
+import com.creastrix.platform.observability.Diagnostics;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
@@ -14,7 +15,21 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 
-/** Single-instance, logical-session ownership; never held across provider or database work. */
+/**
+ * Single-instance ownership for one logical session, independent of its rotating ID.
+ * Admission captures one flow; provider/database work runs without the publication lock.
+ * A successful beginPublication retains that lock through local client/context save and
+ * outcome selection; RequestBoundary must pair every admitted attempt with finish in
+ * finally, including rejection and transport failure. Only that owner is released.
+ * Cooperative logout revokes before invalidation; unbinding only marks revocation and
+ * never acquires the lock while the container may hold its session monitor.
+ *
+ * <p>Publication is not physical HTTP commit, cookie delivery or browser account selection.
+ * The one-second budget bounds lock acquisition, not all Servlet I/O or the callback.
+ * Do not write diagnostic logs while holding session/publication locks; HTTP observation
+ * is staged as fixed codes and emitted outside the security chain. The separate stale
+ * success-cookie follow-up remains open.
+ */
 final class AuthenticationAttemptCoordinator implements HttpSessionBindingListener {
     private static final String SESSION_KEY = AuthenticationAttemptCoordinator.class.getName();
     private static final String REQUEST_KEY = SESSION_KEY + ".attempt";
@@ -125,8 +140,11 @@ final class AuthenticationAttemptCoordinator implements HttpSessionBindingListen
         return (Attempt) request.getAttribute(REQUEST_KEY);
     }
 
-    static final class Unavailable extends RuntimeException {
+    static final class Unavailable extends RuntimeException implements Diagnostics.ClassifiedFailure {
         Unavailable() { super("Authentication session operation not completed"); }
+
+        @Override
+        public Diagnostics.Reason diagnosticReason() { return Diagnostics.Reason.SESSION_COORDINATION_UNAVAILABLE; }
     }
 
     static final class Attempt {

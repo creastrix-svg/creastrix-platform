@@ -14,6 +14,7 @@ import java.util.function.Supplier;
 
 import javax.sql.DataSource;
 
+import com.creastrix.platform.observability.Diagnostics;
 import com.creastrix.platform.user.application.port.UserIdentityBindingRepository;
 import com.creastrix.platform.user.application.port.UserIdentityBindingRepository.Identity;
 import com.creastrix.platform.user.application.port.UserIdentityBindingRepository.PairAlreadyBoundException;
@@ -87,28 +88,31 @@ public class AuthenticatedUserService {
             throw new IllegalStateException("Authentication resolution rejects ambient transactions");
         }
         Lease lease = new Lease();
+        String correlation = Diagnostics.correlationId();
         FutureTask<T> result = new FutureTask<>(() -> {
-            requireAdmission(identity, admission);
-            // Hikari's blocking acquisition is interruptible. It is included in the deadline,
-            // unlike a TransactionTemplate timeout; the shared pool policy never changes.
-            try (Connection connection = dataSource.getConnection()) {
-                lease.install(connection);
-                int originalNetworkTimeout = -1;
-                try {
-                    originalNetworkTimeout = connection.getNetworkTimeout();
-                    connection.setNetworkTimeout(Runnable::run, lease.remainingMillis());
-                    TransactionSynchronizationManager.bindResource(dataSource, new ConnectionHolder(connection));
+            try (var ignored = Diagnostics.withCorrelation(correlation)) {
+                requireAdmission(identity, admission);
+                // Hikari's blocking acquisition is interruptible. It is included in the deadline,
+                // unlike a TransactionTemplate timeout; the shared pool policy never changes.
+                try (Connection connection = dataSource.getConnection()) {
+                    lease.install(connection);
+                    int originalNetworkTimeout = -1;
                     try {
-                        return work.run(lease);
+                        originalNetworkTimeout = connection.getNetworkTimeout();
+                        connection.setNetworkTimeout(Runnable::run, lease.remainingMillis());
+                        TransactionSynchronizationManager.bindResource(dataSource, new ConnectionHolder(connection));
+                        try {
+                            return work.run(lease);
+                        } finally {
+                            TransactionSynchronizationManager.unbindResource(dataSource);
+                        }
                     } finally {
-                        TransactionSynchronizationManager.unbindResource(dataSource);
-                    }
-                } finally {
-                    // Clearing ownership precedes pool return: cancellation can NEVER abort
-                    // a connection subsequently borrowed by an unrelated request.
-                    lease.release(connection);
-                    if (originalNetworkTimeout >= 0 && !connection.isClosed()) {
-                        connection.setNetworkTimeout(Runnable::run, originalNetworkTimeout);
+                        // Clearing ownership precedes pool return: cancellation can NEVER abort
+                        // a connection subsequently borrowed by an unrelated request.
+                        lease.release(connection);
+                        if (originalNetworkTimeout >= 0 && !connection.isClosed()) {
+                            connection.setNetworkTimeout(Runnable::run, originalNetworkTimeout);
+                        }
                     }
                 }
             }
@@ -119,12 +123,12 @@ public class AuthenticatedUserService {
         } catch (TimeoutException failure) {
             result.cancel(true);
             lease.cancel();
-            throw new ResolutionUnavailableException(failure);
+            throw new ResolutionUnavailableException(failure, Diagnostics.Reason.DEADLINE_EXCEEDED);
         } catch (InterruptedException failure) {
             result.cancel(true);
             lease.cancel();
             Thread.currentThread().interrupt();
-            throw new ResolutionUnavailableException(failure);
+            throw new ResolutionUnavailableException(failure, Diagnostics.Reason.INTERRUPTED);
         } catch (ExecutionException failure) {
             Throwable cause = failure.getCause();
             if (cause instanceof AdmissionDeniedException denied) {
@@ -245,13 +249,23 @@ public class AuthenticatedUserService {
     }
 
     /** Failure says nothing about commit/rollback. Only a new validated login may resolve it. */
-    public static final class ResolutionUnavailableException extends RuntimeException {
+    public static final class ResolutionUnavailableException extends RuntimeException implements Diagnostics.ClassifiedFailure {
+        private final Diagnostics.Reason diagnosticReason;
+
         public ResolutionUnavailableException() {
             super("Authentication resolution unavailable; outcome may be unknown");
+            diagnosticReason = Diagnostics.Reason.IDENTITY_RESOLUTION_UNAVAILABLE;
         }
 
         public ResolutionUnavailableException(Throwable cause) {
-            super("Authentication resolution unavailable; outcome may be unknown", cause);
+            this(cause, Diagnostics.failureReason(cause));
         }
+
+        private ResolutionUnavailableException(Throwable cause, Diagnostics.Reason reason) {
+            super("Authentication resolution unavailable; outcome may be unknown", cause);
+            diagnosticReason = reason;
+        }
+
+        public Diagnostics.Reason diagnosticReason() { return diagnosticReason; }
     }
 }

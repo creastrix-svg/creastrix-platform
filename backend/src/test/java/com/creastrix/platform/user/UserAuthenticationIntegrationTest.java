@@ -25,6 +25,7 @@ import java.util.function.BooleanSupplier;
 
 import javax.sql.DataSource;
 
+import com.creastrix.platform.observability.Diagnostics;
 import com.creastrix.platform.user.application.AuthenticatedUserService;
 import com.creastrix.platform.user.application.AuthenticatedUserService.AdmissionDeniedException;
 import com.creastrix.platform.user.application.AuthenticatedUserService.InactiveUserException;
@@ -44,9 +45,13 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.postgresql.util.PSQLException;
+import org.slf4j.MDC;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -65,6 +70,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /** Real JDBC statements, PostgreSQL constraints/transactions and owned worker lifecycle proofs. */
 @Testcontainers
+@ExtendWith(OutputCaptureExtension.class)
 class UserAuthenticationIntegrationTest {
 
     @Container
@@ -212,7 +218,7 @@ class UserAuthenticationIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(ints = {1, 2, 3})
-    void failureAfterEachRealInsertRollsBackTheWholePhysicalTransaction(int afterInsert) {
+    void failureAfterEachRealInsertRollsBackTheWholePhysicalTransaction(int afterInsert, CapturedOutput logs) {
         Map<String, Long> before = counts();
         Plan plan = observe(new Plan() {
             @Override void afterInsert(Session session) throws SQLException {
@@ -225,6 +231,12 @@ class UserAuthenticationIntegrationTest {
         assertThat(plan.sessions.getFirst().inserts).hasSize(afterInsert);
         assertThat(plan.sessions.getFirst().events).contains("rollback").doesNotContain("commit");
         assertDelta(before, 0);
+        assertThat(logs.getAll().contains("operation=USER_CREATE completion=COMMITTED"))
+                .as("A rolled-back identity transaction never reports committed creation").isFalse();
+        if (afterInsert == 3) {
+            assertThat(logs.getAll().contains("operation=USER_CREATE completion=ROLLED_BACK"))
+                    .as("Work-phase rollback is observed").isTrue();
+        }
     }
 
     @Test
@@ -385,7 +397,7 @@ class UserAuthenticationIntegrationTest {
     }
 
     @Test
-    void actualCommitThenLostAcknowledgementReturnsUnavailableAndNextResolutionFindsSameUuid() {
+    void actualCommitThenLostAcknowledgementReturnsUnavailableAndNextResolutionFindsSameUuid(CapturedOutput logs) {
         Identity identity = identity();
         AtomicBoolean injected = new AtomicBoolean();
         Plan plan = observe(new Plan() {
@@ -399,12 +411,46 @@ class UserAuthenticationIntegrationTest {
         assertThatThrownBy(() -> auth.resolve(identity, ignored -> true)).isInstanceOf(ResolutionUnavailableException.class);
         assertThat(injected).isTrue();
         assertThat(plan.sessions.getFirst().events).contains("commit");
+        assertThat(logs.getAll().contains("operation=USER_CREATE completion=UNKNOWN"))
+                .as("Lost acknowledgement is classified as unknown").isTrue();
+        assertThat(logs.getAll().contains("operation=USER_CREATE completion=COMMITTED")
+                || logs.getAll().contains("operation=USER_CREATE completion=ROLLED_BACK"))
+                .as("Lost acknowledgement does not claim known commit or rollback").isFalse();
         UUID committed = sql.queryForObject("SELECT user_id FROM user_identity_bindings WHERE issuer=? AND subject=?",
                 UUID.class, identity.issuer(), identity.subject());
         assertThat(committed).isNotNull();
         assertDelta(before, 1);
         assertThat(auth.resolve(identity, ignored -> true).id()).isEqualTo(committed);
         assertDelta(before, 1);
+    }
+
+    @Test
+    void resolutionWorkerTransfersOnlyGeneratedCorrelationAndLeavesCallerContextUntouched(CapturedOutput logs) {
+        String correlation = UUID.randomUUID().toString();
+        String privateMdc = "synthetic-not-transferred-" + UUID.randomUUID();
+        AtomicBoolean checkedWorker = new AtomicBoolean();
+        observe(new Plan() {
+            @Override void afterInsert(Session session) {
+                assertThat(Thread.currentThread().isVirtual()).isTrue();
+                assertThat(MDC.get(Diagnostics.REQUEST_ID)).isEqualTo(correlation);
+                assertThat(MDC.get("private-test-context") == null).isTrue();
+                checkedWorker.set(true);
+            }
+        });
+        MDC.put("private-test-context", privateMdc);
+        try (var ignored = Diagnostics.withCorrelation(correlation)) {
+            auth.resolve(identity(), admitted -> true);
+            assertThat(checkedWorker).isTrue();
+            assertThat(MDC.get(Diagnostics.REQUEST_ID)).isEqualTo(correlation);
+            assertThat(privateMdc.equals(MDC.get("private-test-context"))).isTrue();
+            assertThat(logs.getAll().contains("operation=USER_CREATE completion=COMMITTED"))
+                    .as("Completed worker transaction is observed").isTrue();
+            assertThat(logs.getAll().contains(privateMdc)).as("No unrelated MDC disclosure").isFalse();
+        }
+        finally {
+            MDC.remove("private-test-context");
+        }
+        assertThat(MDC.get(Diagnostics.REQUEST_ID)).isNull();
     }
 
     @Test

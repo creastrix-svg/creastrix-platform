@@ -178,6 +178,40 @@ state. Callback failure reveals no account/binding/SQL/token detail and makes
 no rollback claim. Auth/API responses are not cached. DB failure denies access
 but is not proof that logout or session invalidation succeeded.
 
+### Diagnostic observation boundary
+
+BACKEND-OBSERVABILITY-001 provides bounded application diagnostics in this checkout.
+This section describes behavior, not verification or integration status. The
+diagnostics do not change the integrated pilot's authorization, OIDC validation,
+callback ownership, logout or opaque HTTP contracts.
+The [backend diagnostic vocabulary](../backend/README.md#bounded-application-diagnostics)
+defines fixed event/reason codes and safe fields; the historical verification
+results below are not fresh evidence for this change.
+
+Each request uses a server-generated correlation ID, with explicit ID-only
+transfer to the identity-resolution virtual worker and scoped cleanup. No
+credentials, tokens, cookies/session IDs, OAuth/CSRF values, provider claims,
+identity pairs, personal data, raw URLs, request content, SQL parameters or
+exception messages/causes are output. Internal exception causes may remain
+available to code; they are not rendered to logs or clients. Authentication
+markers stage bounded codes without output under session/publication locks and
+are emitted after the security chain unwinds. Expected denial/conflict remains
+distinct from technical unavailability and unexpected failure, without duplicate
+generic reports of the same marked event. Later technical failures take precedence
+over earlier expected outcomes. A subsequent throw is recorded as a failure with
+bounded prior event/reason codes, not hidden by an earlier local success selection.
+
+`LOCAL_SUCCESS_SELECTED` observes local callback outcome selection, not response
+commit/delivery, browser cookie order or final identity. `LOCAL_LOGOUT_COMPLETED`
+is local only. Absent session state is not proof of idle expiry; confirmed
+absolute expiry has its own event. A lost commit acknowledgement remains UNKNOWN
+even if Spring subsequently reports rollback; neither outcome is guessed from
+the exception alone. A transaction UNKNOWN is not rollback, and a
+committed account transaction is not a successful browser login. This is neither
+a durable audit trail nor an authentication-cookie correction.
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN; React/browser F, real Auth0 P and public
+rollout are not performed or authorized by this diagnostic change.
+
 ## Session, configuration and deferred work
 
 Tokens and authorized-client state exist only on the backend in the owning

@@ -3,6 +3,8 @@ package com.creastrix.platform.workspace.application;
 import java.util.List;
 import java.util.UUID;
 
+import com.creastrix.platform.observability.TransactionDiagnostics;
+import com.creastrix.platform.observability.TransactionDiagnostics.Operation;
 import com.creastrix.platform.organization.application.OrganizationService;
 import com.creastrix.platform.organization.domain.Organization;
 import com.creastrix.platform.organization.domain.OrganizationMembershipStatus;
@@ -30,10 +32,11 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Authorization boundary: this slice proves that the represented creator
  * User exists, is ACTIVE, and (for Organization-owned creation) holds an
- * ACTIVE OWNER Organization Membership. Authentication and caller identity
- * proof are not implemented, so this service enforces that the represented
- * creator and owner of a User-owned Workspace are the same identity, but
- * cannot prove that the external caller actually is that User.
+ * ACTIVE OWNER Organization Membership. These operations have no authenticated
+ * HTTP API or caller identity proof; the separate authentication pilot does not
+ * authorize them. This service enforces that the represented creator and owner
+ * of a User-owned Workspace are the same identity, but cannot prove that the
+ * external caller actually is that User.
  */
 @Service
 public class WorkspaceService {
@@ -72,7 +75,8 @@ public class WorkspaceService {
         }
         UUID id = UUID.randomUUID();
         workspaces.createUserOwned(id, owner.id());
-        return workspaces.findById(id).orElseThrow(() -> new WorkspaceNotFoundException(id));
+        return TransactionDiagnostics.returned(Operation.USER_WORKSPACE_CREATE,
+                workspaces.findById(id).orElseThrow(() -> new WorkspaceNotFoundException(id)));
     }
 
     /**
@@ -105,7 +109,8 @@ public class WorkspaceService {
         }
         UUID id = UUID.randomUUID();
         workspaces.createOrganizationOwned(id, organization.id(), creator.id());
-        return workspaces.findById(id).orElseThrow(() -> new WorkspaceNotFoundException(id));
+        return TransactionDiagnostics.returned(Operation.ORGANIZATION_WORKSPACE_CREATE,
+                workspaces.findById(id).orElseThrow(() -> new WorkspaceNotFoundException(id)));
     }
 
     @Transactional(readOnly = true)

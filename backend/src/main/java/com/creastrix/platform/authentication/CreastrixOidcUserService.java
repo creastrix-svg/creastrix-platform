@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
 
+import com.creastrix.platform.observability.Diagnostics;
 import com.creastrix.platform.user.application.AuthenticatedUserService;
 import com.creastrix.platform.user.application.port.UserIdentityBindingRepository.Identity;
 import org.springframework.core.convert.converter.Converter;
@@ -47,6 +48,20 @@ public final class CreastrixOidcUserService implements OAuth2UserService<OidcUse
             return new CreastrixPrincipal(user.id(), identity, clock.instant(), provider);
         } catch (RuntimeException failure) {
             // No transaction outcome, provider claims, SQL diagnostic or token leaves this boundary.
+            Diagnostics.Reason reason;
+            if (failure instanceof AuthenticatedUserService.AdmissionDeniedException) {
+                reason = Diagnostics.Reason.ADMISSION_DENIED;
+            }
+            else if (failure instanceof AuthenticatedUserService.InactiveUserException) {
+                reason = Diagnostics.Reason.CURRENT_USER_DENIED;
+            }
+            else if (failure instanceof AuthenticatedUserService.ResolutionUnavailableException resolution) {
+                reason = resolution.diagnosticReason();
+            }
+            else {
+                reason = Diagnostics.failureReason(failure);
+            }
+            Diagnostics.mark(Diagnostics.Event.LOGIN_RESULT, reason);
             throw rejected();
         }
     }

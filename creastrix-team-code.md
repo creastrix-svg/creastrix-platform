@@ -62,6 +62,23 @@ Avoid:
 
 Evidence from the current repository, diffs, tests, and checks is more reliable than a confident summary.
 
+## Comments and Diagnostics
+
+Write code comments, Javadoc and diagnostic messages in English. Explain purpose,
+contracts, invariants and why a non-obvious choice is necessary; do not narrate
+every statement or add comments to obvious getters. For complex behavior, record
+transaction boundaries, ownership, lock ordering, deadline scope, side effects
+and limitations. Update those explanations when behavior changes.
+
+Use stable diagnostic event/reason codes, appropriate levels and a small
+allowlist of bounded fields. Expected denial or conflict is not an unexpected
+error. Keep useful exception types and causes internally, but never log arbitrary
+exception messages, throwable chains, secrets or personal data. Observe an error
+at the responsible boundary rather than repeating it in every layer. A method
+return is not a commit, and local response selection is not delivery. Diagnostics
+must not change client contracts or perform blocking output under session locks;
+they are not a durable legal, financial or security audit trail.
+
 ## Team Spirit
 
 Questions and corrections improve the project.
