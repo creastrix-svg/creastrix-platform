@@ -92,7 +92,8 @@ class UserFoundationIntegrationTest {
                         + "AND contype IN ('p', 'c', 'f') ORDER BY conname",
                 String.class);
         assertThat(constraints).containsExactlyInAnyOrder(
-                "users_pk", "users_status_allowed", "user_profiles_pk", "user_profiles_user_fk");
+                "users_pk", "users_status_allowed", "user_profiles_pk", "user_profiles_user_fk",
+                "users_account_eligibility_generation_positive");
 
         String foreignKeyAction = jdbcTemplate.queryForObject(
                 "SELECT confdeltype FROM pg_constraint WHERE conname = 'user_profiles_user_fk'",
@@ -218,6 +219,9 @@ class UserFoundationIntegrationTest {
                         + "ORDER BY tgname");
 
         assertThat(triggers).extracting(row -> row.get("tgname")).containsExactlyInAnyOrder(
+                "users_enforce_initial_generation",
+                "users_reject_generation_assignment",
+                "users_increment_eligibility_generation",
                 "users_enforce_initial_status",
                 "users_enforce_status_transition",
                 "users_require_profile",
@@ -232,6 +236,24 @@ class UserFoundationIntegrationTest {
         assertThat(definitionOf(initialStatus))
                 .contains("BEFORE INSERT ON public.users")
                 .contains("FOR EACH ROW");
+
+        for (String name : List.of("users_enforce_initial_generation",
+                "users_reject_generation_assignment", "users_increment_eligibility_generation")) {
+            var generationTrigger = trigger(triggers, name);
+            assertThat(generationTrigger.get("relation")).isEqualTo("users");
+            assertThat(generationTrigger.get("is_constraint")).isEqualTo(false);
+            assertThat(generationTrigger.get("tgdeferrable")).isEqualTo(false);
+            assertThat(generationTrigger.get("tginitdeferred")).isEqualTo(false);
+            assertThat(definitionOf(generationTrigger)).contains("FOR EACH ROW");
+        }
+        assertThat(definitionOf(trigger(triggers, "users_enforce_initial_generation")))
+                .contains("BEFORE INSERT ON public.users");
+        assertThat(definitionOf(trigger(triggers, "users_reject_generation_assignment")))
+                .contains("BEFORE UPDATE OF account_eligibility_generation ON public.users");
+        assertThat(definitionOf(trigger(triggers, "users_increment_eligibility_generation")))
+                .contains("BEFORE UPDATE OF status ON public.users");
+        assertThat("users_increment_eligibility_generation")
+                .isGreaterThan("users_enforce_status_transition");
 
         var lifecycle = trigger(triggers, "users_enforce_status_transition");
         assertThat(lifecycle.get("relation")).isEqualTo("users");

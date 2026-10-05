@@ -132,10 +132,10 @@ class UserAuthenticationIntegrationTest {
     }
 
     @Test
-    void freshV1ThroughV11HasExactImmediateKeysAndRetainedBindings() {
+    void freshV1ThroughV12HasExactImmediateKeysAndRetainedBindings() {
         assertThat(sql.queryForObject("SHOW server_version", String.class)).startsWith("18.4");
         assertThat(sql.queryForList("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank",
-                String.class)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
+                String.class)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
         List<Map<String, Object>> keys = sql.queryForList("""
                 SELECT conname, contype::text, condeferrable, confdeltype::text
                 FROM pg_constraint WHERE conrelid='user_identity_bindings'::regclass
@@ -186,7 +186,7 @@ class UserAuthenticationIntegrationTest {
             List<Map<String, Object>> history = upgradeSql.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank");
             Flyway.configure().dataSource(upgrade)
                     .executeInTransaction(true).group(false)
-                    .configuration(Map.of("flyway.postgresql.transactional.lock", "false")).load().migrate();
+                    .configuration(Map.of("flyway.postgresql.transactional.lock", "false")).target("11").load().migrate();
             Map<String, List<String>> after = allRows(upgradeSql, "public");
             before.forEach((table, rows) -> assertThat(after.get(table)).as(table).isEqualTo(rows));
             assertThat(upgradeSql.queryForList("SELECT * FROM flyway_schema_history WHERE version IS DISTINCT FROM '11' ORDER BY installed_rank"))

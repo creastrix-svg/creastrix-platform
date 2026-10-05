@@ -595,6 +595,224 @@ class DiagnosticsTest {
         assertNoRequestId();
     }
 
+    @Test
+    void operationCatalogAddsOnlyTheFiveBoundedPlatformPhases() {
+        assertThat(java.util.Arrays.stream(TransactionDiagnostics.Operation.values()).map(Enum::name).toList())
+                .containsExactly("USER_CREATE", "USER_STATUS_CHANGE", "ORGANIZATION_CREATE",
+                        "USER_WORKSPACE_CREATE", "ORGANIZATION_WORKSPACE_CREATE", "PRODUCT_CREATE",
+                        "PRODUCT_ARCHIVE", "PRODUCT_ACTIVATE", "DELTA_REGISTER", "DELTA_APPLY_OR_REPLAY",
+                        "PLATFORM_INTENT_REGISTER", "PLATFORM_USER_SECURITY_READ", "PLATFORM_SUPPORT_REVOKE",
+                        "PLATFORM_OPERATION_RECEIPT", "PLATFORM_ATTEMPT_AUDIT");
+    }
+
+    @ParameterizedTest
+    @EnumSource(Diagnostics.Completion.class)
+    void legacyAndNullReasonPreserveEveryOperationMessageAndLevel(Diagnostics.Completion completion) {
+        ch.qos.logback.classic.Level expected = completion == Diagnostics.Completion.UNKNOWN
+                || completion == Diagnostics.Completion.NOT_OBSERVED
+                ? ch.qos.logback.classic.Level.WARN : ch.qos.logback.classic.Level.INFO;
+        for (var operation : TransactionDiagnostics.Operation.values()) {
+            appender.list.clear();
+            Diagnostics.transaction(operation, completion);
+            Diagnostics.transaction(operation, completion, null);
+            assertEventCount(2);
+            for (var event : appender.list) {
+                assertMessageEquals(event, "event=DOMAIN_TRANSACTION operation=" + operation + " completion=" + completion);
+                assertThat(event.getLevel()).isEqualTo(expected);
+                assertEventMdcEquals(event, Map.of());
+            }
+            assertNoPrivateValueOrThrowable();
+        }
+    }
+
+    static Stream<Arguments> reasonCompletionCases() {
+        return Stream.of(Diagnostics.Completion.values()).flatMap(completion ->
+                Stream.of(Diagnostics.Reason.values()).map(reason -> Arguments.of(completion, reason)));
+    }
+
+    @ParameterizedTest(name = "Completion {0} and closed reason {1}")
+    @MethodSource("reasonCompletionCases")
+    void classifiedTransactionUsesMaximumSeverityAndSameTruthfulFormatDirectlyAndBuffered(
+            Diagnostics.Completion completion, Diagnostics.Reason reason) throws Exception {
+        var expected = reason == Diagnostics.Reason.UNEXPECTED_FAILURE ? ch.qos.logback.classic.Level.ERROR
+                : completion == Diagnostics.Completion.UNKNOWN || completion == Diagnostics.Completion.NOT_OBSERVED
+                        || switch (reason) {
+                            case SESSION_COORDINATION_UNAVAILABLE, IDENTITY_RESOLUTION_UNAVAILABLE,
+                                    DATABASE_UNAVAILABLE, DEADLINE_EXCEEDED, INTERRUPTED -> true;
+                            default -> false;
+                        } ? ch.qos.logback.classic.Level.WARN : ch.qos.logback.classic.Level.INFO;
+        String message = "event=DOMAIN_TRANSACTION operation=PLATFORM_USER_SECURITY_READ completion=" + completion
+                + " reason=" + reason;
+        Diagnostics.transaction(TransactionDiagnostics.Operation.PLATFORM_USER_SECURITY_READ, completion, reason);
+        assertEventCount(1);
+        assertMessageEquals(appender.list.getFirst(), message);
+        assertThat(appender.list.getFirst().getLevel()).isEqualTo(expected);
+        assertEventMdcEquals(appender.list.getFirst(), Map.of());
+        appender.list.clear();
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/api/me"), new MockHttpServletResponse(),
+                (request, response) -> {
+                    Diagnostics.transaction(TransactionDiagnostics.Operation.PLATFORM_USER_SECURITY_READ, completion, reason);
+                    assertEventCount(0);
+                });
+
+        assertEventCount(2);
+        assertMessageEquals(appender.list.getFirst(), message);
+        assertThat(appender.list.getFirst().getLevel()).isEqualTo(expected);
+        assertMessageContains(appender.list.getLast(), "event=HTTP_COMPLETED route=PRIVATE_API method=GET status=200",
+                "outcome=RETURNED");
+        assertNoPrivateValueOrThrowable();
+        assertNoRequestId();
+    }
+
+    @Test
+    void malformedNewOverloadInputsAreDroppedWithoutConsumingAnyBufferCapacity() throws Exception {
+        for (Diagnostics.Reason reason : new Diagnostics.Reason[] {null, Diagnostics.Reason.DATABASE_UNAVAILABLE}) {
+            Diagnostics.transaction(null, Diagnostics.Completion.UNKNOWN, reason);
+            Diagnostics.transaction(TransactionDiagnostics.Operation.PLATFORM_SUPPORT_REVOKE, null, reason);
+            Diagnostics.transaction(null, null, reason);
+        }
+        assertEventCount(0);
+
+        filter.doFilter(new MockHttpServletRequest("GET", "/api/me"), new MockHttpServletResponse(),
+                (request, response) -> {
+                    for (int index = 0; index < 20; index++) {
+                        Diagnostics.transaction(null, Diagnostics.Completion.UNKNOWN, Diagnostics.Reason.UNEXPECTED_FAILURE);
+                        Diagnostics.transaction(TransactionDiagnostics.Operation.PLATFORM_SUPPORT_REVOKE, null, null);
+                    }
+                    for (int index = 0; index < 16; index++) {
+                        Diagnostics.transaction(TransactionDiagnostics.Operation.PLATFORM_OPERATION_RECEIPT,
+                                Diagnostics.Completion.COMMITTED, null);
+                    }
+                    assertEventCount(0);
+                });
+
+        assertEventCount(17);
+        for (int index = 0; index < 16; index++) {
+            assertMessageEquals(appender.list.get(index),
+                    "event=DOMAIN_TRANSACTION operation=PLATFORM_OPERATION_RECEIPT completion=COMMITTED");
+        }
+        assertMessageContains(appender.list.getLast(), "event=HTTP_COMPLETED");
+        assertThat(appender.list.stream().noneMatch(event -> event.getFormattedMessage().contains("DIAGNOSTIC_LIMIT")))
+                .as("Malformed observations do not consume or truncate the transaction buffer").isTrue();
+        assertNoPrivateValueOrThrowable();
+        assertNoRequestId();
+    }
+
+    @Test
+    void mixedLegacyAndClassifiedRecordsShareFifoLimitWithoutChangingHttpEventPrecedence() throws Exception {
+        ReentrantLock lock = new ReentrantLock();
+        appender.beforeCapture = event -> assertThat(lock.isLocked()).as("Output follows request lock release").isFalse();
+        filter.doFilter(new MockHttpServletRequest("GET", "/api/me"), new MockHttpServletResponse(),
+                (request, response) -> {
+                    lock.lock();
+                    try {
+                        Diagnostics.mark(Diagnostics.Event.ACCESS_DENIED, Diagnostics.Reason.CURRENT_USER_DENIED);
+                        for (int index = 0; index < 20; index++) {
+                            switch (index % 3) {
+                                case 0 -> Diagnostics.transaction(TransactionDiagnostics.Operation.PLATFORM_USER_SECURITY_READ,
+                                        Diagnostics.Completion.COMMITTED);
+                                case 1 -> Diagnostics.transaction(TransactionDiagnostics.Operation.PLATFORM_USER_SECURITY_READ,
+                                        Diagnostics.Completion.ROLLED_BACK, null);
+                                default -> Diagnostics.transaction(TransactionDiagnostics.Operation.PLATFORM_USER_SECURITY_READ,
+                                        Diagnostics.Completion.UNKNOWN, Diagnostics.Reason.UNEXPECTED_FAILURE);
+                            }
+                        }
+                        Diagnostics.mark(Diagnostics.Event.ACCESS_DENIED, Diagnostics.Reason.PROTOCOL_REJECTED);
+                        assertEventCount(0);
+                    }
+                    finally {
+                        lock.unlock();
+                    }
+                });
+
+        assertEventCount(19);
+        assertMessageEquals(appender.list.getFirst(), "event=ACCESS_DENIED reason=CURRENT_USER_DENIED");
+        assertThat(appender.list.getFirst().getLevel()).isEqualTo(ch.qos.logback.classic.Level.INFO);
+        for (int index = 0; index < 16; index++) {
+            String suffix = switch (index % 3) {
+                case 0 -> "COMMITTED";
+                case 1 -> "ROLLED_BACK";
+                default -> "UNKNOWN reason=UNEXPECTED_FAILURE";
+            };
+            assertMessageEquals(appender.list.get(index + 1),
+                    "event=DOMAIN_TRANSACTION operation=PLATFORM_USER_SECURITY_READ completion=" + suffix);
+            assertThat(appender.list.get(index + 1).getLevel()).isEqualTo(index % 3 == 2
+                    ? ch.qos.logback.classic.Level.ERROR : ch.qos.logback.classic.Level.INFO);
+        }
+        assertMessageEquals(appender.list.get(17), "event=DIAGNOSTIC_LIMIT reason=REQUEST_TRANSACTION_LIMIT");
+        assertThat(appender.list.get(17).getLevel()).isEqualTo(ch.qos.logback.classic.Level.WARN);
+        assertMessageContains(appender.list.getLast(), "event=HTTP_COMPLETED", "outcome=RETURNED");
+        assertNoPrivateValueOrThrowable();
+        assertNoRequestId();
+        appender.list.clear();
+        filter.doFilter(new MockHttpServletRequest("GET", "/actuator/health"), new MockHttpServletResponse(),
+                (request, response) -> { });
+        assertEventCount(1);
+        assertMessageContains(appender.list.getFirst(), "event=HTTP_COMPLETED route=HEALTH");
+    }
+
+    @Test
+    void directPrimaryAndFallbackObservationsKeepTheirSuppliedCompletionsAndClassifiedReasons() {
+        var primary = new SQLException("jdbc:postgresql://" + PRIVATE_VALUE);
+        var fallback = new IllegalStateException(PRIVATE_VALUE);
+        Diagnostics.transaction(TransactionDiagnostics.Operation.PLATFORM_SUPPORT_REVOKE,
+                Diagnostics.Completion.ROLLED_BACK, Diagnostics.failureReason(primary));
+        Diagnostics.transaction(TransactionDiagnostics.Operation.PLATFORM_ATTEMPT_AUDIT,
+                Diagnostics.Completion.ROLLED_BACK, Diagnostics.failureReason(fallback));
+
+        assertEventCount(2);
+        assertMessageEquals(appender.list.get(0), "event=DOMAIN_TRANSACTION operation=PLATFORM_SUPPORT_REVOKE"
+                + " completion=ROLLED_BACK reason=DATABASE_UNAVAILABLE");
+        assertMessageEquals(appender.list.get(1), "event=DOMAIN_TRANSACTION operation=PLATFORM_ATTEMPT_AUDIT"
+                + " completion=ROLLED_BACK reason=UNEXPECTED_FAILURE");
+        assertThat(appender.list.get(0).getLevel()).isEqualTo(ch.qos.logback.classic.Level.WARN);
+        assertThat(appender.list.get(1).getLevel()).isEqualTo(ch.qos.logback.classic.Level.ERROR);
+        appender.list.forEach(event -> assertEventMdcEquals(event, Map.of()));
+        assertNoPrivateValueOrThrowable();
+        // These are logger contract inputs, not proof of an actual rollback or durable audit.
+        assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse();
+    }
+
+    @Test
+    void classifiedSinkFailureCannotReplaceDirectFailureOrPreventBufferedCleanup() throws Exception {
+        AtomicInteger writes = new AtomicInteger();
+        appender.beforeCapture = event -> {
+            writes.incrementAndGet();
+            throw new IllegalStateException(PRIVATE_VALUE);
+        };
+        var original = new IllegalStateException(PRIVATE_VALUE);
+        Throwable observed = catchThrowable(() -> {
+            try {
+                throw original;
+            }
+            finally {
+                Diagnostics.transaction(TransactionDiagnostics.Operation.PLATFORM_SUPPORT_REVOKE,
+                        Diagnostics.Completion.ROLLED_BACK, Diagnostics.Reason.UNEXPECTED_FAILURE);
+            }
+        });
+        assertThat(observed == original).as("Sink failure cannot substitute the original application failure").isTrue();
+        assertThat(writes.get()).isEqualTo(1);
+        var response = new MockHttpServletResponse();
+        filter.doFilter(new MockHttpServletRequest("GET", "/api/me"), response, (request, output) -> {
+            response.setStatus(204);
+            Diagnostics.transaction(TransactionDiagnostics.Operation.PLATFORM_USER_SECURITY_READ,
+                    Diagnostics.Completion.COMMITTED, Diagnostics.Reason.DATABASE_UNAVAILABLE);
+            assertThat(writes.get()).isEqualTo(1);
+        });
+        assertThat(response.getStatus()).isEqualTo(204);
+        assertThat(writes.get()).isEqualTo(3);
+        assertNoRequestId();
+        appender.beforeCapture = event -> { };
+        Diagnostics.transaction(TransactionDiagnostics.Operation.PLATFORM_ATTEMPT_AUDIT,
+                Diagnostics.Completion.UNKNOWN, Diagnostics.Reason.DATABASE_UNAVAILABLE);
+        assertEventCount(1);
+        assertMessageEquals(appender.list.getFirst(), "event=DOMAIN_TRANSACTION operation=PLATFORM_ATTEMPT_AUDIT"
+                + " completion=UNKNOWN reason=DATABASE_UNAVAILABLE");
+        assertEventMdcEquals(appender.list.getFirst(), Map.of());
+        assertNoPrivateValueOrThrowable();
+    }
+
     private void assertNoPrivateValueOrThrowable() {
         // Boolean assertions deliberately avoid including any synthetic private value in failure output.
         assertThat(appender.list.stream().noneMatch(event -> event.getFormattedMessage().contains(PRIVATE_VALUE)

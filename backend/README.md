@@ -368,64 +368,143 @@ Intentionally not implemented yet:
 
 ## Platform access policy foundation
 
-The platform-access foundation in this checkout provides the unwired pure-policy subset of
-[Platform Access Grant APPROVED 1.0](../docs/domain/platform-access-grant.md).
-Verification and integration status are established by separate delivery evidence;
-specification approval is not runtime enforcement or real authority.
-Its six main-source types are `PlatformPermission`, `PlatformRole`,
-`PlatformAccessGrant`, `PlatformAccessContext`, `PlatformAccessDecision`, and
-`PlatformAccessPolicy`; the two unit-test classes are `PlatformAccessPolicyTest`
-and `PlatformAccessDelegationTest`.
+This checkout contains bounded I1 + I2A coverage of
+[Platform Access Grant APPROVED 1.1](../docs/domain/platform-access-grant.md):
+the unchanged pure policy, V12 storage/account-eligibility generation, and
+constructor-only registration, READ, REVOKE and receipt workflows.
+Verification, independent acceptance and integration are established by
+separate delivery evidence; these source descriptions do not assert transfer
+into main, a fresh CI run, live authentication or real authority.
 
-The finite v1 catalog contains `STAFF_GRANTS_READ`, `STAFF_INVITE`,
-`STAFF_GRANT_CHANGE`, `STAFF_GRANT_SUSPEND_REVOKE`, `USER_SECURITY_READ`, and
-`SECURITY_AUDIT_READ`. `PLATFORM_OWNER` explicitly contains those six;
-`SUPPORT_READ` contains only `USER_SECURITY_READ`, restricted to its exact
-1–100 target-User scope and permitted user-security projection. There is no
-wildcard, implicit future permission, role union, provider-role authority, or
-Workspace/Organization bypass.
+### Pure policy and persisted authority facts
 
-Delivered coverage is deterministic evaluation of immutable supplied facts:
-actor/grant/slot consistency, finite resource and read-reason predicates,
-ordinary owner-to-other-User SUPPORT_READ changes, lifecycle and expiry bounds,
-frozen invitation terms, checked prospective revision, and exact
-actor/account-eligibility/session/grant stamps with the 10/5/5-minute assurance
-bounds. Time is an explicit input. No policy call mutates state, refreshes
-activity, sends or accepts an invitation, issues a grant, or discloses data.
-ALLOW and its permitted projection describe only the supplied model; they do
-not prove authentication, authoritative freshness, physical single-slot
-uniqueness, current revocation, or a transaction commit.
+The six pure types remain `PlatformPermission`, `PlatformRole`,
+`PlatformAccessGrant`, `PlatformAccessContext`, `PlatformAccessDecision` and
+`PlatformAccessPolicy`, with `PlatformAccessPolicyTest` and
+`PlatformAccessDelegationTest`. The finite catalog still has six permissions:
+`STAFF_GRANTS_READ`, `STAFF_INVITE`, `STAFF_GRANT_CHANGE`,
+`STAFF_GRANT_SUSPEND_REVOKE`, `USER_SECURITY_READ` and `SECURITY_AUDIT_READ`.
+`PLATFORM_OWNER` contains exactly those six; `SUPPORT_READ` contains only
+`USER_SECURITY_READ` for an exact 1–100 target-User set and UUID/status projection.
+There is no wildcard, role union, provider-role authority or tenant-domain bypass.
 
-Expected denials use finite typed decision/reason codes rather than raw input
-or exception text. Model contracts and bounded exception messages remain in
-English; caller values, claims, credentials, and session data are not diagnostics.
-The pure core has no logging side effects. Future technical logging belongs at
-the responsible application/HTTP boundary with the existing safe-field rules;
-it cannot replace the separately required durable security audit, atomic
-mutation/audit outcome, or read-admission audit.
+I1 evaluates immutable supplied snapshots, finite resource/reason predicates,
+delegation, revisions, validity and bound 10/5/5-minute assurance. Its `ALLOW`
+is not authentication, persistence, current freshness or commit proof.
+It retains exact Instant/nanosecond semantics and has no logging side effects.
 
-Deferred coverage includes Spring wiring and HTTP endpoints, trusted
-authentication/assurance adapters, real provider MFA/step-up and generation
-issuance, grant persistence and concurrent final admission, invitation
-redemption/single use, physical transaction and commit-unknown reconciliation,
-durable audit storage, and every bootstrap/recovery/maintenance executor.
-No schema, migration, dependency, live owner/staff assignment, or rollout is
-provided by this foundation. Existing authentication and domain contracts remain
-separate and unchanged.
+V12 adds a positive per-User eligibility counter, initialized/backfilled to 1.
+The four existing committed account-status transitions advance it atomically
+with checked arithmetic; direct counter UPDATE is rejected and rollback
+does not consume a generation. The adapter encodes the counter in the accepted
+typed UUID representation, bound with the exact User in the complete stamp.
+Reactivation cannot revive old elevation; User lifecycle/version is unchanged.
 
-From `backend`, the focused offline unit command is:
+The five V12 tables store grants, immutable exact scope targets, registered
+intents, terminal outcomes and access-workflow audit events. Immediate partial
+uniqueness allows one non-REVOKED grant per recipient: suspension, expiry or
+an inactive recipient does not release that slot. Retained references preserve
+identity/history. Scope and expiry are fixed after creation in this partial
+storage slice; the only implemented application mutation is REVOKE.
+The approved CHANGE/SUSPEND/RESUME rules remain valid but their execution is
+deferred; future CHANGE needs a separately designed storage protocol/migration.
+Structural fixture transitions are not grant issuance or operational authority.
+
+V12 guards structure, associations, retention and READ COMMITTED writes, not
+the identity/authority of arbitrary SQL callers. Runtime and migration database
+ownership are not separated here; no DBA tamper protection or universal reverse
+success-audit-to-outcome guard is claimed. Supported workflow associations are
+an application transaction obligation, not an inference from a standalone audit row.
+
+### Named workflows and final admission
+
+`PlatformAccessService` has six distinct entry points:
+`registerUserSecurityRead`, `registerSupportRevoke`, `readUserSecurity`,
+`revokeSupportGrant`, `readUserSecurityReceipt` and `readRevokeReceipt`.
+Only USER_SECURITY_READ and SUPPORT_REVOKE intent kinds exist.
+Registration independently commits the immutable initiator/operation-ID and
+complete target/reason/expected-revision tuple; it does not execute the action
+or lease authority. Exact duplicates need fresh authorization and a new
+READ_ADMITTED audit without repeating INTENT_RECORDED. Only registration of
+the current initiator's own key can return ID_UNAVAILABLE after supplied-target
+authorization; execution/receipt use separate normalized nondisclosure results.
+A registration timestamp records binding, not acknowledgement or delivery.
+
+Each call rechecks current persisted User status/generation, grant/revision/scope
+and trusted session/assurance facts before operation-history disclosure.
+The trusted-facts port has synthetic adapters only; a supplied UUID, role,
+browser DTO or operation ID is not a credential. READ discloses only exact
+User UUID/status. REVOKE targets another User's SUPPORT grant with exact expected
+revision and checked increment. A terminal execution requires a separate receipt
+call, not another mutation. READ receipts are original-initiator-only and contain
+no historical/current account status. Exact REVOKE receipts require current
+owner grant-read authority; the former initiator/recipient need not remain active.
+Every receipt admission is freshly authorized and audited.
+
+The workflow owns one physical READ COMMITTED transaction; it does not join an
+ambient transaction or depend on a Spring proxy. Existing transaction,
+synchronization-only or bound datasource state is rejected before trusted-facts,
+SQL, worker, fallback or diagnostic-sink work. Locks follow PostgreSQL UUID
+order: bounded Users with NO KEY UPDATE, grants, then exact intent/unique slot.
+Changed discovery fails closed without growing that lock set.
+After completed waits and target lookup, current facts and a separate
+`clock_timestamp()` command are refreshed before the final gate, including
+again after intent/unique-slot waits. An expired idle window cannot refresh itself.
+
+Primary work has a nonrenewable 15-second budget, fallback audit 2 seconds;
+lock and statement caps are 3 and 5 seconds, constrained by remaining budget.
+Acquisition/network/commit are budgeted; cancellation has a separate bounded
+2-second cleanup grace. This is not a guaranteed total wall-clock bound against
+arbitrary driver/OS hangs. A thrown commit remains UNKNOWN even if a subsequent
+rollback returns. No payload is released without positive commit acknowledgement,
+completed cleanup and a successful owned result; unfinished cleanup is unknown.
+Reconciliation uses the same intent under new current disclosure authorization,
+not desired-state inference or automatic new-ID retry.
+
+The JDBC boundary rejects submicrosecond or unrepresentable persisted inputs.
+Its finite database/Java interval is
+`[-4713-11-24T00:00:00Z, +294277-01-01T00:00:00Z)`; canonical bound UTC text
+avoids driver infinity sentinels. Raw SQL coercion can discard precision before
+guards see it and is not equivalent to this validation. I1 assurance precision
+is unchanged.
+
+### Durable access-workflow audit and remaining gates
+
+INTENT_RECORDED records new registration. READ_ADMITTED records user-security
+read admission, exact-duplicate registration acknowledgement and receipt admission.
+GRANT_REVOKED commits with the exact mutation and terminal outcome. Required
+audit/outcome failure prevents successful commit/disclosure; read admission does
+not prove transport delivery or human reading. ACCESS_DENIED and OPERATION_FAILED
+are separate bounded attempt-audit paths only after confirmed owned rollback,
+never after ambient rejection or UNKNOWN; fallback does not execute the action
+again or manufacture a failed terminal outcome. Supplied targets stay distinct
+from verified references. This is durable access-workflow audit, not Logback
+diagnostics, a general Audit Log implementation or staff-editable history.
+
+Spring beans/controllers/staff HTTP APIs, a live provider/session/MFA/step-up
+adapter, issuance/invitations, CHANGE/SUSPEND/RESUME execution, maintenance,
+UI and full Audit Log remain absent. No real owner inference, grant activation
+or maintenance assurance mechanism is selected. The specification's independent
+maintenance authority, assurance floor and cause-resolved recovery remain
+unchanged. Workspace/Organization, User identity, MoR and payout boundaries are
+not overridden. No rollout or next slice is selected.
+
+From `backend`, the focused offline pure-policy command remains:
 
 ```shell
 ./mvnw -o -Dtest=PlatformAccessPolicyTest,PlatformAccessDelegationTest test
 ```
 
-This command selects the two pure-policy test classes; the local Maven cache
-must already contain the required artifacts. Execution results and subsequent
-integration/CI evidence belong to the separate delivery report, not this command
-listing. Existing historical test and CI results below are not new I1 runs.
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN; fresh browser proof remains INCOMPLETE
-and S003 browser scenarios NOT RUN. This policy slice does not close those gates
-or establish real Auth0, browser authentication, or production readiness.
+It selects only the two pure-policy classes, not storage/workflow verification,
+and requires cached artifacts. Separate accepted S independent evidence reports
+1319 full tests and package PASS; the W author reports 1502 and package PASS.
+Those results have different scopes and authorship: they are not new runs for
+this documentation, W independent approval or integrated CI evidence.
+Independent W review, review of these coverage Notes and an authorized exact
+transfer/integration remain separate gates; source corrections may require
+narrow documentation follow-up. Historical test/CI results below remain historical.
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN, browser proof INCOMPLETE and S003
+browser scenarios NOT RUN.
 
 ## Technology baseline
 
@@ -474,8 +553,9 @@ This section describes the bounded application diagnostics in this checkout.
 Verification and integration status must be established from the separate delivery
 evidence; this section does not report a new test run or establish integration.
 The diagnostics use the existing
-SLF4J and Logback dependencies; no logging service, collector, file sink or audit table
-is introduced. The console configuration keeps INFO as the default and includes
+SLF4J and Logback dependencies; these diagnostics introduce no logging service,
+collector, file sink or audit table. The separate V12 access-workflow audit above
+is not a Logback sink. The console configuration keeps INFO as the default and includes
 the server-generated request correlation ID. Do not enable global DEBUG/TRACE,
 SQL parameter logging or request/body/header dumps to diagnose authentication.
 
@@ -490,7 +570,7 @@ vocabulary separates observed results from inferred effects:
 | `SESSION_EXPIRED` | Observed absolute lifetime exceeded; never inferred idle expiry from a missing session |
 | `LOGOUT_RESULT` | Local logout handler completed; not provider/global logout or proof of cookie delivery |
 | `REQUEST_FAILURE` | Safe technical failure category; a later failure retains bounded `prior_event` / `prior_reason` (or `NONE`), without exception text |
-| `DOMAIN_TRANSACTION` | Completion of the transaction containing a successfully returned supported operation; operation code and completion only |
+| `DOMAIN_TRANSACTION` | Legacy successful-return transaction observation, or an actually attempted owned platform phase after cleanup; operation and completion, with optional closed reason |
 | `DIAGNOSTIC_LIMIT` | Request-local transaction observations exceeded the fixed limit; reason `REQUEST_TRANSACTION_LIMIT` |
 
 Reason codes include `LOGIN_INTENT_ACCEPTED`, `LOCAL_SUCCESS_SELECTED`,
@@ -502,6 +582,12 @@ Reason codes include `LOGIN_INTENT_ACCEPTED`, `LOCAL_SUCCESS_SELECTED`,
 `DATABASE_UNAVAILABLE`, `DEADLINE_EXCEEDED` and `INTERRUPTED` use WARN;
 `UNEXPECTED_FAILURE` uses ERROR. Transaction `COMMITTED` and `ROLLED_BACK` use
 INFO; `UNKNOWN` and `NOT_OBSERVED`, and a diagnostic-limit event, use WARN.
+The three-argument transaction overload adds an existing closed Reason and uses
+the maximum of its severity and the completion level: UNKNOWN/NOT_OBSERVED are
+at least WARN and UNEXPECTED_FAILURE is ERROR. A reason does not change the
+observed completion. Null reason preserves the legacy two-field format;
+malformed null operation/completion is ignored without consuming a buffer slot.
+The Event and Reason catalogs are unchanged.
 Internal `ClassifiedFailure` exceptions supply a closed reason; other failure
 classification examines bounded exception types/causes without printing
 messages, SQL details or throwable chains. Existing domain rejection types and
@@ -516,7 +602,9 @@ MDC. Request completion and worker scopes clean up their own context. Route and
 method fields are closed categories, not raw URLs or caller text. No log field
 accepts passwords, client secrets, tokens, cookies/session IDs, Authorization,
 CSRF values, OAuth code/state/nonce/PKCE, claims, issuer/subject, email or other
-personal data, request/query/body content, SQL parameters or connection strings.
+personal data, request/query/body content, SQL parameters, connection strings
+or domain entity/operation IDs. The generated diagnostic request correlation is
+not a caller identity or credential.
 Application diagnostics never stringify principals, configuration or exceptions.
 
 Authentication markers only stage fixed codes while the security chain is
@@ -525,6 +613,7 @@ more severe technical marker takes precedence and retains the prior codes.
 An escaping failure also takes precedence over an earlier selection/denial and
 retains its codes; neither handled nor escaping failures are hidden by success.
 Output is deferred until the chain unwinds and its session/publication locks are released.
+Legacy and reason-bearing transaction records share the same HTTP FIFO.
 An HTTP request stages at most 16 transaction records, then emits a limit warning
 instead of growing an unbounded queue. Domain observations outside that
 request-local context, including the identity-resolution worker, emit at their
@@ -533,8 +622,8 @@ Configured transaction/lock deadlines are unchanged. Synchronous output can
 delay completion/cleanup; no total completion-latency bound or lossless delivery
 is claimed.
 
-One transaction synchronization coalesces repeated returns into at most ten
-operation codes: `USER_CREATE`, `USER_STATUS_CHANGE`, `ORGANIZATION_CREATE`,
+The original successful-return synchronization observer still coalesces repeated
+returns by operation code and preserves its existing ten callers: `USER_CREATE`, `USER_STATUS_CHANGE`, `ORGANIZATION_CREATE`,
 `USER_WORKSPACE_CREATE`, `ORGANIZATION_WORKSPACE_CREATE`, `PRODUCT_CREATE`,
 `PRODUCT_ARCHIVE`, `PRODUCT_ACTIVATE`, `DELTA_REGISTER`, and
 `DELTA_APPLY_OR_REPLAY`. Only `afterCompletion` observes completion.
@@ -550,6 +639,20 @@ gap. These are transaction observations after successful operation returns, not
 a count of new records or changed rows: registration/application may return a
 retained manual-delta result, and replay is not a fresh quantity application.
 Failed methods and privileged raw SQL are not a complete mutation event stream.
+
+The expanded operation enum additionally contains PLATFORM_INTENT_REGISTER,
+PLATFORM_USER_SECURITY_READ, PLATFORM_SUPPORT_REVOKE,
+PLATFORM_OPERATION_RECEIPT and PLATFORM_ATTEMPT_AUDIT. The owned W boundary
+classifies its own attempted primary/fallback phase after resource cleanup,
+including denied/failed attempts; it does not call the legacy return-success
+observer or attach a synchronization to a foreign transaction. Acknowledged
+commit stays COMMITTED despite a later cleanup failure; lost commit acknowledgement
+stays UNKNOWN. Internal causes are retained/classified within actually attempted
+owned phases, using the highest-severity closed reason (first on a tie), not
+arbitrary Throwable/message/SQL output. This is not a promise that every
+pre-phase service failure emits a diagnostic. Fallback is a separate phase,
+not a duplicate primary record; sink failure cannot replace the committed result.
+These observations neither write nor prove durable security audit.
 
 A selected OIDC success/redirect does not establish HTTP commit, cookie delivery
 or the browser's final account. Missing session state may follow idle expiry,
@@ -583,8 +686,11 @@ removal, and User-owned as well as Organization-owned creation versus a
 concurrent User `ACTIVE` → non-`ACTIVE` status change), each of which must
 leave the Workspace foundation intact.
 
-The all-current history assertions passed in post-merge CI and verify
-V1 → V11; historical target=8/9/10 proofs remain pinned and passed unchanged.
+The all-current history assertions in this checkout target V1 → V12, with
+separate populated V11 → V12 coverage. The historical populated V10 → V11
+identity-binding proof retains target=11; historical target=8/9/10 proofs remain
+pinned. The S/W evidence above is separate from the earlier post-merge CI runs;
+this text does not extend their historical V1 → V11 result to V12.
 The tests also prove the Ready-Made Product structural foundation: the exact current
 migration history, the exact schema (columns, types, nullability, absence of
 defaults, primary key, `RESTRICT` foreign keys, closed lifecycle check set, and
