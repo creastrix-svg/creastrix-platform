@@ -25,7 +25,7 @@ protecting creator ownership and customer trust.
 - Workspace
 - Workspace Membership
 - Ready-Made Product
-- [Platform Access Grant](docs/domain/platform-access-grant.md) — APPROVED 1.0
+- [Platform Access Grant](docs/domain/platform-access-grant.md) — APPROVED 1.1
 
 ## Current Draft Domain Specifications
 
@@ -93,24 +93,34 @@ Ready-Made Product references to the DRAFT Listing, Order Item, and Shipment spe
 
 The remaining DRAFT domains are active architecture work and require their own architecture review and independent specification approval before implementation.
 
-### Platform Access Grant: partial I1 coverage
+### Platform Access Grant: bounded I1 + I2A coverage
 
-Platform Access Grant APPROVED 1.0 is separately accepted architecture. The
-platform-access foundation in this checkout provides six pure policy production-source files and two unit-test
-classes: immutable supplied snapshots, a finite two-role/six-permission catalog,
-exact resource/reason predicates, bounded delegation, validity and assurance checks.
-This is partial specification coverage, not live authorization or complete delivery.
-See the [backend I1 boundary](backend/README.md#platform-access-policy-foundation).
+Platform Access Grant APPROVED 1.1 is separately accepted architecture.
+This checkout contains the unchanged I1 pure policy plus I2A storage/generation
+and constructor-only workflows for named intent registration, user-security
+READ, other-SUPPORT-grant REVOKE and separately authorized receipts.
+V12 retains the non-REVOKED slot (including expired/suspended grants and
+inactive recipients), immutable partial-slice scope/expiry, eligibility
+invalidation and access-workflow history. It is not raw-SQL actor authorization
+or protection against the database owner.
+See the [backend coverage and limits](backend/README.md#platform-access-policy-foundation).
 
-Verification and integration status are established by separate delivery evidence;
-specification approval is not runtime enforcement or real authority.
-A model `ALLOW` does not prove trusted current facts or commit.
-Spring/HTTP wiring, grant persistence and slot uniqueness, invitation acceptance,
-authoritative eligibility/session generations, real MFA/step-up, live revocation,
-atomic durable audit and maintenance execution remain unimplemented. No real
-privileges or rollout are activated and no next slice is selected.
-`AUTH-COOKIE-FOLLOWUP-001` stays OPEN; browser proof remains INCOMPLETE and S003
-browser scenarios NOT RUN. Specification approval and this pure core do not close them.
+Owned READ COMMITTED transactions reject ambient work, refresh current facts
+and time after waits, and require durable audit/outcome before acknowledged
+commit and disclosure. UNKNOWN is not rollback, success or permission to retry
+under a new identity. Read admission is not network delivery or human reading.
+The trusted-facts adapter is synthetic; no live authentication assurance,
+Spring/HTTP staff wiring, issuance/invitations, CHANGE/SUSPEND/RESUME execution,
+maintenance, UI or full Audit Log is delivered.
+
+Verification, independent acceptance and integration are separate gates;
+source coverage in this checkout does not assert transfer into main, fresh CI
+or real privileges. Remaining workflow/documentation review and any authorized
+transfer/integration must use exact final sources and separate evidence;
+source corrections can require narrow documentation follow-up.
+No next frontend, commerce or maintenance slice is selected.
+`AUTH-COOKIE-FOLLOWUP-001` stays OPEN; browser proof remains INCOMPLETE and
+S003 browser scenarios NOT RUN. Backend coverage does not close them.
 
 ### Integrated authentication backend pilot
 

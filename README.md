@@ -16,7 +16,7 @@ Specification approval and implementation coverage are tracked separately.
 
 ### APPROVED Domain Specifications
 
-User, User Profile, Organization, Organization Membership, Workspace, Workspace Membership, Ready-Made Product, and [Platform Access Grant](docs/domain/platform-access-grant.md) have APPROVED domain specifications. Ready-Made Product is currently APPROVED 1.1; Platform Access Grant is APPROVED 1.0. Approval records the accepted architecture for those entities; it does not mean that every approved rule is already implemented.
+User, User Profile, Organization, Organization Membership, Workspace, Workspace Membership, Ready-Made Product, and [Platform Access Grant](docs/domain/platform-access-grant.md) have APPROVED domain specifications. Ready-Made Product is currently APPROVED 1.1; Platform Access Grant is APPROVED 1.1. Approval records the accepted architecture for those entities; it does not mean that every approved rule is already implemented.
 
 ### Implemented Backend Foundations
 
@@ -120,21 +120,20 @@ and running applications were not updated; integration is not rollout.
 
 ### Platform Access Policy Foundation
 
-The platform-access foundation in this checkout provides partial I1 coverage of
-Platform Access Grant APPROVED 1.0: six pure policy production-source files and two unit-test classes.
-The unwired model evaluates immutable supplied snapshots against the finite
-two-role, six-permission catalog, exact resource/reason limits, delegation,
-grant validity and bound assurance predicates. A model `ALLOW` neither grants
-real authority nor proves current authentication, persistence or atomic audit.
-See the [backend I1 boundary](backend/README.md#platform-access-policy-foundation).
+Platform Access Grant APPROVED 1.1 is accepted architecture, not activation.
+This checkout contains the unwired I1 pure policy plus I2A storage/generation
+and named registration, user-security READ, SUPPORT-grant REVOKE and receipt
+workflows. V12 provides bounded storage; owned READ COMMITTED transactions
+couple required access-workflow audit and outcomes before disclosure.
+See the [backend coverage and limits](backend/README.md#platform-access-policy-foundation).
 
-Verification and integration status are established by separate delivery evidence;
-specification approval is not runtime enforcement or real authority. Spring/HTTP wiring,
-grant persistence, invitation acceptance, authoritative generation/MFA/step-up,
-live revocation, durable audit and maintenance execution remain unimplemented.
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN; browser proof remains INCOMPLETE and
-S003 browser scenarios NOT RUN. No real privileges, rollout or next slice are
-activated by this pure policy subset or specification approval.
+Verification and integration status are established by separate delivery evidence.
+Constructor-only workflows and synthetic trusted facts are not a staff HTTP API
+or live session/MFA/step-up proof. Grant issuance, invitations,
+CHANGE/SUSPEND/RESUME execution, maintenance and full Audit Log remain deferred;
+no real owner, privilege, rollout or next slice is activated.
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN, browser proof INCOMPLETE and S003
+browser scenarios NOT RUN.
 
 ### Remaining DRAFT Domain Areas
 

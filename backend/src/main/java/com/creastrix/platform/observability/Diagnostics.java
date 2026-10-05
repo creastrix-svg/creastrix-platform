@@ -151,7 +151,8 @@ public final class Diagnostics {
                     }
                 }
                 for (int i = 0; i < observation.size; i++) {
-                    writeTransaction(observation.operations[i], observation.completions[i]);
+                    writeTransaction(observation.operations[i], observation.completions[i],
+                            observation.transactionReasons[i]);
                 }
                 if (observation.truncated) {
                     write(Level.WARN, "event=DIAGNOSTIC_LIMIT reason=REQUEST_TRANSACTION_LIMIT");
@@ -186,10 +187,56 @@ public final class Diagnostics {
         }
     }
 
+    /**
+     * Records one closed observation after an owned transaction phase has released
+     * its resources and locks. The reason classifies that phase; it never changes
+     * the observed completion or proves durable audit. A null reason preserves the
+     * legacy format. Malformed operation/completion values are ignored rather than
+     * replacing the application outcome or consuming a request-buffer slot.
+     *
+     * <p>Inside HTTP, output remains deferred until the outer request boundary.
+     * Outside HTTP, callers must already have completed their own cleanup. This
+     * method does not release foreign locks or attach transaction observers.
+     */
+    public static void transaction(TransactionDiagnostics.Operation operation, Completion completion, Reason reason) {
+        if (operation == null || completion == null) {
+            return;
+        }
+        if (reason == null) {
+            transaction(operation, completion);
+            return;
+        }
+        RequestObservation observation = REQUEST.get();
+        if (observation == null) {
+            writeTransaction(operation, completion, reason);
+        }
+        else if (observation.size < TRANSACTION_LIMIT) {
+            observation.operations[observation.size] = operation;
+            observation.completions[observation.size] = completion;
+            observation.transactionReasons[observation.size++] = reason;
+        }
+        else {
+            observation.truncated = true;
+        }
+    }
+
     private static void writeTransaction(TransactionDiagnostics.Operation operation, Completion completion) {
         Level level = completion == Completion.UNKNOWN || completion == Completion.NOT_OBSERVED
                 ? Level.WARN : Level.INFO;
         write(level, "event=DOMAIN_TRANSACTION operation={} completion={}", operation, completion);
+    }
+
+    private static void writeTransaction(TransactionDiagnostics.Operation operation, Completion completion, Reason reason) {
+        if (reason == null) {
+            writeTransaction(operation, completion);
+            return;
+        }
+        Level completionLevel = completion == Completion.UNKNOWN || completion == Completion.NOT_OBSERVED
+                ? Level.WARN : Level.INFO;
+        Level reasonLevel = level(reason);
+        Level observedLevel = completionLevel.toInt() >= reasonLevel.toInt() ? completionLevel : reasonLevel;
+        write(observedLevel, "event=DOMAIN_TRANSACTION operation={} completion={} reason={}",
+                operation, completion, reason);
     }
 
     private static void write(Level level, String template, Object... fields) {
@@ -209,6 +256,7 @@ public final class Diagnostics {
         private Reason priorReason;
         private final TransactionDiagnostics.Operation[] operations = new TransactionDiagnostics.Operation[TRANSACTION_LIMIT];
         private final Completion[] completions = new Completion[TRANSACTION_LIMIT];
+        private final Reason[] transactionReasons = new Reason[TRANSACTION_LIMIT];
         private int size;
         private boolean truncated;
     }

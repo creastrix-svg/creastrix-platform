@@ -100,7 +100,7 @@ class DiagnosticsIntegrationTest {
         assertThat(jdbc.queryForObject("SHOW server_version_num", Integer.class)).isEqualTo(180004);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history "
                 + "WHERE success AND version IS NOT NULL ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
 
         UUID userId = transaction.execute(status -> {
             UUID id = users.createUser().id();

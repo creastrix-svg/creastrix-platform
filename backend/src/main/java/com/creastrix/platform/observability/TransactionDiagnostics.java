@@ -11,7 +11,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  *
  * <p>A return is not a commit. At most one observation per operation is retained
  * in one synchronization for the transaction; repeated calls are coalesced and
- * retain their latest request correlation. This fixed ten-operation set is not
+ * retain their latest request correlation. This fixed fifteen-operation set is not
  * a per-call queue, a complete SQL mutation record, or a durable audit trail.
  * A manual-delta result may be historical replay, not a new quantity change.
  *
@@ -32,7 +32,12 @@ public final class TransactionDiagnostics {
         PRODUCT_ARCHIVE,
         PRODUCT_ACTIVATE,
         DELTA_REGISTER,
-        DELTA_APPLY_OR_REPLAY
+        DELTA_APPLY_OR_REPLAY,
+        PLATFORM_INTENT_REGISTER,
+        PLATFORM_USER_SECURITY_READ,
+        PLATFORM_SUPPORT_REVOKE,
+        PLATFORM_OPERATION_RECEIPT,
+        PLATFORM_ATTEMPT_AUDIT
     }
 
     private TransactionDiagnostics() {

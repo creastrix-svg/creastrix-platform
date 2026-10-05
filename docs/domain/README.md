@@ -29,7 +29,7 @@ The accepted specification set recorded here contains 8 APPROVED and 14 DRAFT sp
 - [Workspace](workspace.md) — APPROVED 1.0
 - [Workspace Membership](workspace-membership.md) — APPROVED 1.0
 - [Ready-Made Product](ready-made-product.md) — APPROVED 1.1
-- [Platform Access Grant](platform-access-grant.md) — APPROVED 1.0
+- [Platform Access Grant](platform-access-grant.md) — APPROVED 1.1
 
 ## Draft specifications
 
