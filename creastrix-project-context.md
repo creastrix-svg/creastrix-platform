@@ -164,8 +164,10 @@ login; no Workspace/RMP API, account linking or new commerce decision is added.
 
 ### S003 cookie pairing
 
-This checkout implements the exact independently source-reviewed S003
-forward-port. The process-local Q registry binds a session to one immutable stamp.
+S003 is integrated through [PR #34](https://github.com/creastrix-svg/creastrix-platform/pull/34);
+its separate [post-merge CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37917170767)
+passed 1618/1618 and tests/package BUILD SUCCESS on 2026-10-09. These are historical
+server results, not frontend/browser F evidence. The process-local Q registry binds a session to one immutable stamp.
 Private access captures it before current-User lookup and checks that same stamp
 at final admission, after lookup. G1 denies a revoked/superseded same-Q generation.
 G2 protects fresh requests from the current cookie jar: late success-cookie
@@ -189,7 +191,7 @@ historical and were not rewritten. These are external dated results, not new
 runtime, IDE or CI execution for this transfer. PA observer/HOLD and separate
 combined foundation/HTTP/CI candidates are not composed into this change.
 
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN until integration and explicit disposition.
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN for the remaining F and explicit disposition gates.
 The 2026-09-14 temporary local-pilot acceptance did not automatically accept the
 later B-to-A consequence or public operation. Full React/dev-proxy authentication F,
 real Auth0 P, natural frequency, account takeover and the separate post-commit
@@ -198,19 +200,28 @@ and before public access/invitations/rollout. No next implementation slice is se
 
 ### Frontend UI foundation
 
-FRONTEND-BOOTSTRAP-001 provides a UI-only scaffold in a separately built `frontend` directory in
+FRONTEND-BOOTSTRAP-001 established a UI scaffold in a separately built `frontend` directory in
 the existing repository: React 19.3.0, TypeScript 6.0.3, Vite 8.3.1, Redux Toolkit
 2.13.0 / React Redux 9.3.0 and React Router 7.18.4, using pinned Node 22.14.0 /
-npm 10.9.2 and a lockfile. Redux holds only the shared DE/EN UI preference.
-The selected 3C / SYMMETRY logo accompanies a neutral light demo; the final colour
-palette and Atelier/Studio choice remain open. `/`, `/login` and `/account` are
-UI-only routes with a fictional profile, disabled future sign-in methods and
-voluntary Workspace messaging. No backend proxy, Auth0 connection, credentials,
-real authentication, Workspace/RMP forms, domain records or rollout are added.
-The local server is loopback-only on strict port 3000. See the
-[frontend guide](frontend/README.md) for commands and the path-filtered frontend CI.
-This scaffold is not production-ready or authentication F/P evidence;
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN. No domain/business decision is changed.
+npm 10.9.2 and a lockfile. The current `solar_wind/react-authentication-f` WIP
+proposes a bounded hosted-login client, current own `id/status` rendering, local
+logout/switch, explicit recovery and fixed development proxy. Private Redux state
+is memory-only; a non-secret replaceable intent marker is separate from language
+persistence. Owned result checks, peer invalidation and a synchronous DOM curtain
+protect UI state without claiming server authorization or absolute cross-tab ordering.
+The fictional profile is removed. DE/EN, keyboard/focus support, the unchanged
+3C logo and voluntary Workspace messaging remain; palette/Atelier decisions stay open.
+
+This feature is not independently approved or integrated. Unit/static/build checks
+are not actual React/Vite/browser F, real Auth0 P or rollout evidence. G1/G2 and L1
+remain distinct; stale UI response rejection does not close the old cross-Q server
+limitation or cover future business writes. Storage unavailability fails closed;
+completion/lifecycle events never republish the shared intent marker. Early native
+login refusal may show opaque backend JSON outside React. No dependency/backend,
+Workspace/RMP API/forms, signup/social login or business decision changes are included.
+The connected origin is fixed `http://localhost:3000`, with loopback strict port;
+build preview is disconnected. See the [frontend guide](frontend/README.md).
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN pending browser and owner disposition gates.
 
 ## Domain Principles
 
