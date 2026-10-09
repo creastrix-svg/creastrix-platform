@@ -117,6 +117,11 @@ public class AuthenticationConfiguration {
         Clock authenticationClock() { return Clock.systemUTC(); }
 
         @Bean
+        BrowserSessionContextRegistry browserSessionContexts(Clock clock) {
+            return new BrowserSessionContextRegistry(clock);
+        }
+
+        @Bean
         @ConditionalOnMissingBean
         AuthenticationProperties authenticationProperties(Environment environment) {
             var binder = Binder.get(environment);
@@ -165,7 +170,7 @@ public class AuthenticationConfiguration {
         @Bean
         SecurityFilterChain authenticationEnabled(HttpSecurity http, AuthenticationProperties properties,
                 ClientRegistrationRepository clients, CreastrixOidcUserService users,
-                AuthenticatedUserService internalUsers, Clock clock) throws Exception {
+                AuthenticatedUserService internalUsers, Clock clock, BrowserSessionContextRegistry contexts) throws Exception {
             defaults(http);
             var requests = new TimedAuthorizationRequests(clock);
             var authorizedClients = new OwnedAuthorizedClients();
@@ -196,6 +201,9 @@ public class AuthenticationConfiguration {
                             .userInfoEndpoint(endpoint -> endpoint.oidcUserService(users))
                             .successHandler((request, response, authentication) -> {
                                 request.getSession().setMaxInactiveInterval((int) AuthenticationProperties.IDLE_LIFETIME.toSeconds());
+                                var attempt = AuthenticationAttemptCoordinator.attempt(request);
+                                if (attempt == null) throw CreastrixOidcUserService.rejected();
+                                attempt.publish();
                                 redirect(response, properties.successUri());
                                 // Staging only: the publication lock is still held, and delivery is not proven.
                                 Diagnostics.mark(Diagnostics.Event.LOGIN_RESULT, Diagnostics.Reason.LOCAL_SUCCESS_SELECTED);
@@ -216,16 +224,25 @@ public class AuthenticationConfiguration {
                     .logout(logout -> logout
                             .logoutRequestMatcher(PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, LOGOUT_PATH))
                             .addLogoutHandler((request, response, authentication) -> {
+                                // CSRF has passed. Revoke the presented Q, not a Q inferred from stale SID.
+                                boolean revoked = contexts.revoke(BrowserSessionContextRegistry.cookie(request));
+                                request.setAttribute("prototype.context.logout", revoked);
+                                contexts.cleanup();
                                 AuthenticationAttemptCoordinator.revoke(request.getSession(false));
                                 expireCookie(response, properties);
                             })
                             .logoutSuccessHandler((request, response, authentication) -> {
-                                response.setStatus(204);
-                                Diagnostics.mark(Diagnostics.Event.LOGOUT_RESULT, Diagnostics.Reason.LOCAL_LOGOUT_COMPLETED);
+                                if (Boolean.TRUE.equals(request.getAttribute("prototype.context.logout"))) {
+                                    response.setStatus(204);
+                                    Diagnostics.mark(Diagnostics.Event.LOGOUT_RESULT, Diagnostics.Reason.LOCAL_LOGOUT_COMPLETED);
+                                }
+                                else {
+                                    jsonError(response, 409);
+                                }
                             }))
                     // Load the current principal first, but gate before CSRF, logout and OAuth processing.
-                    .addFilterAfter(new RequestBoundary(properties, clock, requests), SecurityContextHolderFilter.class)
-                    .addFilterBefore(new CurrentUserAccessFilter(internalUsers, properties, clock), AuthorizationFilter.class);
+                    .addFilterAfter(new RequestBoundary(properties, clock, requests, contexts), SecurityContextHolderFilter.class)
+                    .addFilterBefore(new CurrentUserAccessFilter(internalUsers, properties, clock, contexts), AuthorizationFilter.class);
             return http.build();
         }
     }
@@ -406,10 +423,13 @@ public class AuthenticationConfiguration {
         private final AuthenticationProperties properties;
         private final Clock clock;
         private final TimedAuthorizationRequests requests;
-        RequestBoundary(AuthenticationProperties properties, Clock clock, TimedAuthorizationRequests requests) {
+        private final BrowserSessionContextRegistry contexts;
+        RequestBoundary(AuthenticationProperties properties, Clock clock, TimedAuthorizationRequests requests,
+                        BrowserSessionContextRegistry contexts) {
             this.properties = properties;
             this.clock = clock;
             this.requests = requests;
+            this.contexts = contexts;
         }
         @Override
         protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -446,8 +466,8 @@ public class AuthenticationConfiguration {
                 jsonError(response, 409);
                 return;
             }
+            HttpSession session = entry ? request.getSession(false) : null;
             if (entry) {
-                var session = request.getSession(false);
                 Object intent = session == null ? null : session.getAttribute(LOGIN_INTENT);
                 if (session != null) {
                     session.removeAttribute(LOGIN_INTENT);
@@ -462,7 +482,15 @@ public class AuthenticationConfiguration {
             }
             AuthenticationAttemptCoordinator.Attempt attempt = null;
             try {
+                if (entry && !contexts.canStart(BrowserSessionContextRegistry.cookie(request), contexts.capture(session))) {
+                    jsonError(response, 409);
+                    return;
+                }
                 if (callback) {
+                    if (!contexts.echo(BrowserSessionContextRegistry.cookie(request), contexts.capture(request.getSession(false)))) {
+                        redirect(response, properties.failureUri());
+                        return;
+                    }
                     attempt = requests.admit(request, response);
                     if (attempt == null) {
                         Diagnostics.mark(Diagnostics.Event.LOGIN_RESULT, Diagnostics.Reason.CALLBACK_CONFLICT);
@@ -474,7 +502,7 @@ public class AuthenticationConfiguration {
                 }
                 chain.doFilter(request, response);
             }
-            catch (AuthenticationAttemptCoordinator.Unavailable contention) {
+            catch (AuthenticationAttemptCoordinator.Unavailable | BrowserSessionContextRegistry.Capacity contention) {
                 Diagnostics.mark(Diagnostics.Event.REQUEST_FAILURE, Diagnostics.Reason.SESSION_COORDINATION_UNAVAILABLE);
                 if (attempt != null) {
                     attempt.reject();
@@ -483,6 +511,26 @@ public class AuthenticationConfiguration {
                     throw contention;
                 }
                 // No bypass if a local publication section cannot be entered within its fixed budget.
+                if (callback) {
+                    redirect(response, properties.failureUri());
+                }
+                else {
+                    jsonError(response, 503);
+                }
+            }
+            catch (ServletException failure) {
+                // MVC wraps the controller's expected registry refusal once. Do not
+                // reinterpret unrelated failures or traverse arbitrary cause chains.
+                if (!(failure.getCause() instanceof BrowserSessionContextRegistry.Capacity)) {
+                    throw failure;
+                }
+                Diagnostics.mark(Diagnostics.Event.REQUEST_FAILURE, Diagnostics.Reason.SESSION_COORDINATION_UNAVAILABLE);
+                if (attempt != null) {
+                    attempt.reject();
+                }
+                if (response.isCommitted()) {
+                    throw failure;
+                }
                 if (callback) {
                     redirect(response, properties.failureUri());
                 }

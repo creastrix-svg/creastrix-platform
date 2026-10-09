@@ -22,15 +22,45 @@ import org.springframework.web.bind.annotation.RestController;
 public final class AccountController {
     private final AuthenticationProperties properties;
     private final Clock clock;
+    private final BrowserSessionContextRegistry contexts;
 
-    public AccountController(AuthenticationProperties properties, Clock clock) {
+    public AccountController(AuthenticationProperties properties, Clock clock, BrowserSessionContextRegistry contexts) {
         this.properties = properties;
         this.clock = clock;
+        this.contexts = contexts;
     }
 
     @GetMapping("/auth/csrf")
-    public Map<String, String> csrf(CsrfToken token) {
-        return Map.of("token", token.getToken(), "parameterName", token.getParameterName(),
+    public Map<String, String> csrf(CsrfToken token, HttpServletRequest request, HttpServletResponse response) {
+        // Capture before deferred CSRF materializes a session. An unresolved stale SID is
+        // cleanup-only too; isNew() on an existing session is not proof of fresh creation.
+        boolean freshWithoutRequestedSession = request.getSession(false) == null
+                && request.getRequestedSessionId() == null;
+        String csrf = token.getToken(); // Standard token materialization creates the anonymous session if needed.
+        var session = request.getSession(false);
+        var coordinator = AuthenticationAttemptCoordinator.forSession(session);
+        String q = BrowserSessionContextRegistry.cookie(request);
+        if (!coordinator.authenticated(session)) {
+            String issued = null;
+            if (q != null) {
+                if (freshWithoutRequestedSession) issued = contexts.recoveryBootstrap(q, session, coordinator);
+                // A restrictive recovery result never authorizes another bootstrap.
+                // Ordinary live-Q attach remains separate; its failure is not recovery eligibility.
+                if (issued == null) contexts.attachAnonymous(q, session, coordinator);
+            }
+            else if (!BrowserSessionContextRegistry.cookieSupplied(request)) {
+                issued = contexts.bootstrap(session, coordinator);
+            }
+            if (issued != null) {
+                var cookie = new jakarta.servlet.http.Cookie(BrowserSessionContextRegistry.COOKIE_NAME, issued);
+                cookie.setPath("/");
+                cookie.setHttpOnly(true);
+                cookie.setSecure(properties.secureCookie());
+                cookie.setAttribute("SameSite", "Lax");
+                response.addCookie(cookie);
+            }
+        }
+        return Map.of("token", csrf, "parameterName", token.getParameterName(),
                 "headerName", token.getHeaderName());
     }
 
@@ -39,6 +69,10 @@ public final class AccountController {
             throws IOException {
         if (authentication != null && authentication.isAuthenticated()
                 && !(authentication instanceof AnonymousAuthenticationToken)) {
+            AuthenticationConfiguration.jsonError(response, 409);
+            return;
+        }
+        if (!contexts.canStart(BrowserSessionContextRegistry.cookie(request), contexts.capture(request.getSession(false)))) {
             AuthenticationConfiguration.jsonError(response, 409);
             return;
         }

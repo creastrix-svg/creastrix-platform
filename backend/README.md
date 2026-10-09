@@ -503,8 +503,10 @@ this documentation, W independent approval or integrated CI evidence.
 Independent W review, review of these coverage Notes and an authorized exact
 transfer/integration remain separate gates; source corrections may require
 narrow documentation follow-up. Historical test/CI results below remain historical.
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN, browser proof INCOMPLETE and S003
-browser scenarios NOT RUN.
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN. The separate S003 candidate has scoped
+browser/server evidence and an exact-candidate full/package result, as recorded
+in the [authentication verification boundary](../docs/authentication-pilot.md#s003-evidence-and-open-gates).
+None supplies missing staff HTTP/MFA wiring or composes the separate PA observer/HOLD.
 
 ## Technology baseline
 
@@ -658,8 +660,11 @@ A selected OIDC success/redirect does not establish HTTP commit, cookie delivery
 or the browser's final account. Missing session state may follow idle expiry,
 logout or restart; only observed absolute expiry is labelled SESSION_EXPIRED.
 Commit-unknown identity resolution requires the unchanged reconciliation through
-a new full login. Diagnostics provide no durable audit guarantee or stale-cookie
-protection; `AUTH-COOKIE-FOLLOWUP-001` remains OPEN.
+a new full login. Diagnostics themselves provide no durable audit guarantee or
+stale-cookie protection; the S003 Q registry below is a separate admission mechanism.
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN. Its logout path emits
+`LOCAL_LOGOUT_COMPLETED` only for successful Q revocation (204), not cleanup-only
+409; callback success still observes local selection/publication, not delivery.
 
 ## Running tests
 
@@ -798,16 +803,70 @@ damaging the current principal/client/cookie; authenticated entry retains 409.
 The historical R1 focused callback/cleanup regressions passed three consecutive 16-case
 runs. Earlier 611/638 results remain historical evidence in the contract, not
 fresh R2 results. This is single-instance coordination, not a distributed session
-protocol or a guarantee of network response delivery order. After the last successful
-check/local success selection, even cooperative logout can precede HTTP commit and
-a late success cookie can disturb a newer login. `AUTH-COOKIE-FOLLOWUP-001` remains
-OPEN, temporarily accepted only for the local nonpublic pilot, not fixed or closed.
-It must return at React/dev-proxy/browser verification and before public access,
-external-user invitations or rollout through a separate owner/security decision.
+protocol or a guarantee of network response delivery order. R2 alone did not fix
+stale-success-cookie selection; its temporary 2026-09-14 local-pilot acceptance
+did not automatically accept the later B-to-A consequence. Already-delivered
+responses cannot be recalled. The S003 addition in this checkout is described
+below; it does not extend the publication lock through HTTP commit/flush.
+
+### S003 cookie pairing, admission and recovery
+
+This checkout implements the exact independently source-reviewed S003 forward-port.
+`CREASTRIX_Q` is a random host-only, HttpOnly, SameSite=Lax cookie with Path `/`
+and the existing Secure policy. It
+identifies a process-local context, not a durable browser/User identity. Initial
+anonymous bootstrap issues Q once; subsequent requests echo it. Callback success
+does not set Q. A session's `(Q, generation, logical session token)` stamp is
+immutable: no adoption of a tagged/authenticated session or reissue of its Q.
+
+Private access captures the stamp before real current-User lookup, then uses that
+same capture for a fresh final check after lookup. G1 rejects an old same-Q stamp
+after generation revocation or newer-generation acceptance. G2 denies an obsolete
+or mismatched current Q/SID pair with 401; explicit recovery is safe even if B is
+no longer continuously available. A fresh `/api/me` returning 200 A would not be
+an acceptable substitute for this admission check.
+
+L1 is separate: an earlier request under a different still-live Q_A can first
+pass final admission after B/Q_B and return A. It was not necessarily admitted
+before B. An already-admitted response can also finish after revocation. Future
+frontend state must discard stale account responses; no guarantee for future
+business writes, global logout or all-device revocation follows from L1.
+
+After standard Origin/CSRF checks, logout revokes the presented Q generation,
+not one inferred from a stale SID, and separately cleans up the caller session.
+204 means that known live Q was revoked. Unknown/expired Q can yield cleanup-only
+409 while expiring the caller SID; it is not proof of successful Q revocation.
+With no incoming/resolved SID, bootstrap can issue a new random Q for a proven
+unknown/expired Q. A still-unexpired registry record, including retired/pending
+ones, blocks replacement issuance. Actual restart discards process-local state;
+recovery is a new full OIDC login with unchanged durable identity, not code replay
+or account/binding deletion. See the [detailed contract](../docs/authentication-pilot.md#s003-cookie-pairing-contract).
+
+Bounds are 64 context records, 128 session references, eight members per Q and
+eight cleanup claims/workers, with no task queue. Retired records/references stay
+charged until exact cleanup acknowledgement and caller release; they are not
+evicted to admit another context. Q hard lifetime is eight hours; pairing/owner
+leases use the existing five-minute flow bound. Memory-lock acquisition and the
+cleanup caller's wait are each bounded at 100 ms, not a bound on all Servlet I/O.
+Registry locks contain no Servlet/provider/DB/response calls. Cleanup is requested
+explicitly, invalidates exact owned references outside coordination locks and
+keeps stalled/failed claims charged. Coordination refusal fails closed: opaque
+503 outside callbacks, fixed failure 303 for callbacks, no rewriting a committed
+response. This is single-instance memory, not shared/distributed session storage.
+
+The exact isolated candidate passed 1618 tests/32 suites with zero
+failures/errors/skipped and package BUILD SUCCESS on 2026-10-07, PostgreSQL 18.4
+and Flyway V1 → V12. Separate root dispositions accepted bounded browser/server
+evidence without replacing original incomplete/failed orchestration reports.
+These are dated external results, not a fresh test, native IDE or CI run;
+packaged-start smoke was not run. The [evidence boundary](../docs/authentication-pilot.md#s003-evidence-and-open-gates)
+retains full React/dev-proxy F, real Auth0 P and rollout exclusions.
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN until integration and explicit disposition,
+and requires return at browser verification and before public access/invitations.
 
 Only `GET /api/me` exposes the current account, after session, current exact
-issuer/subject admission and ACTIVE checks. No existing Workspace/RMP service
-is exposed as an authenticated HTTP API. A creator or actor UUID supplied to
+issuer/subject admission, ACTIVE and final captured-stamp checks. No existing
+Workspace/RMP service is exposed as an authenticated HTTP API. A creator or actor UUID supplied to
 those internal services still represents an identity; it is not itself proof
 of the external caller. Raw SQL remains outside actor authentication.
 
