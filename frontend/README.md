@@ -1,13 +1,14 @@
 # Creastrix frontend
 
-FRONTEND-BOOTSTRAP-001 provides a UI-only scaffold in this checkout.
-This independently built React/TypeScript/Vite application belongs to the existing
-Creastrix repository; it is not a separate Git project.
+FRONTEND-BOOTSTRAP-001 established this separately built React/TypeScript/Vite
+application in the existing repository. The current `solar_wind/react-authentication-f`
+change proposes a bounded authentication client on that foundation. It is WIP,
+not integrated in main or independently approved; real browser result F and
+Auth0 walkthrough P are still pending.
 
 ## Local use
 
-Use Node **22.14.0** and its npm **10.9.2** (also pinned in `.nvmrc` and package
-engines). This matches the existing author toolchain; no global upgrade is required.
+Use pinned Node **22.14.0** / npm **10.9.2**, without upgrading the locked packages.
 From the repository root:
 
 ```sh
@@ -16,12 +17,10 @@ npm ci
 npm run dev
 ```
 
-Open `http://localhost:3000`. Both dev and preview bind to `127.0.0.1:3000`,
-with strict port selection. If the port is occupied, stop and resolve the conflict;
-do not stop an unrelated process or expose the server publicly.
-
-Stop your own dev server with `Ctrl+C` before starting preview. Run the following
-commands from `frontend` (the directory selected above):
+Connected authentication requires exactly `http://localhost:3000` and the separately
+configured backend on `127.0.0.1:8080`. Vite binds loopback `127.0.0.1:3000` with
+strict port selection. Resolve conflicts explicitly; do not stop unrelated
+processes, bind publicly or select another origin automatically.
 
 ```sh
 npm run typecheck
@@ -31,55 +30,99 @@ npm run build
 npm run preview
 ```
 
-Dev and preview support direct reloads of `/`, `/login`, `/account` and the local
-not-found screen. Preview serves the built `dist` assets. Do not run dev and preview
-at the same time on port 3000. Neither command is a deployment service.
+Stop your own dev server before preview. Both support direct reloads of `/`,
+`/login`, `/account` and not-found routes. Build preview serves `dist`, has **no
+backend proxy**, and disables connected authentication with a visible explanation.
+It is not a deployment service or an authenticated account demo.
 
-## What is present
+## Bounded client behavior
 
-- A neutral light UI and the selected, unchanged **3C / SYMMETRY** logo/favicon.
-  A colour palette or Atelier/Studio variant has not been approved.
-- Local DE/EN dictionaries; primary browser language `de`/`de-*` selects German,
-  otherwise English. A saved valid explicit choice takes precedence. German uses `du`.
-- Redux Toolkit and typed React Redux hooks for shared **language preference only**.
-  `creastrix.ui.language` is the only persisted value. Unavailable localStorage is
-  tolerated; the in-memory selection continues to work.
-- Routes with visible focus, keyboard navigation, skip link and a fictional Alex
-  profile. `/account` is an openly accessible demo, not a protected account area.
-- Explanations of future hosted sign-in, with disabled email/password, Google and
-  Apple controls and a separate **View demo** action. No credentials are collected.
-- An optional, empty Workspace state. No Workspace is created, no one-per-user
-  restriction is introduced, and ownership is not seller eligibility.
+- The selected **3C / SYMMETRY** logo, neutral layout, DE/EN copy, keyboard navigation
+  and focus remain. Colour palette and Atelier/Studio decisions remain open.
+- Redux holds language and **memory-only** authentication state. Own-account display
+  requires a current validated `/api/me` response containing only `id/status`.
+  No fictional Alex, name/email/role claims or inferred Workspace inventory is shown.
+- The states are CHECKING, ANONYMOUS, AUTHENTICATED, TRANSITION, RECOVERY_REQUIRED,
+  DENIED and UNAVAILABLE. Every state except AUTHENTICATED closes private content.
+  A URL, callback redirect or `auth=failed` parameter is not proof of identity.
+- Explicit hosted login performs two sequential bounded `GET /auth/csrf` requests
+  (bootstrap/echo), then a native same-window form POST to `/auth/login`.
+  CSRF is transient, not Redux/localStorage state. No fetch-follow to the provider,
+  password fields, OAuth SDK, browser token or provider-claim persistence is added.
+- Logout obtains current CSRF and posts once. Only actual 204 reports presented-Q
+  revocation; 409 is caller-SID cleanup only. Security refusal, 503, malformed
+  response, timeout or transport loss is not logout success or proof of rollback.
+  Recovery/switch clears private state, performs cleanup, and only after 204 or the
+  defined cleanup-only 409 performs bootstrap/echo. A new full sign-in remains an
+  explicit next action; actions are not automatically retried.
+- Google, Apple and separate signup remain unavailable. No Workspace/RMP API/forms,
+  staff/admin access, linking, commerce or rollout is included. Workspace is
+  voluntary; account/login does not create one or grant business authority.
 
-React 19.3.0, Vite 8.3.1, Redux Toolkit 2.13.0 and React Redux 9.3.0 are pinned.
-React Router 7.18.4 is the current compatible 7.x release (8.x requires a newer Node).
-TypeScript 6.0.3 remains within typescript-eslint's supported range; 7.x is not used.
-Vitest 5.0.2, Testing Library and happy-dom 20.14.5 provide focused UI tests, not a
-replacement for browser smoke or independent review. All dependencies are locked.
+## Ownership and lifecycle
 
-## Deliberate boundaries
+One per-document controller is created outside StrictMode effects. Every operation
+captures document, epoch, request and shared revision ownership. Checks surround
+fetch/body awaits, error handling and further steps; the reducer also rejects
+stale owners. Old A success, denial, parse error, CSRF or cleanup completion cannot
+replace or clear a newer owned B. Abort controls resources; it does not undo
+server effects or prevent browser cookie delivery. Reads have a 10-second deadline;
+each client preparation/cleanup action has a 30-second deadline, not 30 seconds per
+request. Native submission ends that client deadline; it does not bound OIDC flow,
+browser navigation or delivery. A stalled navigation requires explicit return/reload.
 
-There is **no backend proxy, API client, Auth0 SDK, token/cookie handling, CSRF,
-real login, callback, registration, logout or persisted user/domain state**.
-The Vite development transport is tooling, not a backend WebSocket integration.
-No Workspace/RMP forms, role selection, commerce or permissions model are implemented.
+The only new persisted value is `creastrix.auth.boundary`: a replaceable opaque
+nonce plus intent phase, never identity, credential, stable browser ID or permission.
+It is written only at document startup or explicit auth intent. Completion, peer
+events, recheck, focus and lifecycle events **do not write it**. Phase describes
+intent, not completion; there is no completion CAS, nonce restoration or outcome
+broadcast. Events wake a synchronous current-storage re-read, not adoption of event
+payload. Invalid/unavailable storage disables connected authentication instead of
+falling back to an unsupported multi-tab guarantee. Language persistence remains
+separate and usable when storage is blocked.
 
-`AUTH-COOKIE-FOLLOWUP-001` remains **OPEN**. This demo is neither React/browser
-authentication verification F nor real Auth0 verification P. It does not resume the
-separate stopped browser proof or transfer any external server candidate into main.
-Backend implementation state remains separate from this UI scaffold.
+Peer invalidation and hide/pagehide close a direct DOM curtain and clear private
+state/pending material synchronously. Visible/focus/pageshow re-entry requires a
+fresh owned check before reopening after the current React DOM commit. Hot-reload
+disposal removes owned listeners. Paused tabs, pixels already delivered and actual
+bfcache behavior still require the browser gate.
 
-## Verification and IDE
+This is not a cross-tab lock or absolute latest-login-wins. Server G1/G2 remain:
+G2 may deny with 401 and require explicit recovery instead of preserving B
+seamlessly. L1 (an earlier request under another still-live Q can first be admitted
+after B and return A) is not closed by discarding stale UI responses. Future
+business writes and global/provider/all-device logout are not covered.
 
-Open the existing repository or its `frontend` directory in WebStorm. Keep the
-existing Node/IDE settings; npm scripts are defined in `package.json`. Never create a
-nested repository or commit shared IDE state. Ignored dependencies/build output may
-remain locally; `.env`, `.idea`, coverage and caches are not source files.
+## Fixed development transport and limits
 
-The [Frontend CI](../.github/workflows/frontend-ci.yml) workflow runs locked install,
-typecheck, lint, tests and build on changes under `frontend/**` or to that workflow,
-for pull requests and pushes to main. It has read-only contents permission and pinned
-official actions. Backend CI has separate path filters; frontend verification does
-not substitute for Maven, Docker or backend checks.
+The development proxy routes segment namespaces `/auth`, `/api`, `/oauth2` and
+`/login/oauth2`, including percent-encoded letters, before SPA fallback. `/login`
+and `/account` remain React routes. Unknown backend namespace routes must reach
+backend denial, not HTML. The fixed target is `http://127.0.0.1:8080`; configuration
+does not rewrite URI/query, Host, Origin, Location, cookie Domain/Path or Set-Cookie,
+does not follow redirects, and does not add forwarded-header trust or CORS.
+Unit regex/options checks do **not** prove actual Vite proxy or browser cookie behavior.
 
-See the [root README](../README.md#frontend-ui-foundation) for repository context.
+Early top-level login 403/409/503 may display the backend's opaque JSON page outside
+React. This bounded UX debt is not hidden by rewriting a response or adding a
+backend endpoint. The user explicitly returns/reloads; there is no blind retry.
+
+## Verification and remaining gates
+
+Fresh author-side typecheck, lint, Vitest and build evidence belongs to the external
+author report, not backend CI, native IDE or browser verification. Vitest uses
+Testing Library/happy-dom, injected finite responses and deferred bodies; it is
+not an actual HTTP/OIDC/cookie/bfcache proof. Independent source review, IDE and
+real React + Vite + exact integrated backend + isolated browser F are separate
+remaining gates. Real Auth0 P has not been performed.
+
+`AUTH-COOKIE-FOLLOWUP-001` remains **OPEN**. S003 is integrated through PR #34;
+the historical server/scoped browser/native/CI results do not close full F/P or
+authorize public access. No dependency, backend, workflow or domain decision is
+changed by this client candidate.
+
+Use the existing WebStorm/project settings; do not commit IDE state. Ignored
+dependencies/build output may remain locally. [Frontend CI](../.github/workflows/frontend-ci.yml)
+has separate frontend/workflow path filters; no CI or backend execution occurred
+in this authoring stage. See the [root context](../README.md#frontend-ui-foundation)
+and [authentication contract](../docs/authentication-pilot.md#react-client-candidate-and-f-boundary).

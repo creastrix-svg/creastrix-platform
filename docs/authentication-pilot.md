@@ -8,9 +8,10 @@ Backend result B passed author, native IDE, independent R2 re-review and CI gate
 the distinct evidence is recorded below under verification gates.
 React/browser result F and actual Auth0 walkthrough P
 are not done; backend tests do not prove working user-facing login.
-This change implements the exact reviewed S003 forward-port described below.
-Source transfer and historical evidence alone do not prove repository integration,
-follow-up closure, a new APPROVED domain specification or public-access authorization.
+S003 is integrated through PR #34 as recorded below. The current feature branch
+adds a proposed React client, not independent approval or completed F evidence.
+Historical server integration and current frontend unit/build checks do not close
+the follow-up, establish a new APPROVED domain specification or authorize public access.
 
 ## Identity and persistence boundary
 
@@ -53,8 +54,8 @@ subject. An absent SELECT cannot prove the outcome of an in-flight transaction.
 
 ## Fixed local transport and routes
 
-One backend listens at `127.0.0.1:8080`. The future browser origin is exactly
-`http://localhost:3000`; its separately implemented dev proxy must preserve the
+One backend listens at `127.0.0.1:8080`. The connected browser origin is exactly
+`http://localhost:3000`; the proposed separately built dev proxy must preserve the
 browser Host/Origin, route backend namespaces before SPA fallback and pass
 Set-Cookie/status/Location unchanged. Backend neither creates that proxy nor
 derives trusted destinations from Host/Forwarded headers. No CORS is enabled.
@@ -205,7 +206,7 @@ composed into this exact S003 transfer.
 
 ### Open cookie follow-up
 
-`AUTH-COOKIE-FOLLOWUP-001` remains **OPEN until integration and explicit disposition**.
+`AUTH-COOKIE-FOLLOWUP-001` remains **OPEN pending full F and explicit disposition**.
 The owner's temporary local nonpublic acceptance on 2026-09-14 did not accept
 universal invalidation/HTTP-commit atomicity or automatically authorize the later
 observed B-to-A consequence. The S003 candidate and scoped evidence do not close
@@ -228,14 +229,58 @@ Own navigation redirects are literal absolute 303 Locations: login initiation
 to `http://localhost:3000/oauth2/authorization/auth0`, callback success to
 `http://localhost:3000/account`, failure to
 `http://localhost:3000/login?auth=failed`. No user redirect parameter is accepted;
-session IDs are never URL-encoded. `/login` and `/account` HTML belong to future
-React, not backend. Login is a top-level form POST, not fetch-follow to Auth0.
+session IDs are never URL-encoded. `/login` and `/account` HTML belong to the
+React client, not backend. Login is a top-level form POST, not fetch-follow to Auth0.
 
 API errors are opaque JSON: 401 for absent/expired session, 403 for confirmed
 inactive/denied access or invalid security input, 503 for unavailable current
 state. Callback failure reveals no account/binding/SQL/token detail and makes
 no rollback claim. Auth/API responses are not cached. DB failure denies access
 but is not proof that logout or session invalidation succeeded.
+
+### React client candidate and F boundary
+
+The current `solar_wind/react-authentication-f` change is author-side WIP, not an
+integrated or independently approved client. It replaces fictional account data
+with owned `/api/me` `id/status` rendering and explicit hosted login, local logout,
+switch/recovery. The fixed loopback development proxy routes backend namespaces
+before SPA fallback, including accepted percent-encoded letters, without URI/query,
+Host/Origin, Location or cookie rewriting. Preview is disconnected. Actual proxy
+and browser behavior remain separate F gates; config-unit checks are not proof.
+
+One controller outside StrictMode owns each document operation. Checks surround
+fetch/body parsing, failure paths and later network/submission steps; reducer
+admission also rejects stale owners. Success, denial, transport/parse error, CSRF
+and cleanup completion from old A cannot overwrite/erase newer owned B. Private
+identity is memory-only. The non-secret `creastrix.auth.boundary` marker contains
+only a replaceable nonce and intent phase: writes occur only at document startup
+or explicit intent, never on completion, peer events or lifecycle revalidation.
+Phase is not an outcome/CAS. It is not a cookie identity, permission, stable
+browser identifier, cross-tab lock or global login ordering. Invalid/unavailable
+storage fails closed. DE/EN language persistence stays separate.
+
+Peer invalidation and hide/pagehide synchronously close a DOM curtain, clear private
+state/CSRF and cancel owned work. Visible/focus/pageshow requires a fresh owned
+validation before reopening after the current DOM commit. Paused tabs, delivered
+pixels and bfcache require browser verification. G1/G2 remain server guarantees;
+L1 and future business-write limits are not closed by frontend stale-result rejection.
+
+Explicit login uses two sequential CSRF reads for bootstrap/echo and a native
+top-level form POST, never fetch-follow to an IdP. Only logout 204 confirms
+presented-Q revocation; 409 is cleanup-only. Recovery permits bootstrap/echo only
+after those outcomes, then requires a new explicit full login. Unknown/503/denied
+results never imply logout success, binding rollback or automatic retry. Reads
+have a 10-second deadline and each client preparation/cleanup action a 30-second
+deadline, not a provider/navigation/delivery bound after native submission. Early native
+login 403/409/503 can display opaque backend JSON outside React, an explicit bounded
+UX limitation without proxy/backend response rewriting.
+
+Vitest/DOM/static/build evidence is author verification, not browser F or native
+IDE execution. The future F gate must use actual React, Vite and exact integrated
+backend, synthetic OIDC and a supported fresh isolated cookie context with bounded
+two-tab/lifecycle/recovery ordering and loopback/cleanup ownership. No real Auth0 P,
+Workspace/RMP API/forms, linking/social login, global logout, public operation or
+rollout is proved. See the [frontend guide](../frontend/README.md).
 
 ### Diagnostic observation boundary
 
@@ -422,10 +467,13 @@ verification, PR CI or post-merge CI for this transfer:
   Maven 3.9.16, PostgreSQL 18.4 and Flyway V1 → V12. Its external loopback helper
   was test-classpath-only and is not transferred; packaged-start smoke was NOT RUN.
 
-This change implements the exact frozen Java forward-port. Its transfer and
-dated historical evidence alone do not prove repository integration or a new
-runtime, native IDE, PR CI or post-merge run. PA observer/HOLD and separate
+S003 was subsequently integrated through [PR #34](https://github.com/creastrix-svg/creastrix-platform/pull/34)
+as merge `594b20134ae3653d1b6d1a315b44c0e6e1282f56`. Its separate
+[post-merge Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37917170767)
+on 2026-10-09 passed 1618 tests, failures/errors/skipped 0/0/0 and tests/package
+BUILD SUCCESS with PostgreSQL 18.4 / Flyway V1 → V12. These are historical server
+integration results, not a new frontend author run or complete F/P proof. PA observer/HOLD and separate
 combined foundation/HTTP/CI changes remain separate. Full React/dev-proxy F, real Auth0 P, public application
 access, rollout and global revocation are not verified. Source transfer is not
-follow-up closure: `AUTH-COOKIE-FOLLOWUP-001` remains OPEN until integration and
+follow-up closure: `AUTH-COOKIE-FOLLOWUP-001` remains OPEN pending full F and
 explicit disposition, with the browser and pre-public-access gates retained.

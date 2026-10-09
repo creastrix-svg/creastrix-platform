@@ -3,6 +3,10 @@
 body { margin: 0; min-width: 320px; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { font: inherit; }
+button:disabled { cursor: not-allowed; opacity: .6; }
+html[data-auth-private="closed"] [data-private-account] { visibility: hidden; }
+.auth-status { margin: 16px 0; padding: 12px 0; border-bottom: 1px solid #deded9; }
+.profile dd { overflow-wrap: anywhere; }
 a { color: inherit; }
 button, .button { min-height: 44px; }
 a, button { touch-action: manipulation; }

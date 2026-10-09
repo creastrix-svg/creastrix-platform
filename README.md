@@ -167,7 +167,8 @@ local-pilot acceptance is historical, not automatic acceptance of the subsequent
 observed B-to-A account selection or permission for public access.
 Author verification, native IDE execution, independent re-review, PR CI and
 post-merge CI are distinct evidence; none closes the cookie follow-up.
-React/Redux authentication integration, its dev proxy and browser verification F are not implemented here;
+The current feature branch proposes a bounded React/Redux client and dev proxy;
+they are not integrated or independently approved, and browser verification F is pending.
 the real Auth0 walkthrough P, tenant setup and rollout have not been performed.
 Login does not create a Workspace. No Workspace/RMP HTTP API, linking, social
 login or commerce implementation is included, and no working user-facing login
@@ -175,8 +176,10 @@ or complete authentication/MVP delivery is claimed.
 
 ### S003 Cookie Pairing
 
-This checkout implements the exact independently source-reviewed S003
-forward-port. An immutable process-local Q/session stamp is captured before current-User lookup
+S003 is integrated through [PR #34](https://github.com/creastrix-svg/creastrix-platform/pull/34).
+Its separate [post-merge CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37917170767)
+passed 1618/1618 and tests/package BUILD SUCCESS on 2026-10-09; these are historical
+server results, not a new frontend/browser run. An immutable process-local Q/session stamp is captured before current-User lookup
 and checked again at final admission. G1 rejects a revoked or superseded
 same-Q stamp. G2 checks the current cookie jar's Q/SID pairing: a late A success
 cookie can require 401 and explicit recovery, rather than silently selecting A;
@@ -195,19 +198,26 @@ dispositions accepted scoped browser and server evidence while retaining the
 original incomplete/failed orchestration reports. These are dated external
 evidence, not fresh IDE or CI results for this transfer. Full React/dev-proxy
 authentication F, real Auth0 P and rollout remain unverified.
-`AUTH-COOKIE-FOLLOWUP-001` stays OPEN until integration and explicit disposition;
+`AUTH-COOKIE-FOLLOWUP-001` stays OPEN for the remaining F and explicit disposition gates;
 source transfer and historical evidence do not close it or authorize public access.
 
 ## Frontend UI Foundation
 
 FRONTEND-BOOTSTRAP-001 provides a separately built [frontend](frontend/README.md)
-in this repository: React/TypeScript/Vite, Redux Toolkit for the shared DE/EN UI
-preference, the selected 3C logo and neutral demo routes `/`, `/login`, `/account`.
-This is a UI-only scaffold, not a production-ready account area. The demo account
-is public and fictional; planned sign-in methods are disabled. A Workspace remains optional.
-There is no backend/Auth0 connection, proxy, credential collection, real sign-in,
-Workspace/RMP API or rollout. This does not verify authentication F/P or close
-`AUTH-COOKIE-FOLLOWUP-001` (OPEN).
+in this repository. The current `solar_wind/react-authentication-f` WIP adds a
+bounded client candidate: hosted-login native form, owned `/api/me` id/status
+display, local logout/switch and explicit recovery through a fixed development
+proxy. Fictional account data is removed; Redux private state is memory-only.
+DE/EN, the selected 3C logo, keyboard support and voluntary Workspace messaging
+remain. A non-secret shared intent marker and synchronous private-view curtain
+reject stale UI results; neither is server authorization or global login ordering.
+G1/G2 and the cross-Q L1 limitation remain; suppressing an old response is not
+undoing its server effects or making future business writes safe.
+
+This candidate is not integrated, independently approved, browser F or real Auth0 P
+verified. Type/lint/unit/build checks do not prove cookie, OIDC, proxy or bfcache
+behavior. Separate signup/social login, Workspace/RMP API/forms, public operation
+and rollout remain absent. `AUTH-COOKIE-FOLLOWUP-001` stays OPEN.
 
 Using Node 22.14.0 / npm 10.9.2, run from `frontend`:
 
@@ -216,7 +226,9 @@ npm ci
 npm run dev
 ```
 
-The UI is local-only at `http://localhost:3000` (loopback, strict port).
+Connected development requires exactly `http://localhost:3000` (loopback, strict port)
+and the separately configured loopback backend. Build preview is disconnected and
+disables authentication; it is not a deployment service.
 Separate checks: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.
 Frontend CI runs locked install, typecheck, lint, tests and build for changes under
 `frontend/**` or to `.github/workflows/frontend-ci.yml`; backend CI has separate filters.
