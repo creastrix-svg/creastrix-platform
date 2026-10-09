@@ -18,11 +18,21 @@ public final class CurrentUserAccessFilter extends OncePerRequestFilter {
     private final AuthenticatedUserService users;
     private final AuthenticationProperties properties;
     private final Clock clock;
+    private final BrowserSessionContextRegistry contexts;
 
-    public CurrentUserAccessFilter(AuthenticatedUserService users, AuthenticationProperties properties, Clock clock) {
+    // Disposable-prototype observation only: hooks never supply/replace an admission decision.
+    interface GateObserver {
+        default void beforeFinal(HttpServletRequest request, BrowserSessionContextRegistry.Stamp stamp) { }
+        default void afterFinal(HttpServletRequest request, BrowserSessionContextRegistry.Stamp stamp, boolean admitted) { }
+    }
+    static volatile GateObserver gateObserver = new GateObserver() { };
+
+    public CurrentUserAccessFilter(AuthenticatedUserService users, AuthenticationProperties properties, Clock clock,
+                                  BrowserSessionContextRegistry contexts) {
         this.users = users;
         this.properties = properties;
         this.clock = clock;
+        this.contexts = contexts;
     }
 
     @Override
@@ -43,6 +53,13 @@ public final class CurrentUserAccessFilter extends OncePerRequestFilter {
         if (!clock.instant().isBefore(principal.authenticatedAt().plus(AuthenticationProperties.ABSOLUTE_LIFETIME))) {
             Diagnostics.mark(Diagnostics.Event.SESSION_EXPIRED, Diagnostics.Reason.ABSOLUTE_LIFETIME_EXPIRED);
             AuthenticationConfiguration.invalidate(request, response, properties);
+            AuthenticationConfiguration.jsonError(response, 401);
+            return;
+        }
+        // Capture once before DB. Never borrow a later generation from the registry.
+        String q = BrowserSessionContextRegistry.cookie(request);
+        var captured = contexts.capture(request.getSession(false));
+        if (!contexts.echo(q, captured)) {
             AuthenticationConfiguration.jsonError(response, 401);
             return;
         }
@@ -72,6 +89,14 @@ public final class CurrentUserAccessFilter extends OncePerRequestFilter {
                     unavailable instanceof AuthenticatedUserService.ResolutionUnavailableException resolution
                             ? resolution.diagnosticReason() : Diagnostics.failureReason(unavailable));
             AuthenticationConfiguration.jsonError(response, 503);
+            return;
+        }
+        GateObserver observer = gateObserver;
+        observer.beforeFinal(request, captured);
+        boolean admitted = contexts.finalAdmit(q, captured);
+        observer.afterFinal(request, captured, admitted);
+        if (!admitted) {
+            AuthenticationConfiguration.jsonError(response, 401);
             return;
         }
         chain.doFilter(request, response);

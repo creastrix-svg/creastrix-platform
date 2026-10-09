@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -13,12 +14,22 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
 
 import com.creastrix.platform.user.application.AuthenticatedUserService;
 import com.creastrix.platform.user.application.port.UserIdentityBindingRepository.Identity;
 import jakarta.servlet.Filter;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.RepeatedTest;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -64,6 +75,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 class AuthenticationPolicyTest {
+
+    private final List<BrowserSessionContextRegistry> cookieRegistries = new ArrayList<>();
+
+    private BrowserSessionContextRegistry cookieRegistry(Clock clock) {
+        var registry = new BrowserSessionContextRegistry(clock);
+        cookieRegistries.add(registry);
+        return registry;
+    }
+
+    @AfterEach void closeCookieRegistries() {
+        cookieRegistries.forEach(BrowserSessionContextRegistry::close);
+        cookieRegistries.forEach(registry -> {
+            assertThat(registry.activeCleanupWorkers()).isZero();
+            assertThat(registry.queuedCleanupTasks()).isZero();
+        });
+    }
 
     private static final String ISSUER = "https://pilot.eu.auth0.com/";
     private static final String SUBJECT = "auth0|pilot-subject";
@@ -192,13 +219,17 @@ class AuthenticationPolicyTest {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/me");
         MockHttpSession session = new MockHttpSession();
         request.setSession(session);
+        var expiryClock = Clock.fixed(STARTED.plusSeconds(elapsedSeconds), ZoneOffset.UTC);
+        var contexts = cookieRegistry(expiryClock);
+        String q = contexts.bootstrap(session, AuthenticationAttemptCoordinator.forSession(session));
+        request.addHeader("Cookie", BrowserSessionContextRegistry.COOKIE_NAME + "=" + q);
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean endpointReached = new AtomicBoolean();
         SecurityContextHolder.getContext().setAuthentication(
                 UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.getAuthorities()));
         try {
             // A null database service makes an accidental lookup fail this test instead of hiding it.
-            new CurrentUserAccessFilter(null, properties(), Clock.fixed(STARTED.plusSeconds(elapsedSeconds), ZoneOffset.UTC))
+            new CurrentUserAccessFilter(null, properties(), expiryClock, contexts)
                     .doFilter(request, response, (ignoredRequest, ignoredResponse) -> endpointReached.set(true));
 
             assertThat(response.getStatus()).isEqualTo(401);
@@ -647,7 +678,7 @@ class AuthenticationPolicyTest {
         var response = new MockHttpServletResponse();
         requests.saveAuthorizationRequest(savedFlow("owned-state"), request, response);
         var boundary = new AuthenticationConfiguration.RequestBoundary(
-                properties(), Clock.fixed(NOW, ZoneOffset.UTC), requests);
+                properties(), Clock.fixed(NOW, ZoneOffset.UTC), requests, cookieContext(request, session));
         var rejection = CreastrixOidcUserService.rejected();
         jakarta.servlet.FilterChain failing = (input, output) -> {
             var pinned = (jakarta.servlet.http.HttpServletRequest) input;
@@ -676,6 +707,1105 @@ class AuthenticationPolicyTest {
         var next = AuthenticationAttemptCoordinator.forSession(session).admit(session, "next");
         assertThat(next).isNotNull();
         next.finish();
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextAtomicInitialPairingIssuesExactlyOnceAndNeverAdoptsOrReissues() throws Exception {
+        var contexts = cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC));
+        var session = new MockHttpSession();
+        var coordinator = AuthenticationAttemptCoordinator.forSession(session);
+        var ready = new CountDownLatch(2);
+        var start = new CountDownLatch(1);
+        var bothReserved = new CountDownLatch(2);
+        contexts.pairingObserver = stamp -> {
+            bothReserved.countDown();
+            try { assertThat(bothReserved.await(10, TimeUnit.SECONDS)).isTrue(); }
+            catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(interrupted);
+            }
+        };
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> { ready.countDown(); assertThat(start.await(10, TimeUnit.SECONDS)).isTrue();
+                return contexts.bootstrap(session, coordinator); });
+            var second = executor.submit(() -> { ready.countDown(); assertThat(start.await(10, TimeUnit.SECONDS)).isTrue();
+                return contexts.bootstrap(session, coordinator); });
+            try {
+                assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+                start.countDown();
+                String a = first.get(30, TimeUnit.SECONDS);
+                String b = second.get(30, TimeUnit.SECONDS);
+                assertThat((a == null) != (b == null)).isTrue();
+                String q = a == null ? b : a;
+                var stamp = contexts.capture(session);
+                assertThat(contexts.echo(q, stamp)).isTrue();
+                assertThat(contexts.bootstrap(session, coordinator)).isNull();
+                assertThat(contexts.attachAnonymous("unknown", session, coordinator)).isFalse();
+                assertThat(contexts.echo(null, stamp)).isFalse();
+                contexts.cleanup();
+                assertThat(contexts.counts().references()).isEqualTo(1);
+                assertThat(contexts.counts().contexts()).isEqualTo(1);
+                assertThat(session.isInvalid()).isFalse();
+                assertThat(contexts.echo(q, contexts.capture(session))).isTrue();
+            }
+            finally { start.countDown(); }
+        }
+    }
+
+    @Test
+    void cookieContextCookieParsingRejectsDuplicateMalformedAndAbsentWithoutChoosingOne() {
+        var contexts = cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC));
+        var session = new MockHttpSession();
+        String q = contexts.bootstrap(session, AuthenticationAttemptCoordinator.forSession(session));
+        var request = new MockHttpServletRequest();
+        assertThat(BrowserSessionContextRegistry.cookieSupplied(request)).isFalse();
+        assertThat(BrowserSessionContextRegistry.cookie(request)).isNull();
+        request.addHeader("Cookie", "other=ok; " + BrowserSessionContextRegistry.COOKIE_NAME + "=" + q);
+        assertThat(BrowserSessionContextRegistry.cookieSupplied(request)).isTrue();
+        assertThat(BrowserSessionContextRegistry.cookie(request)).isEqualTo(q);
+        request.addHeader("Cookie", BrowserSessionContextRegistry.COOKIE_NAME + "=" + q);
+        assertThat(BrowserSessionContextRegistry.cookie(request)).isNull();
+        for (String malformed : List.of("", "bad", q + "=", "\"bad\"")) {
+            var invalid = new MockHttpServletRequest();
+            invalid.addHeader("Cookie", BrowserSessionContextRegistry.COOKIE_NAME + "=" + malformed);
+            assertThat(BrowserSessionContextRegistry.cookieSupplied(invalid)).isTrue();
+            assertThat(BrowserSessionContextRegistry.cookie(invalid)).isNull();
+        }
+        var quoted = new MockHttpServletRequest();
+        quoted.addHeader("Cookie", "$Version=\"1\"; " + BrowserSessionContextRegistry.COOKIE_NAME + "=\"" + q + "\"");
+        assertThat(BrowserSessionContextRegistry.cookie(quoted)).isEqualTo(q);
+        assertThat(cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC))
+                .finalAdmit(q, contexts.capture(session))).isFalse();
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextUnresolvedAttachmentCleanupCannotDestroyAnotherBootstrapWinner() throws Exception {
+        var contexts = cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC));
+        var original = new MockHttpSession();
+        String qA = contexts.bootstrap(original, AuthenticationAttemptCoordinator.forSession(original));
+        var contested = new MockHttpSession();
+        var coordinator = AuthenticationAttemptCoordinator.forSession(contested);
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        contexts.pairingObserver = stamp -> {
+            if (!stamp.contextId().equals(qA)) return;
+            entered.countDown();
+            try { assertThat(release.await(10, TimeUnit.SECONDS)).isTrue(); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new AssertionError(interrupted); }
+        };
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var attachment = executor.submit(() -> contexts.attachAnonymous(qA, contested, coordinator));
+            try {
+                assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+                String qB = contexts.bootstrap(contested, coordinator);
+                var stampB = contexts.capture(contested);
+                assertThat(qB).isNotNull().isNotEqualTo(qA);
+                assertThat(contexts.revoke(qA)).isTrue();
+                contexts.cleanup();
+                assertThat(contested.isInvalid()).isFalse();
+                assertThat(contexts.counts().references()).isEqualTo(2);
+                assertThat(contexts.counts().retiredReferences()).isEqualTo(1);
+                assertThat(contexts.echo(qB, stampB)).isTrue();
+                release.countDown();
+                assertThat(attachment.get(30, TimeUnit.SECONDS)).isFalse();
+                contexts.cleanup();
+                assertThat(contested.isInvalid()).isFalse();
+                assertThat(contexts.echo(qB, stampB)).isTrue();
+                assertThat(contexts.counts().references()).isEqualTo(1);
+            }
+            finally { release.countDown(); contexts.pairingObserver = stamp -> { }; }
+        }
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextExpiredPendingPairingCannotIssueAndRetainsCreditUntilResolution() throws Exception {
+        var clock = new CookieContextClock(NOW);
+        var contexts = cookieRegistry(clock);
+        var session = new MockHttpSession();
+        var coordinator = AuthenticationAttemptCoordinator.forSession(session);
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        contexts.pairingObserver = stamp -> {
+            entered.countDown();
+            try { assertThat(release.await(10, TimeUnit.SECONDS)).isTrue(); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new AssertionError(interrupted); }
+        };
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var bootstrap = executor.submit(() -> contexts.bootstrap(session, coordinator));
+            try {
+                assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+                clock.advance(AuthenticationProperties.FLOW_LIFETIME);
+                contexts.cleanup();
+                assertThat(contexts.counts().contexts()).isEqualTo(1);
+                assertThat(contexts.counts().references()).isEqualTo(1);
+                assertThat(contexts.counts().retiredReferences()).isEqualTo(1);
+                assertThat(session.isInvalid()).isFalse();
+                release.countDown();
+                assertThat(bootstrap.get(30, TimeUnit.SECONDS)).isNull();
+                assertThat(contexts.capture(session)).isNull();
+                contexts.cleanup();
+                assertThat(contexts.counts().contexts()).isZero();
+                assertThat(contexts.counts().references()).isZero();
+                assertThat(session.isInvalid()).isFalse();
+            }
+            finally { release.countDown(); contexts.pairingObserver = stamp -> { }; }
+        }
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextExactOwnerAndCapturedCleanupCannotAffectNewGenerationOrIndependentContext() throws Exception {
+        var contexts = cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC));
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var destroyed = new CountDownLatch(1);
+        var old = new MockHttpSession() {
+            @Override public void invalidate() {
+                entered.countDown();
+                try { assertThat(release.await(10, TimeUnit.SECONDS)).isTrue(); }
+                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new AssertionError(interrupted); }
+                super.invalidate();
+                destroyed.countDown();
+            }
+        };
+        String q = contexts.bootstrap(old, AuthenticationAttemptCoordinator.forSession(old));
+        var oldStamp = contexts.capture(old);
+        var owner = contexts.beginOwner(oldStamp);
+        assertThat(owner).isNotNull();
+        assertThat(contexts.beginOwner(oldStamp)).isNull();
+        assertThat(contexts.reservePublication(owner)).isTrue();
+        assertThat(contexts.reservePublication(owner)).isFalse();
+        assertThat(contexts.publish(owner)).isTrue();
+        assertThat(contexts.finalAdmit(q, oldStamp)).isTrue();
+        assertThat(contexts.canStart(q, oldStamp)).isFalse();
+        assertThat(contexts.revoke(q)).isTrue();
+        assertThat(contexts.finalAdmit(q, oldStamp)).isFalse();
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var cleanup = executor.submit(contexts::cleanup);
+            try {
+                assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+                assertThat(contexts.counts().retiredReferences()).isEqualTo(1);
+                assertThat(contexts.counts().cleanupClaims()).isEqualTo(1);
+                var next = new MockHttpSession();
+                assertThat(contexts.attachAnonymous(q, next, AuthenticationAttemptCoordinator.forSession(next))).isTrue();
+                var nextStamp = contexts.capture(next);
+                assertThat(nextStamp.generation()).isEqualTo(oldStamp.generation() + 1);
+                var nextOwner = contexts.beginOwner(nextStamp);
+                assertThat(nextOwner).isNotNull();
+                contexts.cancel(owner);
+                assertThat(contexts.owns(nextOwner)).isTrue();
+                assertThat(contexts.publish(owner)).isFalse();
+                assertThat(contexts.reservePublication(nextOwner)).isTrue();
+                assertThat(contexts.publish(nextOwner)).isTrue();
+                var independent = new MockHttpSession();
+                String independentQ = contexts.bootstrap(independent, AuthenticationAttemptCoordinator.forSession(independent));
+                var independentStamp = contexts.capture(independent);
+                var independentOwner = contexts.beginOwner(independentStamp);
+                assertThat(contexts.reservePublication(independentOwner)).isTrue();
+                assertThat(contexts.publish(independentOwner)).isTrue();
+                assertThat(contexts.finalAdmit(independentQ, independentStamp)).isTrue();
+                release.countDown();
+                cleanup.get(30, TimeUnit.SECONDS);
+                assertThat(destroyed.await(10, TimeUnit.SECONDS)).isTrue();
+                contexts.cancel(owner);
+                assertThat(contexts.finalAdmit(q, nextStamp)).isTrue();
+                assertThat(contexts.finalAdmit(q, oldStamp)).isFalse();
+                assertThat(contexts.finalAdmit(independentQ, independentStamp)).isTrue();
+                assertThat(next.isInvalid()).isFalse();
+                assertThat(contexts.counts().cleanupClaims()).isZero();
+                assertThat(contexts.counts().references()).isEqualTo(2);
+            }
+            finally { release.countDown(); }
+        }
+    }
+
+    @Test
+    void cookieContextDeadlineRollbackTtlRestartAndImmutableRotationStamp() {
+        var clock = new CookieContextClock(NOW);
+        var contexts = cookieRegistry(clock);
+        var session = new MockHttpSession();
+        var request = new MockHttpServletRequest();
+        request.setSession(session);
+        String q = contexts.bootstrap(session, AuthenticationAttemptCoordinator.forSession(session));
+        var stamp = contexts.capture(session);
+        var expired = contexts.beginOwner(stamp);
+        assertThat(contexts.reservePublication(expired)).isTrue();
+        clock.advance(AuthenticationProperties.FLOW_LIFETIME);
+        assertThat(contexts.publish(expired)).isFalse();
+        var next = contexts.beginOwner(stamp);
+        assertThat(next).isNotNull();
+        contexts.cancel(expired);
+        assertThat(contexts.owns(next)).isTrue();
+        assertThat(contexts.reservePublication(next)).isTrue();
+        String originalId = session.getId();
+        request.changeSessionId();
+        assertThat(session.getId()).isNotEqualTo(originalId);
+        assertThat(contexts.capture(session)).isEqualTo(stamp);
+        assertThat(contexts.publish(next)).isTrue();
+        assertThat(contexts.finalAdmit(q, stamp)).isTrue();
+        assertThat(cookieRegistry(clock).echo(q, stamp)).isFalse();
+        clock.advance(BrowserSessionContextRegistry.HARD_LIFETIME.minus(AuthenticationProperties.FLOW_LIFETIME));
+        assertThat(contexts.finalAdmit(q, stamp)).isFalse();
+        assertThat(contexts.revoke(q)).isFalse();
+        assertThat(contexts.bootstrap(session, AuthenticationAttemptCoordinator.forSession(session))).isNull();
+        assertThat(contexts.counts().retiredReferences()).isEqualTo(1);
+        contexts.cleanup();
+        assertThat(session.isInvalid()).isTrue();
+        assertThat(contexts.counts().contexts()).isZero();
+        assertThat(contexts.counts().references()).isZero();
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextBoundsIncludeRetiredContextsAndReferencesUntilCleanupAcknowledged() {
+        var clock = new CookieContextClock(NOW);
+        var contexts = cookieRegistry(clock);
+        for (int i = 0; i < BrowserSessionContextRegistry.MAX_CONTEXTS; i++) {
+            var session = new MockHttpSession();
+            String q = contexts.bootstrap(session, AuthenticationAttemptCoordinator.forSession(session));
+            assertThat(q).isNotNull();
+            assertThat(contexts.revoke(q)).isTrue();
+        }
+        assertThat(contexts.counts().contexts()).isEqualTo(64);
+        assertThat(contexts.counts().references()).isEqualTo(64);
+        assertThat(contexts.counts().retiredReferences()).isEqualTo(64);
+        var overflow = new MockHttpSession();
+        assertThatExceptionOfType(BrowserSessionContextRegistry.Capacity.class)
+                .isThrownBy(() -> contexts.bootstrap(overflow, AuthenticationAttemptCoordinator.forSession(overflow)));
+        contexts.cleanup();
+        assertThat(contexts.counts().contexts()).isEqualTo(64);
+        assertThat(contexts.counts().references()).isEqualTo(56);
+        clock.advance(BrowserSessionContextRegistry.HARD_LIFETIME);
+        for (int i = 0; i < 32 && contexts.counts().references() != 0; i++) contexts.cleanup();
+        assertThat(contexts.counts().contexts()).isZero();
+        assertThat(contexts.counts().references()).isZero();
+        assertThat(contexts.counts().cleanupClaims()).isZero();
+    }
+
+    @Test
+    void cookieContextPerContextAndGlobalReferenceCapsFailClosedWithoutEviction() {
+        var contexts = cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC));
+        String firstQ = null;
+        for (int i = 0; i < 16; i++) {
+            var session = new MockHttpSession();
+            String q = contexts.bootstrap(session, AuthenticationAttemptCoordinator.forSession(session));
+            if (firstQ == null) firstQ = q;
+            for (int j = 1; j < 8; j++) {
+                var sibling = new MockHttpSession();
+                assertThat(contexts.attachAnonymous(q, sibling, AuthenticationAttemptCoordinator.forSession(sibling))).isTrue();
+            }
+            var perContextOverflow = new MockHttpSession();
+            assertThatExceptionOfType(BrowserSessionContextRegistry.Capacity.class)
+                    .isThrownBy(() -> contexts.attachAnonymous(q, perContextOverflow,
+                            AuthenticationAttemptCoordinator.forSession(perContextOverflow)));
+        }
+        assertThat(contexts.counts().references()).isEqualTo(128);
+        assertThat(contexts.counts().contexts()).isEqualTo(16);
+        var globalOverflow = new MockHttpSession();
+        assertThatExceptionOfType(BrowserSessionContextRegistry.Capacity.class)
+                .isThrownBy(() -> contexts.bootstrap(globalOverflow, AuthenticationAttemptCoordinator.forSession(globalOverflow)));
+        assertThat(contexts.revoke(firstQ)).isTrue();
+        assertThat(contexts.counts().references()).isEqualTo(128);
+        assertThat(contexts.counts().retiredReferences()).isEqualTo(8);
+        contexts.cleanup();
+        assertThat(contexts.counts().references()).isEqualTo(120);
+    }
+
+    @Test
+    void cookieContextCleanupReentrancyAndFailureKeepExactResourcesCharged() {
+        var contexts = cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC));
+        var fails = new AtomicBoolean(true);
+        var entered = new AtomicBoolean();
+        var session = new MockHttpSession() {
+            @Override public void invalidate() {
+                entered.set(true);
+                // Reenter real registry operations from a Servlet callback; no registry lock is held.
+                assertThat(contexts.counts().cleanupClaims()).isEqualTo(1);
+                contexts.cleanup();
+                if (fails.get()) throw new IllegalArgumentException("synthetic cleanup failure");
+                super.invalidate();
+            }
+        };
+        String q = contexts.bootstrap(session, AuthenticationAttemptCoordinator.forSession(session));
+        assertThat(contexts.revoke(q)).isTrue();
+        contexts.cleanup();
+        assertThat(entered).isTrue();
+        assertThat(session.isInvalid()).isFalse();
+        assertThat(contexts.counts().references()).isEqualTo(1);
+        assertThat(contexts.counts().retiredReferences()).isEqualTo(1);
+        assertThat(contexts.counts().cleanupClaims()).isZero();
+        fails.set(false);
+        contexts.cleanup();
+        assertThat(session.isInvalid()).isTrue();
+        assertThat(contexts.counts().references()).isZero();
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextCleanupHasEightClaimsZeroQueueAndBoundedCallerWait() throws Exception {
+        var contexts = cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC));
+        var entered = new CountDownLatch(8);
+        var release = new CountDownLatch(1);
+        var destroyed = new CountDownLatch(8);
+        for (int i = 0; i < 9; i++) {
+            var session = new MockHttpSession() {
+                @Override public void invalidate() {
+                    entered.countDown();
+                    try { assertThat(release.await(10, TimeUnit.SECONDS)).isTrue(); }
+                    catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new AssertionError(interrupted); }
+                    super.invalidate();
+                    destroyed.countDown();
+                }
+            };
+            String q = contexts.bootstrap(session, AuthenticationAttemptCoordinator.forSession(session));
+            assertThat(contexts.revoke(q)).isTrue();
+        }
+        try {
+            long started = System.nanoTime();
+            contexts.cleanup();
+            assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(2));
+            assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(contexts.counts().cleanupClaims()).isEqualTo(8);
+            assertThat(contexts.counts().references()).isEqualTo(9);
+            assertThat(contexts.activeCleanupWorkers()).isEqualTo(8);
+            assertThat(contexts.queuedCleanupTasks()).isZero();
+            contexts.cleanup();
+            assertThat(contexts.counts().cleanupClaims()).isEqualTo(8);
+            assertThat(contexts.counts().references()).isEqualTo(9);
+        }
+        finally { release.countDown(); }
+        assertThat(destroyed.await(10, TimeUnit.SECONDS)).isTrue();
+        for (int i = 0; i < 32 && contexts.counts().references() != 0; i++) contexts.cleanup();
+        assertThat(contexts.counts().references()).isZero();
+        assertThat(contexts.counts().cleanupClaims()).isZero();
+        assertThat(contexts.queuedCleanupTasks()).isZero();
+    }
+
+    @Test
+    @Timeout(60)
+    void cookieContextMemoryContentionFailsClosedWithinFiniteAcquisitionBudget() throws Exception {
+        var contexts = cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC));
+        var memoryField = BrowserSessionContextRegistry.class.getDeclaredField("memory");
+        memoryField.setAccessible(true);
+        var memory = (java.util.concurrent.locks.ReentrantLock) memoryField.get(contexts);
+        var session = new MockHttpSession();
+        var coordinator = AuthenticationAttemptCoordinator.forSession(session);
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            memory.lock();
+            try {
+                var contender = executor.submit(() -> {
+                    long started = System.nanoTime();
+                    assertThatExceptionOfType(BrowserSessionContextRegistry.Capacity.class)
+                            .isThrownBy(() -> contexts.bootstrap(session, coordinator));
+                    return Duration.ofNanos(System.nanoTime() - started);
+                });
+                assertThat(contender.get(10, TimeUnit.SECONDS)).isLessThan(Duration.ofSeconds(2));
+            }
+            finally { memory.unlock(); }
+        }
+        assertThat(contexts.counts().contexts()).isZero();
+        assertThat(contexts.counts().references()).isZero();
+        assertThat(contexts.capture(session)).isNull();
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextRecoveryConcurrentReservationsIssueOnlyOneNewPair() throws Exception {
+        var contexts = cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC));
+        String unknown = "U".repeat(43);
+        var session = new MockHttpSession();
+        var coordinator = AuthenticationAttemptCoordinator.forSession(session);
+        var bothReserved = new CountDownLatch(2);
+        var release = new CountDownLatch(1);
+        contexts.pairingObserver = stamp -> {
+            bothReserved.countDown();
+            try { assertThat(release.await(10, TimeUnit.SECONDS)).isTrue(); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new AssertionError(interrupted); }
+        };
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> contexts.recoveryBootstrap(unknown, session, coordinator));
+            var second = executor.submit(() -> contexts.recoveryBootstrap(unknown, session, coordinator));
+            try {
+                assertThat(bothReserved.await(10, TimeUnit.SECONDS)).isTrue();
+                assertThat(contexts.counts().contexts()).isEqualTo(2);
+                assertThat(contexts.counts().references()).isEqualTo(2);
+                release.countDown();
+                String a = first.get(30, TimeUnit.SECONDS);
+                String b = second.get(30, TimeUnit.SECONDS);
+                assertThat((a == null) != (b == null)).isTrue();
+                String issued = a == null ? b : a;
+                assertThat(issued.equals(unknown)).isFalse();
+                var stamp = contexts.capture(session);
+                assertThat(contexts.echo(issued, stamp)).isTrue();
+                assertThat(contexts.echo(unknown, stamp)).isFalse();
+                assertThat(contexts.recoveryBootstrap(unknown, session, coordinator)).isNull();
+                assertThat(contexts.bootstrap(session, coordinator)).isNull();
+                contexts.cleanup();
+                assertThat(contexts.counts().contexts()).isEqualTo(1);
+                assertThat(contexts.counts().references()).isEqualTo(1);
+                assertThat(session.isInvalid()).isFalse();
+            }
+            finally { release.countDown(); contexts.pairingObserver = stamp -> { }; }
+        }
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextRecoveryPendingAndNonExpiredRetiredAreNeverUnknown() throws Exception {
+        var clock = new CookieContextClock(NOW);
+        var contexts = cookieRegistry(clock);
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var reserved = new AtomicReference<BrowserSessionContextRegistry.Stamp>();
+        contexts.pairingObserver = stamp -> {
+            reserved.set(stamp);
+            entered.countDown();
+            try { assertThat(release.await(10, TimeUnit.SECONDS)).isTrue(); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new AssertionError(interrupted); }
+        };
+        var session = new MockHttpSession();
+        var coordinator = AuthenticationAttemptCoordinator.forSession(session);
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var recovery = executor.submit(() -> contexts.recoveryBootstrap("U".repeat(43), session, coordinator));
+            try {
+                assertThat(entered.await(10, TimeUnit.SECONDS)).isTrue();
+                var competitor = new MockHttpSession();
+                var competingCoordinator = AuthenticationAttemptCoordinator.forSession(competitor);
+                assertThat(contexts.recoveryBootstrap(reserved.get().contextId(), competitor, competingCoordinator)).isNull();
+                assertThat(contexts.counts().contexts()).isEqualTo(1);
+                assertThat(contexts.counts().references()).isEqualTo(1);
+                clock.advance(AuthenticationProperties.FLOW_LIFETIME);
+                contexts.cleanup();
+                assertThat(contexts.counts().retiredReferences()).isEqualTo(1);
+                assertThat(contexts.recoveryBootstrap(reserved.get().contextId(), competitor, competingCoordinator)).isNull();
+                release.countDown();
+                assertThat(recovery.get(30, TimeUnit.SECONDS)).isNull();
+                assertThat(contexts.capture(session)).isNull();
+                contexts.cleanup();
+                assertThat(contexts.counts().contexts()).isZero();
+                assertThat(contexts.counts().references()).isZero();
+                assertThat(session.isInvalid()).isFalse();
+            }
+            finally { release.countDown(); contexts.pairingObserver = stamp -> { }; }
+        }
+    }
+
+    @Test
+    void cookieContextRecoveryRejectsLiveTaggedAuthenticatedAndMalformedInputs() {
+        var contexts = cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC));
+        var live = new MockHttpSession();
+        var liveCoordinator = AuthenticationAttemptCoordinator.forSession(live);
+        String q = contexts.bootstrap(live, liveCoordinator);
+        var fresh = new MockHttpSession();
+        var freshCoordinator = AuthenticationAttemptCoordinator.forSession(fresh);
+        assertThat(contexts.recoveryBootstrap(q, fresh, freshCoordinator)).isNull();
+        var owner = contexts.beginOwner(contexts.capture(live));
+        assertThat(owner).isNotNull();
+        assertThat(contexts.recoveryBootstrap(q, fresh, freshCoordinator)).isNull();
+        assertThat(contexts.reservePublication(owner)).isTrue();
+        assertThat(contexts.publish(owner)).isTrue();
+        assertThat(contexts.recoveryBootstrap(q, fresh, freshCoordinator)).isNull();
+        assertThat(contexts.revoke(q)).isTrue();
+        assertThat(contexts.recoveryBootstrap(q, fresh, freshCoordinator)).isNull();
+        assertThat(contexts.recoveryBootstrap("U".repeat(43), live, liveCoordinator)).isNull();
+        var authenticated = new MockHttpSession();
+        var security = SecurityContextHolder.createEmptyContext();
+        security.setAuthentication(UsernamePasswordAuthenticationToken.authenticated("synthetic-user", null, List.of()));
+        authenticated.setAttribute(org.springframework.security.web.context.HttpSessionSecurityContextRepository
+                .SPRING_SECURITY_CONTEXT_KEY, security);
+        assertThat(contexts.recoveryBootstrap("U".repeat(43), authenticated,
+                AuthenticationAttemptCoordinator.forSession(authenticated))).isNull();
+        for (String invalid : new String[] { null, "", "malformed", "U".repeat(44), "\"" + "U".repeat(43) + "\"" }) {
+            assertThat(contexts.recoveryBootstrap(invalid, fresh, freshCoordinator)).isNull();
+        }
+        assertThat(contexts.counts().contexts()).isEqualTo(1);
+        assertThat(contexts.counts().references()).isEqualTo(1);
+        contexts.close();
+        assertThatExceptionOfType(BrowserSessionContextRegistry.Capacity.class)
+                .isThrownBy(() -> contexts.recoveryBootstrap("U".repeat(43), fresh, freshCoordinator));
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextRecoveryNewLifetimeAndLateOldOwnerCleanupCannotAffectNewContext() {
+        var clock = new CookieContextClock(NOW);
+        var contexts = cookieRegistry(clock);
+        var old = new MockHttpSession();
+        String oldQ = contexts.bootstrap(old, AuthenticationAttemptCoordinator.forSession(old));
+        var oldStamp = contexts.capture(old);
+        var oldOwner = contexts.beginOwner(oldStamp);
+        assertThat(contexts.reservePublication(oldOwner)).isTrue();
+        assertThat(contexts.publish(oldOwner)).isTrue();
+        clock.advance(BrowserSessionContextRegistry.HARD_LIFETIME);
+        assertThat(contexts.finalAdmit(oldQ, oldStamp)).isFalse();
+        var next = new MockHttpSession();
+        String nextQ = contexts.recoveryBootstrap(oldQ, next, AuthenticationAttemptCoordinator.forSession(next));
+        assertThat(nextQ).isNotNull();
+        assertThat(nextQ.equals(oldQ)).isFalse();
+        var nextStamp = contexts.capture(next);
+        var nextOwner = contexts.beginOwner(nextStamp);
+        contexts.cancel(oldOwner);
+        assertThat(contexts.owns(nextOwner)).isTrue();
+        assertThat(contexts.reservePublication(nextOwner)).isTrue();
+        assertThat(contexts.publish(nextOwner)).isTrue();
+        old.invalidate();
+        contexts.cleanup();
+        contexts.cancel(oldOwner);
+        assertThat(contexts.finalAdmit(nextQ, nextStamp)).isTrue();
+        assertThat(contexts.finalAdmit(oldQ, oldStamp)).isFalse();
+        assertThat(contexts.counts().references()).isEqualTo(1);
+        assertThat(next.isInvalid()).isFalse();
+        clock.advance(BrowserSessionContextRegistry.HARD_LIFETIME.minusNanos(1));
+        assertThat(contexts.finalAdmit(nextQ, nextStamp)).isTrue();
+        clock.advance(Duration.ofNanos(1));
+        assertThat(contexts.finalAdmit(nextQ, nextStamp)).isFalse();
+    }
+
+    @Test
+    void cookieContextRecoveryDoesNotBypassCapacityForUnknownOrExpiredContexts() {
+        var clock = new CookieContextClock(NOW);
+        var contexts = cookieRegistry(clock);
+        String first = null;
+        for (int i = 0; i < BrowserSessionContextRegistry.MAX_CONTEXTS; i++) {
+            var session = new MockHttpSession();
+            String q = contexts.bootstrap(session, AuthenticationAttemptCoordinator.forSession(session));
+            if (first == null) first = q;
+            assertThat(contexts.revoke(q)).isTrue();
+        }
+        var fresh = new MockHttpSession();
+        var coordinator = AuthenticationAttemptCoordinator.forSession(fresh);
+        assertThatExceptionOfType(BrowserSessionContextRegistry.Capacity.class)
+                .isThrownBy(() -> contexts.recoveryBootstrap("U".repeat(43), fresh, coordinator));
+        clock.advance(BrowserSessionContextRegistry.HARD_LIFETIME);
+        String expired = first;
+        assertThatExceptionOfType(BrowserSessionContextRegistry.Capacity.class)
+                .isThrownBy(() -> contexts.recoveryBootstrap(expired, fresh, coordinator));
+        assertThat(contexts.counts().contexts()).isEqualTo(64);
+        assertThat(contexts.counts().references()).isEqualTo(64);
+        assertThat(contexts.counts().retiredReferences()).isEqualTo(64);
+        assertThat(contexts.capture(fresh)).isNull();
+        assertThat(contexts.queuedCleanupTasks()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "existing-anonymous", "existing-tagged", "existing-authenticated", "stale-sid",
+            "malformed", "duplicate" })
+    void cookieContextRecoveryControllerRejectsIneligibleSessionOrCookieDespiteRealCsrfMaterialization(String scenario) {
+        var clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        var contexts = cookieRegistry(clock);
+        var controller = new AccountController(properties(), clock, contexts);
+        var request = new MockHttpServletRequest("GET", "/auth/csrf");
+        request.addHeader("Cookie", BrowserSessionContextRegistry.COOKIE_NAME + "="
+                + (scenario.equals("malformed") ? "malformed" : "U".repeat(43)));
+        if (scenario.equals("duplicate")) {
+            request.addHeader("Cookie", BrowserSessionContextRegistry.COOKIE_NAME + "=" + "U".repeat(43));
+        }
+        if (scenario.startsWith("existing-")) {
+            var existing = new MockHttpSession();
+            request.setSession(existing);
+            // The mock request's setSession calls access(); restore this explicit unjoined-session fixture.
+            existing.setNew(true);
+            assertThat(request.getSession(false).isNew()).isTrue();
+        }
+        if (scenario.equals("existing-tagged")) {
+            var session = request.getSession(false);
+            assertThat(contexts.bootstrap(session, AuthenticationAttemptCoordinator.forSession(session))).isNotNull();
+        }
+        if (scenario.equals("existing-authenticated")) {
+            var security = SecurityContextHolder.createEmptyContext();
+            security.setAuthentication(UsernamePasswordAuthenticationToken.authenticated("synthetic-user", null, List.of()));
+            request.getSession(false).setAttribute(org.springframework.security.web.context.HttpSessionSecurityContextRepository
+                    .SPRING_SECURITY_CONTEXT_KEY, security);
+        }
+        if (scenario.equals("stale-sid")) request.setRequestedSessionId("synthetic-unresolved-session");
+        var initialStamp = contexts.capture(request.getSession(false));
+        var before = contexts.counts();
+        var response = new MockHttpServletResponse();
+        var token = deferredCookieCsrf(request, response);
+        var result = controller.csrf(token, request, response);
+        assertThat(result.get("token")).isNotBlank();
+        assertThat(request.getSession(false)).isNotNull();
+        assertThat(response.getCookie(BrowserSessionContextRegistry.COOKIE_NAME)).isNull();
+        assertThat(contexts.capture(request.getSession(false))).isEqualTo(initialStamp);
+        assertThat(contexts.counts().contexts()).isEqualTo(before.contexts());
+        assertThat(contexts.counts().references()).isEqualTo(before.references());
+    }
+
+    @Test
+    void cookieContextRecoveryClassificationPrecedesReclamationOfNonExpiredRetiredRecord() {
+        var contexts = cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC));
+        var reserved = new AtomicReference<BrowserSessionContextRegistry.Stamp>();
+        var abandoned = new MockHttpSession();
+        contexts.pairingObserver = stamp -> {
+            reserved.set(stamp);
+            throw new IllegalArgumentException("synthetic pairing interruption");
+        };
+        assertThatIllegalArgumentException().isThrownBy(() -> contexts.recoveryBootstrap("U".repeat(43), abandoned,
+                AuthenticationAttemptCoordinator.forSession(abandoned)));
+        contexts.pairingObserver = stamp -> { };
+        contexts.cleanup();
+        // Cleanup has acknowledged the abandoned reference, but no sweep has removed the exact record yet.
+        // Recovery must inspect that present/unexpired retired record before opportunistic reclamation.
+        var fresh = new MockHttpSession();
+        assertThat(contexts.recoveryBootstrap(reserved.get().contextId(), fresh,
+                AuthenticationAttemptCoordinator.forSession(fresh))).isNull();
+        assertThat(contexts.capture(fresh)).isNull();
+        assertThat(contexts.counts().references()).isZero();
+        assertThat(contexts.counts().contexts()).isZero();
+        assertThat(abandoned.isInvalid()).isFalse();
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextRecoveryPartialCookieIssuanceFailureNeverReissuesTaggedSession() {
+        var clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        var contexts = cookieRegistry(clock);
+        var controller = new AccountController(properties(), clock, contexts);
+        String unknown = "U".repeat(43);
+        var request = new MockHttpServletRequest("GET", "/auth/csrf");
+        request.addHeader("Cookie", BrowserSessionContextRegistry.COOKIE_NAME + "=" + unknown);
+        var selected = new AtomicReference<String>();
+        var failure = new IllegalStateException("synthetic cookie write failure");
+        var failedResponse = new MockHttpServletResponse() {
+            @Override public void addCookie(jakarta.servlet.http.Cookie cookie) {
+                if (cookie.getName().equals(BrowserSessionContextRegistry.COOKIE_NAME)) {
+                    selected.set(cookie.getValue());
+                    throw failure;
+                }
+                super.addCookie(cookie);
+            }
+        };
+        assertThatThrownBy(() -> controller.csrf(deferredCookieCsrf(request, failedResponse), request, failedResponse))
+                .isSameAs(failure);
+        var originalSession = (MockHttpSession) request.getSession(false);
+        var originalStamp = contexts.capture(originalSession);
+        assertThat(selected.get()).isNotNull();
+        assertThat(contexts.echo(selected.get(), originalStamp)).isTrue();
+        assertThat(failedResponse.getCookie(BrowserSessionContextRegistry.COOKIE_NAME)).isNull();
+        var retry = new MockHttpServletRequest("GET", "/auth/csrf");
+        retry.setSession(originalSession);
+        retry.setRequestedSessionId(originalSession.getId());
+        retry.addHeader("Cookie", BrowserSessionContextRegistry.COOKIE_NAME + "=" + unknown);
+        var retryResponse = new MockHttpServletResponse();
+        controller.csrf(deferredCookieCsrf(retry, retryResponse), retry, retryResponse);
+        assertThat(retryResponse.getCookie(BrowserSessionContextRegistry.COOKIE_NAME)).isNull();
+        assertThat(contexts.capture(originalSession)).isEqualTo(originalStamp);
+        assertThat(contexts.counts().contexts()).isEqualTo(1);
+        assertThat(contexts.counts().references()).isEqualTo(1);
+        // Exact physical cleanup here is a policy control; real CSRF/POST cleanup is separately proved over HTTP.
+        originalSession.invalidate();
+        contexts.cleanup();
+        var next = new MockHttpServletRequest("GET", "/auth/csrf");
+        next.addHeader("Cookie", BrowserSessionContextRegistry.COOKIE_NAME + "=" + unknown);
+        var nextResponse = new MockHttpServletResponse();
+        controller.csrf(deferredCookieCsrf(next, nextResponse), next, nextResponse);
+        var nextCookie = nextResponse.getCookie(BrowserSessionContextRegistry.COOKIE_NAME);
+        assertThat(nextCookie).isNotNull();
+        assertThat(nextCookie.getValue().equals(unknown)).isFalse();
+        assertThat(nextCookie.getValue().equals(selected.get())).isFalse();
+        assertThat(contexts.echo(nextCookie.getValue(), contexts.capture(next.getSession(false)))).isTrue();
+        assertThat(contexts.finalAdmit(nextCookie.getValue(), contexts.capture(next.getSession(false)))).isFalse();
+        assertThat(contexts.counts().contexts()).isEqualTo(2);
+        assertThat(contexts.counts().references()).isEqualTo(1);
+    }
+
+    @Test
+    @Timeout(60)
+    void cookieContextRecoveryContentionNeverClassifiesUnavailableRegistryAsUnknown() throws Exception {
+        var contexts = cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC));
+        var memoryField = BrowserSessionContextRegistry.class.getDeclaredField("memory");
+        memoryField.setAccessible(true);
+        var memory = (java.util.concurrent.locks.ReentrantLock) memoryField.get(contexts);
+        var session = new MockHttpSession();
+        var coordinator = AuthenticationAttemptCoordinator.forSession(session);
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            memory.lock();
+            try {
+                var contender = executor.submit(() -> {
+                    long started = System.nanoTime();
+                    assertThatExceptionOfType(BrowserSessionContextRegistry.Capacity.class)
+                            .isThrownBy(() -> contexts.recoveryBootstrap("U".repeat(43), session, coordinator));
+                    return Duration.ofNanos(System.nanoTime() - started);
+                });
+                assertThat(contender.get(10, TimeUnit.SECONDS)).isLessThan(Duration.ofSeconds(2));
+            }
+            finally { memory.unlock(); }
+        }
+        assertThat(contexts.counts().contexts()).isZero();
+        assertThat(contexts.counts().references()).isZero();
+        assertThat(contexts.capture(session)).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = { 0, 1 })
+    @Timeout(30)
+    void cookieContextRemediationExpiryFinalAdmissionUsesAcquiredTime(long afterDeadlineNanos) throws Exception {
+        var fixture = expiryFixture();
+        Instant deadline = NOW.plus(BrowserSessionContextRegistry.HARD_LIFETIME);
+        fixture.clock.set(deadline.minusSeconds(60));
+        var owner = fixture.contexts.beginOwner(fixture.stamp);
+        assertThat(owner).isNotNull();
+        assertThat(fixture.contexts.reservePublication(owner)).isTrue();
+        assertThat(fixture.contexts.publish(owner)).isTrue();
+        assertThat(fixture.contexts.finalAdmit(fixture.q, fixture.stamp)).isTrue();
+        fixture.clock.set(deadline.minusNanos(1));
+        var result = expiryAcrossAcquisition(fixture, 1, deadline.plusNanos(afterDeadlineNanos),
+                () -> fixture.contexts.finalAdmit(fixture.q, fixture.stamp));
+        assertThat(result.value()).as("actual final admission at/past the original hard deadline").isFalse();
+        assertThat(fixture.contexts.finalAdmit(fixture.q, fixture.stamp)).isFalse();
+        result.assertClockWasProtected();
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = { 0, 1 })
+    @Timeout(30)
+    void cookieContextRemediationExpiryPublicationUsesAcquiredTime(long afterDeadlineNanos) throws Exception {
+        var fixture = expiryFixture();
+        Instant deadline = NOW.plus(BrowserSessionContextRegistry.HARD_LIFETIME);
+        // Owner remains within its separate five-minute limit when the eight-hour Q limit is crossed.
+        fixture.clock.set(deadline.minusSeconds(60));
+        var owner = fixture.contexts.beginOwner(fixture.stamp);
+        assertThat(owner).isNotNull();
+        assertThat(fixture.contexts.reservePublication(owner)).isTrue();
+        assertThat(fixture.contexts.owns(owner)).isTrue();
+        fixture.clock.set(deadline.minusNanos(1));
+        var result = expiryAcrossAcquisition(fixture, 1, deadline.plusNanos(afterDeadlineNanos),
+                () -> fixture.contexts.publish(owner));
+        assertThat(result.value()).as("actual publication at/past the original hard deadline").isFalse();
+        assertThat(fixture.contexts.finalAdmit(fixture.q, fixture.stamp)).isFalse();
+        result.assertClockWasProtected();
+    }
+
+    @Test
+    void cookieContextRemediationExpiryBeforeDeadlineAllowsPublicationAndAdmission() throws Exception {
+        var fixture = expiryFixture();
+        fixture.clock.set(NOW.plus(BrowserSessionContextRegistry.HARD_LIFETIME).minusNanos(1));
+        assertThat(fixture.contexts.echo(fixture.q, fixture.stamp)).isTrue();
+        assertThat(fixture.contexts.canStart(fixture.q, fixture.stamp)).isTrue();
+        var owner = fixture.contexts.beginOwner(fixture.stamp);
+        assertThat(owner).isNotNull();
+        assertThat(fixture.contexts.owns(owner)).isTrue();
+        assertThat(fixture.contexts.reservePublication(owner)).isTrue();
+        assertThat(fixture.contexts.publish(owner)).isTrue();
+        assertThat(fixture.contexts.finalAdmit(fixture.q, fixture.stamp)).isTrue();
+    }
+
+    @Test
+    void cookieContextRemediationExpiryRetirementSurvivesClockRewind() throws Exception {
+        var fixture = expiryFixture();
+        var owner = fixture.contexts.beginOwner(fixture.stamp);
+        assertThat(fixture.contexts.reservePublication(owner)).isTrue();
+        assertThat(fixture.contexts.publish(owner)).isTrue();
+        assertThat(fixture.contexts.finalAdmit(fixture.q, fixture.stamp)).isTrue();
+        fixture.clock.set(NOW.plus(BrowserSessionContextRegistry.HARD_LIFETIME));
+        assertThat(fixture.contexts.finalAdmit(fixture.q, fixture.stamp)).isFalse();
+        fixture.clock.set(NOW);
+        assertThat(fixture.contexts.echo(fixture.q, fixture.stamp)).isFalse();
+        assertThat(fixture.contexts.finalAdmit(fixture.q, fixture.stamp)).isFalse();
+        assertThat(fixture.contexts.publish(owner)).isFalse();
+        assertThat(fixture.contexts.beginOwner(fixture.stamp)).isNull();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "echo", "canStart", "beginOwner", "owns", "reservePublication", "revoke" })
+    @Timeout(30)
+    void cookieContextRemediationExpiryOtherDecisionsUseAcquiredTime(String decision) throws Exception {
+        var fixture = expiryFixture();
+        Instant deadline = NOW.plus(BrowserSessionContextRegistry.HARD_LIFETIME);
+        fixture.clock.set(deadline.minusSeconds(60));
+        assertThat(fixture.contexts.echo(fixture.q, fixture.stamp)).isTrue();
+        assertThat(fixture.contexts.canStart(fixture.q, fixture.stamp)).isTrue();
+        var owner = fixture.contexts.beginOwner(fixture.stamp);
+        assertThat(owner).isNotNull();
+        assertThat(fixture.contexts.owns(owner)).isTrue();
+        if (decision.equals("beginOwner")) fixture.contexts.cancel(owner);
+        fixture.clock.set(deadline.minusNanos(1));
+        var result = expiryAcrossAcquisition(fixture, 1, deadline, () -> switch (decision) {
+            case "echo" -> fixture.contexts.echo(fixture.q, fixture.stamp);
+            case "canStart" -> fixture.contexts.canStart(fixture.q, fixture.stamp);
+            case "beginOwner" -> fixture.contexts.beginOwner(fixture.stamp) != null;
+            case "owns" -> fixture.contexts.owns(owner);
+            case "reservePublication" -> fixture.contexts.reservePublication(owner);
+            case "revoke" -> fixture.contexts.revoke(fixture.q);
+            default -> throw new AssertionError("Unknown decision");
+        });
+        assertThat(result.value()).as("%s at the original hard deadline", decision).isFalse();
+        assertThat(fixture.contexts.echo(fixture.q, fixture.stamp)).isFalse();
+        result.assertClockWasProtected();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "owns", "reservePublication", "publish" })
+    @Timeout(30)
+    void cookieContextRemediationExpiryOwnerDeadlineUsesAcquiredTime(String decision) throws Exception {
+        var fixture = expiryFixture();
+        var owner = fixture.contexts.beginOwner(fixture.stamp);
+        assertThat(fixture.contexts.owns(owner)).isTrue();
+        if (decision.equals("publish")) assertThat(fixture.contexts.reservePublication(owner)).isTrue();
+        Instant deadline = NOW.plus(AuthenticationProperties.FLOW_LIFETIME);
+        fixture.clock.set(deadline.minusNanos(1));
+        var result = expiryAcrossAcquisition(fixture, 1, deadline, () -> switch (decision) {
+            case "owns" -> fixture.contexts.owns(owner);
+            case "reservePublication" -> fixture.contexts.reservePublication(owner);
+            case "publish" -> fixture.contexts.publish(owner);
+            default -> throw new AssertionError("Unknown decision");
+        });
+        assertThat(result.value()).as("%s at the owner's five-minute deadline", decision).isFalse();
+        assertThat(fixture.contexts.echo(fixture.q, fixture.stamp)).isTrue();
+        assertThat(fixture.contexts.finalAdmit(fixture.q, fixture.stamp)).isFalse();
+        result.assertClockWasProtected();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = { false, true })
+    @Timeout(30)
+    void cookieContextRemediationExpiryBootstrapReservationStartsAtAcquisition(boolean recovery) throws Exception {
+        var fixture = expiryFixture(false);
+        var coordinator = AuthenticationAttemptCoordinator.forSession(fixture.session);
+        Instant reservedAt = NOW.plus(AuthenticationProperties.FLOW_LIFETIME).plusSeconds(1);
+        var result = expiryAcrossAcquisition(fixture, 1, reservedAt, () -> recovery
+                ? fixture.contexts.recoveryBootstrap("U".repeat(43), fixture.session, coordinator)
+                : fixture.contexts.bootstrap(fixture.session, coordinator));
+        assertThat(result.value()).as("new reservation uses acquisition time, not stale pre-lock time").isNotNull();
+        var stamp = fixture.contexts.capture(fixture.session);
+        assertThat(fixture.contexts.echo(result.value(), stamp)).isTrue();
+        fixture.clock.set(NOW.plus(BrowserSessionContextRegistry.HARD_LIFETIME));
+        assertThat(fixture.contexts.echo(result.value(), stamp)).isTrue();
+        fixture.clock.set(reservedAt.plus(BrowserSessionContextRegistry.HARD_LIFETIME));
+        assertThat(fixture.contexts.echo(result.value(), stamp)).isFalse();
+        result.assertClockWasProtected();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "bootstrap", "recovery", "attach" })
+    @Timeout(30)
+    void cookieContextRemediationExpiryPairingCommitUsesAcquiredTime(String operation) throws Exception {
+        var fixture = expiryFixture(operation.equals("attach"));
+        var session = new MockHttpSession();
+        var coordinator = AuthenticationAttemptCoordinator.forSession(session);
+        Instant deadline = NOW.plus(AuthenticationProperties.FLOW_LIFETIME);
+        fixture.contexts.pairingObserver = stamp -> {
+            assertThat(fixture.memory.isHeldByCurrentThread()).isFalse();
+            fixture.clock.set(deadline.minusNanos(1));
+        };
+        var result = expiryAcrossAcquisition(fixture, 2, deadline, () -> switch (operation) {
+            case "bootstrap" -> fixture.contexts.bootstrap(session, coordinator) != null;
+            case "recovery" -> fixture.contexts.recoveryBootstrap("U".repeat(43), session, coordinator) != null;
+            case "attach" -> fixture.contexts.attachAnonymous(fixture.q, session, coordinator);
+            default -> throw new AssertionError("Unknown operation");
+        });
+        assertThat(result.value()).as("pairing commit at the exact reservation deadline").isFalse();
+        assertThat(fixture.contexts.counts().retiredReferences()).isEqualTo(1);
+        if (operation.equals("attach")) assertThat(fixture.contexts.echo(fixture.q, fixture.stamp)).isTrue();
+        result.assertClockWasProtected();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = { 1, 2 })
+    @Timeout(30)
+    void cookieContextRemediationExpiryAttachmentChecksBothHardDeadlinePhases(int acquisition) throws Exception {
+        var fixture = expiryFixture();
+        Instant deadline = NOW.plus(BrowserSessionContextRegistry.HARD_LIFETIME);
+        fixture.clock.set(deadline.minusNanos(1));
+        var reservations = new AtomicInteger();
+        fixture.contexts.pairingObserver = stamp -> {
+            assertThat(fixture.memory.isHeldByCurrentThread()).isFalse();
+            reservations.incrementAndGet();
+        };
+        var session = new MockHttpSession();
+        var coordinator = AuthenticationAttemptCoordinator.forSession(session);
+        var result = expiryAcrossAcquisition(fixture, acquisition, deadline,
+                () -> fixture.contexts.attachAnonymous(fixture.q, session, coordinator));
+        assertThat(result.value()).as("attach at the original Q deadline").isFalse();
+        assertThat(reservations.get()).as("no reservation after expiry in the first protected phase")
+                .isEqualTo(acquisition - 1);
+        assertThat(fixture.contexts.echo(fixture.q, fixture.stamp)).isFalse();
+        result.assertClockWasProtected();
+    }
+
+    @Test
+    @Timeout(30)
+    void cookieContextRemediationExpiryRecoveryClassifiesAtAcquisition() throws Exception {
+        var fixture = expiryFixture();
+        Instant deadline = NOW.plus(BrowserSessionContextRegistry.HARD_LIFETIME);
+        fixture.clock.set(deadline.minusNanos(1));
+        var session = new MockHttpSession();
+        var coordinator = AuthenticationAttemptCoordinator.forSession(session);
+        var result = expiryAcrossAcquisition(fixture, 1, deadline,
+                () -> fixture.contexts.recoveryBootstrap(fixture.q, session, coordinator));
+        assertThat(result.value()).as("hard-expired classification at acquisition permits a distinct fresh Q")
+                .isNotNull();
+        assertThat(result.value().equals(fixture.q)).isFalse();
+        assertThat(fixture.contexts.echo(result.value(), fixture.contexts.capture(session))).isTrue();
+        assertThat(fixture.contexts.echo(fixture.q, fixture.stamp)).isFalse();
+        result.assertClockWasProtected();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { "counts", "cleanup" })
+    @Timeout(30)
+    void cookieContextRemediationExpirySweepUsesAcquiredTime(String operation) throws Exception {
+        var fixture = expiryFixture();
+        Instant deadline = NOW.plus(BrowserSessionContextRegistry.HARD_LIFETIME);
+        fixture.clock.set(deadline.minusSeconds(60));
+        assertThat(fixture.contexts.beginOwner(fixture.stamp)).isNotNull();
+        fixture.clock.set(deadline.minusNanos(1));
+        var result = expiryAcrossAcquisition(fixture, 1, deadline, () -> {
+            if (operation.equals("counts")) {
+                var counts = fixture.contexts.counts();
+                return counts.retiredReferences() == 1 && counts.owners() == 0;
+            }
+            fixture.contexts.cleanup();
+            return fixture.invalidated.await(5, TimeUnit.SECONDS);
+        });
+        assertThat(result.value()).as("%s observes hard expiry in its own protected sweep", operation).isTrue();
+        result.assertClockWasProtected();
+    }
+
+    private ExpiryFixture expiryFixture() throws Exception { return expiryFixture(true); }
+
+    private ExpiryFixture expiryFixture(boolean bootstrap) throws Exception {
+        var clock = new ExpiryObservedClock(NOW);
+        var contexts = cookieRegistry(clock);
+        var memory = new ExpiryAcquisitionLock();
+        var field = BrowserSessionContextRegistry.class.getDeclaredField("memory");
+        field.setAccessible(true);
+        field.set(contexts, memory);
+        assertThat(field.get(contexts)).isSameAs(memory);
+        clock.memory = memory;
+        var invalidated = new CountDownLatch(1);
+        var session = new MockHttpSession() {
+            @Override public void invalidate() {
+                super.invalidate();
+                invalidated.countDown();
+            }
+        };
+        String q = bootstrap ? contexts.bootstrap(session, AuthenticationAttemptCoordinator.forSession(session)) : null;
+        var stamp = contexts.capture(session);
+        if (bootstrap) {
+            assertThat(q).isNotNull();
+            assertThat(stamp).isNotNull();
+            assertThat(contexts.echo(q, stamp)).isTrue();
+        }
+        return new ExpiryFixture(clock, contexts, memory, session, invalidated, q, stamp);
+    }
+
+    private record ExpiryFixture(ExpiryObservedClock clock, BrowserSessionContextRegistry contexts,
+                                 ExpiryAcquisitionLock memory, MockHttpSession session, CountDownLatch invalidated,
+                                 String q, BrowserSessionContextRegistry.Stamp stamp) {}
+
+    private record ExpiryResult<T>(T value, int protectedSamples, int unprotectedSamples) {
+        void assertClockWasProtected() {
+            assertThat(protectedSamples).as("real clock samples with the actual memory lock held").isPositive();
+            assertThat(unprotectedSamples).as("no authoritative pre-lock clock samples").isZero();
+        }
+    }
+
+    private static <T> ExpiryResult<T> expiryAcrossAcquisition(ExpiryFixture fixture, int acquisition,
+                                                              Instant after, Callable<T> operation) throws Exception {
+        var executor = Executors.newSingleThreadExecutor(task -> {
+            var worker = new Thread(task, "cookie-expiry-boundary");
+            worker.setDaemon(true);
+            return worker;
+        });
+        java.util.concurrent.Future<T> pending = null;
+        try {
+            pending = executor.submit(() -> {
+                fixture.memory.arm(acquisition);
+                fixture.clock.observedThread = Thread.currentThread();
+                return operation.call();
+            });
+            assertThat(fixture.memory.paused.await(5, TimeUnit.SECONDS)).as("real pre-acquisition boundary reached").isTrue();
+            assertThat(fixture.memory.pausedWithoutLock.get()).isTrue();
+            assertThat(fixture.memory.isLocked()).isFalse();
+            fixture.clock.set(after);
+            fixture.memory.release.countDown();
+            T result = pending.get(10, TimeUnit.SECONDS);
+            assertThat(fixture.memory.actualAcquisitions.get()).isGreaterThanOrEqualTo(acquisition);
+            return new ExpiryResult<>(result, fixture.clock.protectedSamples.get(), fixture.clock.unprotectedSamples.get());
+        }
+        finally {
+            fixture.memory.release.countDown();
+            if (pending != null && !pending.isDone()) pending.cancel(true);
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+            fixture.clock.observedThread = null;
+        }
+    }
+
+    /** Unlike the historical reviewer probe, this never blocks Clock.instant or a protected section.
+     * Only scheduling before a real timed super.tryLock is controlled; no registry decision is replaced.
+     * The unchanged semantic assertion is evaluated before the additional GREEN lock-ownership trace.
+     */
+    private static final class ExpiryAcquisitionLock extends ReentrantLock {
+        private volatile Thread observedThread;
+        private final AtomicInteger remaining = new AtomicInteger();
+        final AtomicInteger actualAcquisitions = new AtomicInteger();
+        final AtomicBoolean pausedWithoutLock = new AtomicBoolean();
+        final CountDownLatch paused = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+        void arm(int acquisition) {
+            remaining.set(acquisition);
+            observedThread = Thread.currentThread();
+        }
+        @Override public boolean tryLock(long timeout, TimeUnit unit) throws InterruptedException {
+            if (Thread.currentThread() == observedThread && remaining.decrementAndGet() == 0) {
+                pausedWithoutLock.set(!isHeldByCurrentThread());
+                paused.countDown();
+                if (!release.await(5, TimeUnit.SECONDS)) throw new AssertionError("Expiry boundary release timed out");
+            }
+            boolean acquired = super.tryLock(timeout, unit);
+            if (acquired && Thread.currentThread() == observedThread) actualAcquisitions.incrementAndGet();
+            return acquired;
+        }
+    }
+
+    private static final class ExpiryObservedClock extends Clock {
+        private final AtomicReference<Instant> current;
+        private volatile ReentrantLock memory;
+        private volatile Thread observedThread;
+        final AtomicInteger protectedSamples = new AtomicInteger();
+        final AtomicInteger unprotectedSamples = new AtomicInteger();
+        ExpiryObservedClock(Instant initial) { current = new AtomicReference<>(initial); }
+        void set(Instant now) { current.set(now); }
+        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
+        @Override public Clock withZone(ZoneId zone) { return this; }
+        @Override public Instant instant() {
+            if (Thread.currentThread() == observedThread) {
+                (memory.isHeldByCurrentThread() ? protectedSamples : unprotectedSamples).incrementAndGet();
+            }
+            return current.get();
+        }
+    }
+
+    private static org.springframework.security.web.csrf.CsrfToken deferredCookieCsrf(
+            MockHttpServletRequest request, MockHttpServletResponse response) {
+        var repository = new org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository();
+        var deferred = repository.loadDeferredToken(request, response);
+        return new org.springframework.security.web.csrf.CsrfToken() {
+            @Override public String getHeaderName() { return deferred.get().getHeaderName(); }
+            @Override public String getParameterName() { return deferred.get().getParameterName(); }
+            @Override public String getToken() { return deferred.get().getToken(); }
+        };
+    }
+
+    private BrowserSessionContextRegistry cookieContext(MockHttpServletRequest request, MockHttpSession session) {
+        var contexts = cookieRegistry(Clock.fixed(NOW, ZoneOffset.UTC));
+        String q = contexts.bootstrap(session, AuthenticationAttemptCoordinator.forSession(session));
+        request.addHeader("Cookie", BrowserSessionContextRegistry.COOKIE_NAME + "=" + q);
+        return contexts;
+    }
+
+    private static final class CookieContextClock extends Clock {
+        private final AtomicReference<Instant> now;
+        CookieContextClock(Instant now) { this.now = new AtomicReference<>(now); }
+        void advance(Duration elapsed) { now.updateAndGet(value -> value.plus(elapsed)); }
+        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
+        @Override public Clock withZone(ZoneId zone) { return this; }
+        @Override public Instant instant() { return now.get(); }
     }
 
     private static OAuth2AuthorizationRequest savedFlow(String state) {

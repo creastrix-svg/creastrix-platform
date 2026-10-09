@@ -35,6 +35,7 @@ final class AuthenticationAttemptCoordinator implements HttpSessionBindingListen
     private static final String REQUEST_KEY = SESSION_KEY + ".attempt";
     private final ReentrantLock publication = new ReentrantLock();
     private final AtomicReference<Attempt> owner = new AtomicReference<>();
+    private final AtomicReference<BrowserSessionContextRegistry.Binding> context = new AtomicReference<>();
     private volatile boolean revoked;
 
     static AuthenticationAttemptCoordinator forSession(HttpSession session) {
@@ -50,10 +51,29 @@ final class AuthenticationAttemptCoordinator implements HttpSessionBindingListen
         }
     }
 
+    static AuthenticationAttemptCoordinator existing(HttpSession session) {
+        if (session == null) return null;
+        try {
+            Object value = session.getAttribute(SESSION_KEY);
+            return value instanceof AuthenticationAttemptCoordinator coordinator ? coordinator : null;
+        }
+        catch (IllegalStateException invalidated) { return null; }
+    }
+
+    BrowserSessionContextRegistry.Binding contextBinding() { return context.get(); }
+
+    boolean bindContext(BrowserSessionContextRegistry.Binding binding) {
+        if (revoked || !context.compareAndSet(null, binding)) return false;
+        if (revoked) { binding.dead.set(true); return false; }
+        return true;
+    }
+
     @Override
     public void valueUnbound(HttpSessionBindingEvent event) {
         // Container invalidation can hold its internal monitor: never lock/call the session here.
         revoked = true;
+        var binding = context.get();
+        if (binding != null) binding.dead.set(true);
     }
 
     Attempt admit(HttpSession session, String state) {
@@ -64,8 +84,13 @@ final class AuthenticationAttemptCoordinator implements HttpSessionBindingListen
             if (!live(session) || authenticated(session)) {
                 return null;
             }
-            Attempt attempt = new Attempt(this, session, state);
-            return owner.compareAndSet(null, attempt) ? attempt : null;
+            var binding = context.get();
+            var contextOwner = binding == null ? null : binding.registry.beginOwner(binding.stamp);
+            if (binding != null && contextOwner == null) return null;
+            Attempt attempt = new Attempt(this, session, state, binding, contextOwner);
+            if (owner.compareAndSet(null, attempt)) return attempt;
+            if (binding != null) binding.registry.cancel(contextOwner);
+            return null;
         }
         catch (IllegalStateException invalidated) {
             return null;
@@ -130,6 +155,8 @@ final class AuthenticationAttemptCoordinator implements HttpSessionBindingListen
         coordinator.lock();
         try {
             coordinator.revoked = true;
+            var binding = coordinator.context.get();
+            if (binding != null) binding.dead.set(true);
         }
         finally {
             coordinator.unlock();
@@ -151,14 +178,19 @@ final class AuthenticationAttemptCoordinator implements HttpSessionBindingListen
         private final AuthenticationAttemptCoordinator coordinator;
         private final HttpSession session;
         private final String state;
+        private final BrowserSessionContextRegistry.Binding binding;
+        private final BrowserSessionContextRegistry.Owner contextOwner;
         private boolean publishing;
         private String rotatedSessionId;
         private boolean rejected;
 
-        private Attempt(AuthenticationAttemptCoordinator coordinator, HttpSession session, String state) {
+        private Attempt(AuthenticationAttemptCoordinator coordinator, HttpSession session, String state,
+                        BrowserSessionContextRegistry.Binding binding, BrowserSessionContextRegistry.Owner contextOwner) {
             this.coordinator = coordinator;
             this.session = session;
             this.state = state;
+            this.binding = binding;
+            this.contextOwner = contextOwner;
         }
 
         HttpServletRequest pin(HttpServletRequest request) {
@@ -187,7 +219,8 @@ final class AuthenticationAttemptCoordinator implements HttpSessionBindingListen
         }
 
         private boolean live() {
-            return coordinator.owner.get() == this && coordinator.live(session);
+            return coordinator.owner.get() == this && coordinator.live(session)
+                    && (binding == null || binding.registry.owns(contextOwner));
         }
 
         HttpSession requireSession() {
@@ -203,6 +236,9 @@ final class AuthenticationAttemptCoordinator implements HttpSessionBindingListen
             try {
                 requireSession();
                 if (coordinator.authenticated(session)) {
+                    throw CreastrixOidcUserService.rejected();
+                }
+                if (binding != null && !binding.registry.reservePublication(contextOwner)) {
                     throw CreastrixOidcUserService.rejected();
                 }
                 publishing = true;
@@ -221,6 +257,12 @@ final class AuthenticationAttemptCoordinator implements HttpSessionBindingListen
         }
 
         boolean ownsPublication() { return publishing && live(); }
+
+        void publish() {
+            if (!ownsPublication() || (binding != null && !binding.registry.publish(contextOwner))) {
+                throw CreastrixOidcUserService.rejected();
+            }
+        }
 
         void reject() { rejected = true; }
 
@@ -264,9 +306,14 @@ final class AuthenticationAttemptCoordinator implements HttpSessionBindingListen
 
         void finish() {
             coordinator.owner.compareAndSet(this, null);
-            if (publishing) {
-                publishing = false;
-                coordinator.unlock();
+            try {
+                if (binding != null) binding.registry.cancel(contextOwner);
+            }
+            finally {
+                if (publishing) {
+                    publishing = false;
+                    coordinator.unlock();
+                }
             }
         }
     }

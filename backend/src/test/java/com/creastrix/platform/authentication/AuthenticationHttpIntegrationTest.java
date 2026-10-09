@@ -39,6 +39,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -50,6 +51,8 @@ import com.creastrix.platform.support.OidcTestProvider;
 import com.creastrix.platform.support.OidcTestProvider.Scenario;
 import com.creastrix.platform.user.application.UserService;
 import com.creastrix.platform.user.domain.UserStatus;
+import com.github.dockerjava.api.model.ExposedPort;
+import com.github.dockerjava.api.model.Ports;
 import com.nimbusds.jose.util.JSONObjectUtils;
 import jakarta.servlet.Filter;
 import jakarta.servlet.http.HttpServletRequest;
@@ -63,7 +66,9 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
@@ -93,6 +98,7 @@ import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.oauth2.core.oidc.IdTokenClaimNames;
+import org.testcontainers.DockerClientFactory;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -114,6 +120,8 @@ class AuthenticationHttpIntegrationTest {
 
     private static final String CLIENT_ID = "backend-test-client";
     private static final String CLIENT_SECRET = "test-only-confidential-client-secret";
+    private static final String OWNED_CONTAINER_LABEL = "creastrix.feasibility";
+    private static final String OWNED_CONTAINER_VALUE = "auth-cookie-forward-port-s003";
     private static final MutableClock CLOCK = new MutableClock();
     private static final Faults FAULTS = new Faults();
     private static final AtomicInteger NEXT_SUBJECT = new AtomicInteger();
@@ -126,7 +134,12 @@ class AuthenticationHttpIntegrationTest {
     private static Set<String> admitted = PILOT_SUBJECTS;
 
     @Container
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.4-alpine");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.4-alpine")
+            .withLabel(OWNED_CONTAINER_LABEL, OWNED_CONTAINER_VALUE)
+            .withCreateContainerCmdModifier(command -> command.getHostConfig()
+                    .withNetworkMode("bridge")
+                    .withPublishAllPorts(false)
+                    .withPortBindings(new Ports(ExposedPort.tcp(5432), Ports.Binding.bindIp("127.0.0.1"))));
 
     private final List<Browser> browsers = new ArrayList<>();
     private String subject;
@@ -135,6 +148,7 @@ class AuthenticationHttpIntegrationTest {
 
     @BeforeAll
     static void startOwnedServers() throws Exception {
+        verifyOwnedContainerBindings();
         try (ServerSocket reservation = new ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))) {
             port = reservation.getLocalPort();
         }
@@ -144,6 +158,9 @@ class AuthenticationHttpIntegrationTest {
                 origin + "/login/oauth2/code/auth0", Clock.systemUTC());
         try {
             startBackend();
+            verifyOwnedListenerBindings();
+            System.out.println("COOKIE_CONTEXT_RUNTIME postgres_version=" + application.getBean(JdbcTemplate.class)
+                    .queryForObject("SHOW server_version", String.class));
         }
         catch (Throwable failedStartup) {
             provider.close();
@@ -192,18 +209,286 @@ class AuthenticationHttpIntegrationTest {
         before = counts();
     }
 
+    private static void verifyOwnedContainerBindings() {
+        // This portable fixture gate covers this exact PostgreSQL container only.
+        // Ryuk and other test classes' containers are not inspected or reconfigured.
+        var inspected = DockerClientFactory.instance().client()
+                .inspectContainerCmd(POSTGRES.getContainerId()).exec();
+        assertThat(inspected.getId()).isEqualTo(POSTGRES.getContainerId());
+        assertThat(inspected.getState().getRunning()).isTrue();
+        assertThat(inspected.getConfig().getLabels()).containsEntry(OWNED_CONTAINER_LABEL, OWNED_CONTAINER_VALUE);
+        assertThat(inspected.getHostConfig().getNetworkMode()).isEqualTo("bridge");
+        assertThat(inspected.getHostConfig().getPublishAllPorts()).isFalse();
+        ExposedPort postgresPort = ExposedPort.tcp(5432);
+        var requested = inspected.getHostConfig().getPortBindings().getBindings();
+        assertThat(requested).as("Only the owned PostgreSQL port is requested").containsOnlyKeys(postgresPort);
+        assertThat(requested.get(postgresPort)).hasSize(1);
+        assertThat(requested.get(postgresPort)[0].getHostIp()).isEqualTo("127.0.0.1");
+        var actual = inspected.getNetworkSettings().getPorts().getBindings();
+        assertThat(actual).as("Only the owned PostgreSQL port is published").containsOnlyKeys(postgresPort);
+        assertThat(actual.get(postgresPort)).hasSize(1);
+        assertThat(actual.get(postgresPort)[0].getHostIp()).isEqualTo("127.0.0.1");
+        assertThat(POSTGRES.getMappedPort(5432)).isBetween(1, 65535);
+        assertThat(actual.get(postgresPort)[0].getHostPortSpec())
+                .isEqualTo(Integer.toString(POSTGRES.getMappedPort(5432)));
+        System.out.println("COOKIE_CONTEXT_RUNTIME owned_postgres_loopback=true ryuk_binding=NOT_VERIFIED");
+    }
+
+    private static void verifyOwnedListenerBindings() throws Exception {
+        var web = (org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext) application;
+        var tomcat = (org.springframework.boot.tomcat.TomcatWebServer) web.getWebServer();
+        assertThat(application.getEnvironment().getProperty("server.address")).isEqualTo("127.0.0.1");
+        assertThat(tomcat.getPort()).isEqualTo(port);
+        assertThat(tomcat.getTomcat().getService().findConnectors()).isNotEmpty();
+        for (var connector : tomcat.getTomcat().getService().findConnectors()) {
+            Object address = connector.getProperty("address");
+            assertThat(address).as("Each actual Tomcat connector has an explicit binding").isNotNull();
+            InetAddress resolved = address instanceof InetAddress value ? value
+                    : InetAddress.getByName(address.toString());
+            assertThat(resolved.getHostAddress()).as("Actual Tomcat binding is explicit IPv4 loopback")
+                    .isEqualTo("127.0.0.1");
+            assertThat(connector.getLocalPort()).as("Actual Tomcat connector uses the owned port").isEqualTo(port);
+        }
+        // OidcTestProvider's unchanged public issuer is constructed from its
+        // explicitly 127.0.0.1-bound HttpServer's actual assigned port. This is
+        // the owned fixture's binding contract, not an OS-wide listener inventory.
+        assertThat(provider.issuer().getScheme()).isEqualTo("http");
+        assertThat(provider.issuer().getHost()).isEqualTo("127.0.0.1");
+        assertThat(provider.issuer().getPort()).isBetween(1, 65535);
+        assertThat(provider.issuer().getPort()).isNotEqualTo(port);
+        System.out.println("COOKIE_CONTEXT_RUNTIME actual_backend_loopback=true synthetic_idp_binding_contract=true");
+    }
+
     @AfterEach
     void noLeakedFixtureFailureOrWorkspace() {
         FAULTS.reset();
-        CLOCK.reset();
         try {
             assertThat(provider.failure()).isNull();
             assertThat(counts().workspaces()).isZero();
             assertThat(counts().profiles()).isEqualTo(counts().users());
         }
         finally {
-            browsers.forEach(Browser::close);
+            try {
+                // Teardown after every oracle and released worker uses actual hard-expiry
+                // and captured cleanup; no registry reset or permissive fixture bypass.
+                CLOCK.advance(Duration.ofHours(9));
+                for (int attempt = 0; attempt < 16 && registry().counts().references() != 0; attempt++) {
+                    registry().cleanup();
+                    await().atMost(Duration.ofSeconds(2)).untilAsserted(() ->
+                            assertThat(registry().counts().cleanupClaims()).isZero());
+                }
+                assertThat(registry().counts().references()).as("Owned references physically cleaned").isZero();
+                assertThat(registry().counts().contexts()).isZero();
+                for (HttpSession session : List.copyOf(probe().sessions.values())) {
+                    try { session.invalidate(); }
+                    catch (IllegalStateException alreadyInvalid) { /* Exact captured fixture object. */ }
+                }
+                assertThat(probe().sessions).isEmpty();
+            }
+            finally {
+                CLOCK.reset();
+                browsers.forEach(Browser::close);
+            }
         }
+    }
+
+    @Test
+    @Timeout(60)
+    void cookieContextRemediationCapacityReal65thBootstrapPreservesAll64ExactPairs() throws Exception {
+        assertThat(registry().counts().contexts()).isZero();
+        assertThat(registry().counts().references()).isZero();
+        assertThat(probe().sessions.size()).isZero();
+        Counts durableBefore = counts();
+        int tokensBefore = provider.tokenRequests().size();
+        var originalJars = new ArrayList<Browser>();
+        var originalSessions = new ArrayList<HttpSession>();
+        var originalStamps = new ArrayList<BrowserSessionContextRegistry.Stamp>();
+        // All pairs come from real initial responses. Keep each original jar intact;
+        // no manual Cookie selection, fabricated capacity exception or registry reset.
+        for (int index = 0; index < BrowserSessionContextRegistry.MAX_CONTEXTS; index++) {
+            Browser jar = browser();
+            originalJars.add(jar);
+            assertThat(jar.contextId().isEmpty() && jar.sessionId().isEmpty()).isTrue();
+            assertSingleContextCookie(jar.get("/auth/csrf"));
+            HttpSession session = probe().sessions.get(jar.sessionId());
+            assertThat(session).isNotNull();
+            var stamp = registry().capture(session);
+            assertThat(stamp).isNotNull();
+            assertThat(stamp.contextId().equals(jar.contextId())).isTrue();
+            assertThat(registry().echo(jar.contextId(), stamp)).isTrue();
+            originalSessions.add(session);
+            originalStamps.add(stamp);
+            assertThat(registry().counts().contexts()).isEqualTo(index + 1);
+            assertThat(registry().counts().references()).isEqualTo(index + 1);
+        }
+        var full = registry().counts();
+        assertThat(full.contexts()).isEqualTo(64);
+        assertThat(full.references()).isEqualTo(64);
+        assertThat(full.retiredReferences()).isZero();
+        assertThat(full.owners()).isZero();
+        assertThat(full.cleanupClaims()).isZero();
+        Browser refused = browser();
+        assertThat(refused.contextId().isEmpty() && refused.sessionId().isEmpty()).isTrue();
+        HttpResponse<String> response = refused.get("/auth/csrf");
+        System.out.println("COOKIE_CONTEXT_CAPACITY_HTTP kind=bootstrap65 status=" + response.statusCode()
+                + " context_cookie_headers=" + response.headers().allValues("Set-Cookie").stream()
+                        .filter(header -> header.startsWith(BrowserSessionContextRegistry.COOKIE_NAME + "=")).count()
+                + " opaque_body=" + response.body().equals("{\"error\":\"request_not_completed\"}")
+                + " registry_contexts=" + registry().counts().contexts()
+                + " registry_references=" + registry().counts().references());
+        assertNoContextCookie(response);
+        assertThat(refused.contextId().isEmpty()).isTrue();
+        assertThat(registry().counts()).isEqualTo(full);
+        assertThat(counts()).isEqualTo(durableBefore);
+        assertThat(provider.tokenRequests().size()).isEqualTo(tokensBefore);
+        assertThat(provider.authorizationRequests()).isEmpty();
+        assertThat(hasAuthentication(probe().sessions.get(refused.sessionId()))).isFalse();
+        assertThat(hasAuthorizedClient(probe().sessions.get(refused.sessionId()))).isFalse();
+        assertThat(registry().capture(probe().sessions.get(refused.sessionId()))).isNull();
+
+        // Check every exact original pair before the final status assertion, including
+        // on RED. Real CSRF/intent/entry remains usable; no provider navigation occurs.
+        for (int index = 0; index < originalJars.size(); index++) {
+            Browser jar = originalJars.get(index);
+            HttpSession session = originalSessions.get(index);
+            var stamp = originalStamps.get(index);
+            HttpResponse<String> echo = jar.get("/auth/csrf");
+            assertThat(echo.statusCode()).isEqualTo(200);
+            assertNoContextCookie(echo);
+            assertThat(jar.contextId().equals(stamp.contextId())).isTrue();
+            assertThat(jar.sessionId().equals(session.getId())).isTrue();
+            assertThat(probe().sessions.get(jar.sessionId()) == session).isTrue();
+            assertThat(registry().capture(session).equals(stamp)).isTrue();
+            assertThat(registry().echo(jar.contextId(), stamp)).isTrue();
+            HttpResponse<String> intent = loginPost(jar, (String) json(echo).get("token"), Map.of());
+            assertRedirect(intent, origin + "/oauth2/authorization/auth0");
+            assertNoContextCookie(intent);
+            HttpResponse<String> entry = jar.get("/oauth2/authorization/auth0");
+            assertThat(entry.statusCode()).isEqualTo(302);
+            assertThat(URI.create(location(entry)).getPath()).isEqualTo("/authorize");
+            assertNoContextCookie(entry);
+            assertThat(registry().capture(session).equals(stamp)).isTrue();
+            assertThat(hasAuthentication(session)).isFalse();
+            assertThat(hasAuthorizedClient(session)).isFalse();
+            assertThat(registry().counts()).isEqualTo(full);
+        }
+        assertThat(counts()).isEqualTo(durableBefore);
+        assertThat(provider.tokenRequests().size()).isEqualTo(tokensBefore);
+        assertThat(provider.authorizationRequests()).isEmpty();
+        System.out.println("COOKIE_CONTEXT_CAPACITY_HTTP original_pairs_usable=64 no_eviction=true"
+                + " no_registry_growth=true no_durable_or_provider_growth=true");
+        assertJsonError(response, 503);
+        assertThat(response.body().equals("{\"error\":\"request_not_completed\"}")).isTrue();
+    }
+
+    @Test
+    @Timeout(60)
+    void cookieContextRemediationCapacityUnavailableEntryConsumesIntentAndPreservesBoundaries() throws Exception {
+        Browser jar = browser();
+        String csrf = csrf(jar);
+        HttpSession session = probe().sessions.get(jar.sessionId());
+        var stamp = registry().capture(session);
+        assertThat(stamp).isNotNull();
+        assertJsonError(jar.get("/oauth2/authorization/auth0"), 403);
+        assertRedirect(loginPost(jar, csrf, Map.of()), origin + "/oauth2/authorization/auth0");
+        CLOCK.advance(AuthenticationProperties.FLOW_LIFETIME);
+        try {
+            assertJsonError(jar.get("/oauth2/authorization/auth0"), 403);
+        }
+        finally {
+            CLOCK.reset();
+        }
+        assertRedirect(loginPost(jar, csrf(jar), Map.of()), origin + "/oauth2/authorization/auth0");
+        assertThat(session.getAttribute(AuthenticationConfiguration.LOGIN_INTENT) instanceof Instant).isTrue();
+        Set<String> attributeNames = Set.copyOf(Collections.list(session.getAttributeNames()).stream()
+                .filter(name -> !name.equals(AuthenticationConfiguration.LOGIN_INTENT)).toList());
+        var resourcesBefore = registry().counts();
+        Counts durableBefore = counts();
+        int tokensBefore = provider.tokenRequests().size();
+        var memoryField = BrowserSessionContextRegistry.class.getDeclaredField("memory");
+        memoryField.setAccessible(true);
+        ReentrantLock memory = (ReentrantLock) memoryField.get(registry());
+        var locked = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<?> holder = null;
+        HttpResponse<String> response;
+        long elapsed;
+        try {
+            holder = executor.submit(() -> {
+                assertThat(memory.tryLock(5, TimeUnit.SECONDS)).isTrue();
+                try {
+                    locked.countDown();
+                    assertThat(release.await(10, TimeUnit.SECONDS)).as("Bounded real memory-lock holder").isTrue();
+                }
+                finally {
+                    memory.unlock();
+                }
+                return null;
+            });
+            assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(memory.isLocked() && !memory.isHeldByCurrentThread()).isTrue();
+            long started = System.nanoTime();
+            response = jar.get("/oauth2/authorization/auth0");
+            elapsed = System.nanoTime() - started;
+            assertThat(release.getCount()).isEqualTo(1);
+        }
+        finally {
+            release.countDown();
+            try {
+                if (holder != null) holder.get(10, TimeUnit.SECONDS);
+            }
+            finally {
+                executor.shutdownNow();
+                assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+            }
+        }
+        System.out.println("COOKIE_CONTEXT_CAPACITY_HTTP kind=entry_lock status=" + response.statusCode()
+                + " context_cookie_headers=" + response.headers().allValues("Set-Cookie").stream()
+                        .filter(header -> header.startsWith(BrowserSessionContextRegistry.COOKIE_NAME + "=")).count()
+                + " opaque_body=" + response.body().equals("{\"error\":\"request_not_completed\"}")
+                + " elapsed_ms=" + TimeUnit.NANOSECONDS.toMillis(elapsed)
+                + " intent_consumed=" + (session.getAttribute(AuthenticationConfiguration.LOGIN_INTENT) == null));
+        assertThat(elapsed).as("Actual unavailable-memory HTTP outcome has a finite two-second budget")
+                .isLessThan(Duration.ofSeconds(2).toNanos());
+        assertNoContextCookie(response);
+        assertThat(response.headers().allValues("Set-Cookie").isEmpty()).isTrue();
+        assertThat(registry().counts()).isEqualTo(resourcesBefore);
+        assertThat(registry().capture(session).equals(stamp)).isTrue();
+        assertThat(jar.contextId().equals(stamp.contextId())).isTrue();
+        assertThat(jar.sessionId().equals(session.getId())).isTrue();
+        assertThat(hasAuthentication(session)).isFalse();
+        assertThat(hasAuthorizedClient(session)).isFalse();
+        assertThat(session.getAttribute(AuthenticationConfiguration.LOGIN_INTENT)).isNull();
+        assertThat(Set.copyOf(Collections.list(session.getAttributeNames()))).isEqualTo(attributeNames);
+        assertThat(counts()).isEqualTo(durableBefore);
+        assertThat(provider.tokenRequests().size()).isEqualTo(tokensBefore);
+        assertThat(provider.authorizationRequests()).isEmpty();
+        assertJsonError(jar.get("/api/me"), 401);
+        assertJsonError(jar.get("/oauth2/authorization/auth0"), 403);
+
+        Browser other = browser();
+        csrf(other);
+        assertRedirect(loginPost(jar, csrf(jar), Map.of()), origin + "/oauth2/authorization/auth0");
+        HttpResponse<String> contextConflict = jar.exactRequest("GET", "/oauth2/authorization/auth0", "", Map.of(),
+                "JSESSIONID=" + jar.sessionId() + "; " + BrowserSessionContextRegistry.COOKIE_NAME + "=" + other.contextId());
+        assertJsonError(contextConflict, 409);
+        assertNoContextCookie(contextConflict);
+        assertThat(session.getAttribute(AuthenticationConfiguration.LOGIN_INTENT)).isNull();
+        assertJsonError(jar.get("/oauth2/authorization/auth0"), 403);
+        assertThat(counts()).isEqualTo(durableBefore);
+        assertThat(provider.tokenRequests().size()).isEqualTo(tokensBefore);
+        complete(jar);
+        assertAccount(jar.get("/api/me"), bindingId());
+        HttpResponse<String> authenticatedConflict = jar.get("/oauth2/authorization/auth0");
+        assertJsonError(authenticatedConflict, 409);
+        assertNoContextCookie(authenticatedConflict);
+        assertThat(counts()).isEqualTo(durableBefore.plusAccount());
+        assertThat(provider.tokenRequests().size()).isEqualTo(tokensBefore + 1);
+        System.out.println("COOKIE_CONTEXT_CAPACITY_HTTP intent_not_restored=true unsolicited403=true"
+                + " expired403=true context409=true authenticated409=true full_login_after_new_intent=true");
+        assertJsonError(response, 503);
+        assertThat(response.body().equals("{\"error\":\"request_not_completed\"}")).isTrue();
     }
 
     @Test
@@ -692,11 +977,13 @@ class AuthenticationHttpIntegrationTest {
         Browser browser = browser();
         complete(browser);
         String oldSession = browser.sessionId();
+        String oldContext = browser.contextId();
         UUID original = bindingId();
         application.close();
         admitted = Set.of();
         try {
             startBackend();
+            verifyOwnedListenerBindings();
             jdbc = application.getBean(JdbcTemplate.class);
             assertThat(probe().sessions).doesNotContainKey(oldSession);
             assertJsonError(browser.get("/api/me"), 401);
@@ -707,9 +994,20 @@ class AuthenticationHttpIntegrationTest {
             application.close();
             admitted = PILOT_SUBJECTS;
             startBackend();
+            verifyOwnedListenerBindings();
             jdbc = application.getBean(JdbcTemplate.class);
         }
         assertJsonError(browser.get("/api/me"), 401);
+        // Q-aware setup only: preserve this same jar and every original restart,
+        // admission, and identity assertion while performing the new explicit recovery.
+        HttpResponse<String> cleanupCsrf = browser.get("/auth/csrf");
+        assertNoContextCookie(cleanupCsrf);
+        HttpResponse<String> cleanup = browser.post(URI.create(origin + "/auth/logout"), "", Map.of(
+                "Origin", origin, "X-CSRF-TOKEN", (String) json(cleanupCsrf).get("token")));
+        assertJsonError(cleanup, 409);
+        assertNoContextCookie(cleanup);
+        assertThat(browser.sessionId()).isEmpty();
+        assertNewRecoveryBootstrapAndEcho(browser, oldContext, oldSession);
         complete(browser);
         assertThat(bindingId()).isEqualTo(original);
     }
@@ -1285,6 +1583,722 @@ class AuthenticationHttpIntegrationTest {
                 && "/".equals(cookie.getPath()) && cookie.getDomain() == null);
     }
 
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextO1AfterRealUserLookupRejectsRevokedCapturedStamp() throws Exception {
+        Browser browser = browser();
+        complete(browser);
+        UUID oldUser = bindingId();
+        String context = browser.contextId();
+        var oldStamp = registry().capture(probe().sessions.get(browser.sessionId()));
+        GateProbe gate = new GateProbe("O1-A", false);
+        CurrentUserAccessFilter.gateObserver = gate;
+        var executor = Executors.newSingleThreadExecutor();
+        Future<HttpResponse<String>> old = null;
+        try {
+            old = executor.submit(() -> browser.get("/api/me", Map.of("X-Cookie-Control", "O1-A")));
+            assertThat(gate.entered.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(gate.stamp.get().equals(oldStamp)).as("A retained its pre-DB immutable stamp").isTrue();
+            assertThat(gate.decisions).doesNotContainKey("O1-A");
+            assertThat(old.isDone()).isFalse();
+            assertThat(logout(browser).statusCode()).isEqualTo(204);
+            int revoked = gate.event("logical-revoke-completed");
+            String next = nextSubject();
+            provider.scenario(Scenario.verified(next));
+            complete(browser);
+            var newStamp = registry().capture(probe().sessions.get(browser.sessionId()));
+            assertThat(browser.contextId().equals(context)).as("B uses the same Q").isTrue();
+            assertThat(newStamp.generation()).isGreaterThan(oldStamp.generation());
+            assertAccount(browser.get("/api/me", Map.of("X-Cookie-Control", "O1-B")), bindingId(next));
+            assertThat(gate.decisions.get("O1-B").allowed()).isTrue();
+            assertThat(gate.decisions.get("O1-B").order()).isGreaterThan(revoked);
+            assertThat(old.isDone()).isFalse();
+            gate.release.countDown();
+            assertJsonError(old.get(30, TimeUnit.SECONDS), 401);
+            assertThat(gate.decisions.get("O1-A").allowed()).isFalse();
+            assertThat(gate.decisions.get("O1-A").order()).isGreaterThan(gate.decisions.get("O1-B").order());
+            assertAccount(browser.get("/api/me"), bindingId(next));
+            assertThat(bindingId()).isEqualTo(oldUser);
+            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+        }
+        finally {
+            gate.release.countDown();
+            try { finishWorkers(executor, old); }
+            finally { CurrentUserAccessFilter.gateObserver = new GateProbe("unused", false); }
+        }
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextO2TwoBootstrapLiveCrossQFirstAdmissionAfterB() throws Exception {
+        Browser jar = browser();
+        // Both requests are sent Cookie-absent. Applying the actual B headers is delayed
+        // by this Java control; this is not a browser delivery/SameSite proof.
+        var bootstrapA = jar.cookieFreeGetAsync("/auth/csrf");
+        var bootstrapB = jar.cookieFreeGetAsync("/auth/csrf");
+        HttpResponse<String> first = bootstrapA.get(30, TimeUnit.SECONDS);
+        HttpResponse<String> delayed = bootstrapB.get(30, TimeUnit.SECONDS);
+        assertSingleContextCookie(first);
+        assertSingleContextCookie(delayed);
+        jar.applyHeaders(first);
+        String contextA = jar.contextId();
+        complete(jar);
+        String sessionA = jar.sessionId();
+        HttpSession original = probe().sessions.get(sessionA);
+        var stampA = registry().capture(original);
+        UUID userA = bindingId();
+        GateProbe gate = new GateProbe("O2-A", false);
+        CurrentUserAccessFilter.gateObserver = gate;
+        var executor = Executors.newSingleThreadExecutor();
+        Future<HttpResponse<String>> old = null;
+        try {
+            old = executor.submit(() -> jar.get("/api/me", Map.of("X-Cookie-Control", "O2-A")));
+            assertThat(gate.entered.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(gate.decisions).doesNotContainKey("O2-A");
+            assertThat(gate.stamp.get().equals(stampA)).isTrue();
+            assertThat(old.isDone()).isFalse();
+            jar.applyHeaders(delayed); // The one original B issuance, never replayed.
+            String contextB = jar.contextId();
+            assertThat(contextB.equals(contextA)).as("The two initial bootstraps have independent Q").isFalse();
+            assertThat(registry().echo(contextA, stampA)).as("Q_A remains live; no added logout or request admission").isTrue();
+            assertThat(hasAuthentication(original)).isTrue();
+            String next = nextSubject();
+            provider.scenario(Scenario.verified(next));
+            complete(jar);
+            UUID userB = bindingId(next);
+            assertAccount(jar.get("/api/me", Map.of("X-Cookie-Control", "O2-B")), userB);
+            assertThat(gate.decisions).doesNotContainKey("O2-A");
+            assertThat(old.isDone()).isFalse();
+            gate.release.countDown();
+            assertAccount(old.get(30, TimeUnit.SECONDS), userA);
+            assertThat(gate.decisions.get("O2-A").allowed()).isTrue();
+            assertThat(gate.decisions.get("O2-A").order()).isGreaterThan(gate.decisions.get("O2-B").order());
+            assertThat(jar.contextId().equals(contextB)).isTrue();
+            assertAccount(jar.get("/api/me"), userB);
+            assertThat(probe().sessions.get(sessionA) == original).as("Independent live A is not globally revoked").isTrue();
+            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+            System.out.println("COOKIE_CONTEXT_ORACLE O2=L1_CHARACTERIZATION NOT_DEFECT_FIXED_GREEN");
+        }
+        finally {
+            gate.release.countDown();
+            try { finishWorkers(executor, old); }
+            finally { CurrentUserAccessFilter.gateObserver = new GateProbe("unused", false); }
+        }
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextAdmittedBeforeRevokeMayFinishAfterB() throws Exception {
+        Browser browser = browser();
+        complete(browser);
+        UUID userA = bindingId();
+        GateProbe gate = new GateProbe("admitted-A", true);
+        CurrentUserAccessFilter.gateObserver = gate;
+        var executor = Executors.newSingleThreadExecutor();
+        Future<HttpResponse<String>> old = null;
+        try {
+            old = executor.submit(() -> browser.get("/api/me", Map.of("X-Cookie-Control", "admitted-A")));
+            assertThat(gate.entered.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(gate.decisions.get("admitted-A").allowed()).isTrue();
+            // Exact real invalidation avoids Spring logout's separate shared-context
+            // clearing behavior; no principal or final decision is injected by the fixture.
+            probe().sessions.get(browser.sessionId()).invalidate();
+            assertThat(registry().finalAdmit(browser.contextId(), gate.stamp.get())).isFalse();
+            int revoked = gate.event("exact-session-invalidation-and-generation-retirement-observed");
+            assertThat(gate.decisions.get("admitted-A").order()).isLessThan(revoked);
+            String next = nextSubject();
+            provider.scenario(Scenario.verified(next));
+            complete(browser);
+            assertAccount(browser.get("/api/me", Map.of("X-Cookie-Control", "admitted-B")), bindingId(next));
+            assertThat(old.isDone()).isFalse();
+            gate.release.countDown();
+            assertAccount(old.get(30, TimeUnit.SECONDS), userA);
+            assertAccount(browser.get("/api/me"), bindingId(next));
+            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+        }
+        finally {
+            gate.release.countDown();
+            try { finishWorkers(executor, old); }
+            finally { CurrentUserAccessFilter.gateObserver = new GateProbe("unused", false); }
+        }
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextLateSuccessJavaCookieControlCannotReadAAfterB() throws Exception {
+        lateSuccessJavaCookieControl(false);
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextInvalidatedLateSuccessJavaCookieControlRequiresRecovery() throws Exception {
+        lateSuccessJavaCookieControl(true);
+    }
+
+    private void lateSuccessJavaCookieControl(boolean invalidateA) throws Exception {
+        Browser jar = browser();
+        var first = jar.cookieFreeGetAsync("/auth/csrf");
+        var second = jar.cookieFreeGetAsync("/auth/csrf");
+        HttpResponse<String> initialA = first.get(30, TimeUnit.SECONDS);
+        HttpResponse<String> initialB = second.get(30, TimeUnit.SECONDS);
+        jar.applyHeaders(initialA);
+        String contextA = jar.contextId();
+        URI callbackA = begin(jar);
+        SuccessPause pause = new SuccessPause();
+        FAULTS.successPause = pause;
+        var executor = Executors.newSingleThreadExecutor();
+        Future<HttpResponse<String>> held = null;
+        try {
+            held = executor.submit(() -> jar.request("GET", callbackA, "", Map.of("X-Cookie-Control", "late-success")));
+            assertThat(pause.entered.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(pause.actualRotationCookie.get()).isTrue();
+            assertThat(pause.uncommitted.get()).isTrue();
+            assertThat(pause.session.get()).isNotNull();
+            String rotatedA = pause.session.get().getId();
+            var stampA = registry().capture(pause.session.get());
+            assertThat(registry().finalAdmit(contextA, stampA)).isTrue();
+            assertThat(hasAuthentication(pause.session.get())).isTrue();
+            assertThat(counts()).isEqualTo(before.plusAccount());
+            if (invalidateA) {
+                pause.session.get().invalidate();
+                assertThat(probe().sessions).doesNotContainKey(rotatedA);
+                assertThat(registry().finalAdmit(contextA, stampA)).isFalse();
+            }
+            jar.applyHeaders(initialB);
+            String contextB = jar.contextId();
+            assertThat(contextB.equals(contextA)).isFalse();
+            String next = nextSubject();
+            provider.scenario(Scenario.verified(next));
+            complete(jar);
+            assertAccount(jar.get("/api/me"), bindingId(next));
+            assertThat(held.isDone()).isFalse();
+            pause.release.countDown();
+            HttpResponse<String> late = held.get(30, TimeUnit.SECONDS);
+            assertRedirect(late, origin + "/account");
+            assertNoContextCookie(late);
+            assertThat(jar.contextId().equals(contextB)).isTrue();
+            assertThat(jar.sessionId().equals(rotatedA)).isTrue();
+            assertThat(registry().finalAdmit(contextA, stampA)).as("A validity matches the declared control").isEqualTo(!invalidateA);
+            assertJsonError(jar.get("/api/me"), 401);
+            HttpResponse<String> exactA = jar.exactRequest("GET", "/api/me", "", Map.of(),
+                    "JSESSIONID=" + rotatedA + "; " + BrowserSessionContextRegistry.COOKIE_NAME + "=" + contextA);
+            if (invalidateA) assertJsonError(exactA, 401);
+            else assertAccount(exactA, bindingId());
+            assertNoContextCookie(logout(jar));
+            complete(jar);
+            assertAccount(jar.get("/api/me"), bindingId(next));
+            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+            System.out.println("COOKIE_CONTEXT_ORACLE late_success=JAVA_HTTP_CONTROL invalidated_A=" + invalidateA
+                    + " browser_proof=NOT_RUN");
+        }
+        finally {
+            pause.release.countDown();
+            try { finishWorkers(executor, held); }
+            finally { FAULTS.successPause = null; }
+        }
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextSameQLateSuccessLogoutThroughOldSidRevokesA() throws Exception {
+        Browser jar = browser();
+        URI callbackA = begin(jar);
+        String anonymousA = jar.sessionId();
+        String context = jar.contextId();
+        SuccessPause pause = new SuccessPause();
+        FAULTS.successPause = pause;
+        var executor = Executors.newSingleThreadExecutor();
+        Future<HttpResponse<String>> held = null;
+        try {
+            held = executor.submit(() -> jar.request("GET", callbackA, "", Map.of("X-Cookie-Control", "late-success")));
+            assertThat(pause.entered.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(pause.actualRotationCookie.get()).isTrue();
+            assertThat(pause.uncommitted.get()).isTrue();
+            String rotatedA = pause.session.get().getId();
+            var stampA = registry().capture(pause.session.get());
+            assertThat(registry().finalAdmit(context, stampA)).isTrue();
+            assertThat(jar.sessionId().equals(anonymousA)).isTrue();
+            assertThat(probe().sessions).doesNotContainKey(anonymousA);
+            // Real CSRF creates C from the now-stale SID, retaining the presented Q.
+            String cleanupToken = csrf(jar);
+            String cleanupSession = jar.sessionId();
+            assertThat(cleanupSession.equals(anonymousA) || cleanupSession.equals(rotatedA)).isFalse();
+            HttpResponse<String> logicalLogout = jar.post(URI.create(origin + "/auth/logout"), "",
+                    Map.of("Origin", origin, "X-CSRF-TOKEN", cleanupToken));
+            assertThat(logicalLogout.statusCode()).isEqualTo(204);
+            assertNoContextCookie(logicalLogout);
+            assertThat(registry().finalAdmit(context, stampA)).isFalse();
+            assertThat(held.isDone()).isFalse();
+            String next = nextSubject();
+            provider.scenario(Scenario.verified(next));
+            complete(jar);
+            var stampB = registry().capture(probe().sessions.get(jar.sessionId()));
+            assertThat(stampB.contextId().equals(stampA.contextId())).isTrue();
+            assertThat(stampB.generation()).isGreaterThan(stampA.generation());
+            assertAccount(jar.get("/api/me"), bindingId(next));
+            assertThat(held.isDone()).isFalse();
+            pause.release.countDown();
+            HttpResponse<String> late = held.get(30, TimeUnit.SECONDS);
+            assertRedirect(late, origin + "/account");
+            assertNoContextCookie(late);
+            assertThat(jar.contextId().equals(context)).isTrue();
+            assertThat(jar.sessionId().equals(rotatedA)).isTrue();
+            assertJsonError(jar.get("/api/me"), 401);
+            assertNoContextCookie(logout(jar));
+            complete(jar);
+            assertAccount(jar.get("/api/me"), bindingId(next));
+            assertThat(bindingCount(subject)).isEqualTo(1);
+            assertThat(bindingCount(next)).isEqualTo(1);
+            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+            System.out.println("COOKIE_CONTEXT_ORACLE same_Q_old_SID_logout=JAVA_HTTP_CONTROL browser_proof=NOT_RUN");
+        }
+        finally {
+            pause.release.countDown();
+            try { finishWorkers(executor, held); }
+            finally { FAULTS.successPause = null; }
+        }
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextLateFinallyCannotReleaseNewGenerationOwner() throws Exception {
+        // Retain every existing real token-barrier, principal, cookie and durable-binding assertion.
+        staleAttemptFinallyCannotReleaseNewerBusyAdmission();
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextIndependentQProgressWhileOtherRealDatabaseCallbackIsHeld() throws Exception {
+        // Preserve the existing real INSERT barrier and every durable/principal assertion.
+        independentBrowserSessionCompletesWhileOtherCallbackIsHeld();
+    }
+
+    @Test
+    @Timeout(60)
+    void cookieContextBootstrapEchoRotationAndNoReissueOrAdoption() throws Exception {
+        Browser browser = browser();
+        HttpResponse<String> first = browser.get("/auth/csrf");
+        assertSingleContextCookie(first);
+        String context = browser.contextId();
+        String anonymous = browser.sessionId();
+        var stamp = registry().capture(probe().sessions.get(anonymous));
+        assertThat(stamp).isNotNull();
+        assertThat(registry().echo(context, stamp)).isTrue();
+        String token = (String) json(first).get("token");
+        HttpResponse<String> noEcho = browser.exactRequest("POST", "/auth/login", "_csrf=" + encode(token),
+                Map.of("Origin", origin), "JSESSIONID=" + anonymous);
+        assertJsonError(noEcho, 409);
+        assertNoContextCookie(noEcho);
+        assertNoContextCookie(browser.get("/auth/csrf"));
+        HttpResponse<String> initiation = loginPost(browser, token, Map.of());
+        assertNoContextCookie(initiation);
+        HttpResponse<String> callback = browser.get(authorize(browser, initiation));
+        assertRedirect(callback, origin + "/account");
+        assertNoContextCookie(callback);
+        assertThat(browser.sessionId().equals(anonymous)).isFalse();
+        assertThat(registry().capture(probe().sessions.get(browser.sessionId())).equals(stamp))
+                .as("Real fixation rotation preserves the immutable logical stamp").isTrue();
+        assertThat(csrf(browser).equals(token)).as("Real Spring CSRF rotates").isFalse();
+        assertAccount(browser.get("/api/me"), bindingId());
+        String session = browser.sessionId();
+        String sidOnly = "JSESSIONID=" + session;
+        HttpResponse<String> missing = browser.exactRequest("GET", "/api/me", "", Map.of(), sidOnly);
+        assertJsonError(missing, 401);
+        assertNoContextCookie(missing);
+        HttpResponse<String> cleanupBootstrap = browser.exactRequest("GET", "/auth/csrf", "", Map.of(), sidOnly);
+        assertThat(cleanupBootstrap.statusCode()).isEqualTo(200);
+        assertNoContextCookie(cleanupBootstrap);
+        assertThat(registry().capture(probe().sessions.get(session)).equals(stamp)).isTrue();
+        assertAccount(browser.get("/api/me"), bindingId());
+        assertNoContextCookie(logout(browser));
+        assertThat(counts()).isEqualTo(before.plusAccount());
+    }
+
+    @Test
+    @Timeout(60)
+    void cookieContextMissingUnknownMismatchDuplicatesAndCsrfCleanupStatuses() throws Exception {
+        Browser a = browser();
+        complete(a);
+        UUID userA = bindingId();
+        Browser b = browser();
+        String next = nextSubject();
+        provider.scenario(Scenario.verified(next));
+        complete(b);
+        String sidA = "JSESSIONID=" + a.sessionId();
+        String qA = BrowserSessionContextRegistry.COOKIE_NAME + "=" + a.contextId();
+        String qB = BrowserSessionContextRegistry.COOKIE_NAME + "=" + b.contextId();
+        for (String cookie : List.of(sidA, sidA + "; " + BrowserSessionContextRegistry.COOKIE_NAME + "=unknown",
+                sidA + "; " + BrowserSessionContextRegistry.COOKIE_NAME + "=" + "A".repeat(43),
+                sidA + "; " + qB, sidA + "; " + qA + "; " + qA,
+                sidA + "; " + qA + "; " + qB)) {
+            HttpResponse<String> rejected = a.exactRequest("GET", "/api/me", "", Map.of(), cookie);
+            assertJsonError(rejected, 401);
+            assertNoContextCookie(rejected);
+        }
+        assertAccount(a.get("/api/me"), userA);
+        assertAccount(b.get("/api/me"), bindingId(next));
+        // A real CSRF token is session-specific; swapping the presented SID does not revoke B.
+        String csrfA = csrf(a);
+        HttpResponse<String> csrfRejected = b.post(URI.create(origin + "/auth/logout"), "",
+                Map.of("Origin", origin, "X-CSRF-TOKEN", csrfA));
+        assertJsonError(csrfRejected, 403);
+        assertNoContextCookie(csrfRejected);
+        assertAccount(b.get("/api/me"), bindingId(next));
+        // Valid CSRF but no usable Q cleans the presented session only, not context-wide success.
+        HttpResponse<String> cleanup = a.exactRequest("POST", "/auth/logout", "", Map.of(
+                "Origin", origin, "X-CSRF-TOKEN", csrfA), sidA);
+        assertJsonError(cleanup, 409);
+        assertNoContextCookie(cleanup);
+        assertJsonError(a.get("/api/me"), 401);
+        assertAccount(b.get("/api/me"), bindingId(next));
+        assertNoContextCookie(logout(b));
+        assertJsonError(b.get("/api/me"), 401);
+        assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+    }
+
+    @Test
+    @Timeout(60)
+    void cookieContextRecoveryExpiredQRetainsSameJarAndDurableIdentity() throws Exception {
+        Browser browser = browser();
+        CLOCK.advance(Duration.ofHours(-7));
+        csrf(browser);
+        String context = browser.contextId();
+        CLOCK.reset();
+        complete(browser);
+        UUID durable = bindingId();
+        String authenticatedSession = browser.sessionId();
+        assertAccount(browser.get("/api/me"), durable);
+        CLOCK.advance(Duration.ofHours(1).plusSeconds(1));
+        assertJsonError(browser.get("/api/me"), 401);
+        HttpResponse<String> bootstrap = browser.get("/auth/csrf");
+        assertNoContextCookie(bootstrap);
+        assertThat(browser.contextId().equals(context)).isTrue();
+        HttpResponse<String> cleanup = browser.post(URI.create(origin + "/auth/logout"), "",
+                Map.of("Origin", origin, "X-CSRF-TOKEN", (String) json(bootstrap).get("token")));
+        assertJsonError(cleanup, 409);
+        assertNoContextCookie(cleanup);
+        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(browser.sessionId()).as("Real cleanup removes the incoming SID from this same jar").isEmpty();
+        System.out.println("COOKIE_CONTEXT_RECOVERY_SETUP kind=expired private401=true cleanup409=true same_jar=true");
+        String newCsrf = assertNewRecoveryBootstrapAndEcho(browser, context, authenticatedSession);
+        // OIDC uses the real synthetic-provider clock. Old expiry was already reached
+        // and a distinct new context was already reserved before this fixture-clock reset.
+        CLOCK.reset();
+        try {
+            assertRecoveryLoginRetainsBinding(browser, newCsrf, durable);
+        }
+        finally {
+            CLOCK.advance(Duration.ofHours(1).plusSeconds(1));
+        }
+    }
+
+    @Test
+    @Timeout(60)
+    void cookieContextRecoveryAfterActualRestartRetainsSameJarAndDurableIdentity() throws Exception {
+        Browser browser = browser();
+        complete(browser);
+        UUID durable = bindingId();
+        String context = browser.contextId();
+        String authenticatedSession = browser.sessionId();
+        application.close();
+        startBackend();
+        verifyOwnedListenerBindings();
+        jdbc = application.getBean(JdbcTemplate.class);
+        assertJsonError(browser.get("/api/me"), 401);
+        HttpResponse<String> bootstrap = browser.get("/auth/csrf");
+        assertThat(bootstrap.statusCode()).isEqualTo(200);
+        assertNoContextCookie(bootstrap);
+        assertThat(browser.contextId().equals(context)).isTrue();
+        HttpResponse<String> cleanup = browser.post(URI.create(origin + "/auth/logout"), "",
+                Map.of("Origin", origin, "X-CSRF-TOKEN", (String) json(bootstrap).get("token")));
+        assertJsonError(cleanup, 409);
+        assertNoContextCookie(cleanup);
+        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(browser.sessionId()).as("Real cleanup removes the incoming SID from this same jar").isEmpty();
+        System.out.println("COOKIE_CONTEXT_RECOVERY_SETUP kind=actual_restart private401=true cleanup409=true same_jar=true");
+        String newCsrf = assertNewRecoveryBootstrapAndEcho(browser, context, authenticatedSession);
+        assertRecoveryLoginRetainsBinding(browser, newCsrf, durable);
+    }
+
+    private static String assertNewRecoveryBootstrapAndEcho(Browser browser, String oldContext, String oldSession)
+            throws Exception {
+        // The same CookieManager performs all delivery and outgoing Cookie selection.
+        // No cookie removal, substitution, imported headers, or new Browser is permitted here.
+        HttpResponse<String> recovered = browser.get("/auth/csrf");
+        assertSingleContextCookie(recovered);
+        String newContext = browser.contextId();
+        String newSession = browser.sessionId();
+        assertThat(!newContext.isEmpty() && !newContext.equals(oldContext))
+                .as("Recovery creates a new random Q, never reissues the old value").isTrue();
+        assertThat(!newSession.isEmpty() && !newSession.equals(oldSession)).isTrue();
+        HttpSession session = probe().sessions.get(newSession);
+        assertThat(session).isNotNull();
+        assertThat(hasAuthentication(session)).isFalse();
+        var stamp = registry().capture(session);
+        assertThat(stamp).isNotNull();
+        assertThat(stamp.contextId().equals(newContext)).isTrue();
+        HttpResponse<String> echo = browser.get("/auth/csrf");
+        assertThat(echo.statusCode()).isEqualTo(200);
+        assertNoContextCookie(echo);
+        assertThat(browser.contextId().equals(newContext) && browser.sessionId().equals(newSession)).isTrue();
+        assertThat(registry().echo(newContext, stamp)).isTrue();
+        assertThat(registry().capture(session).equals(stamp)).isTrue();
+        return (String) json(echo).get("token");
+    }
+
+    private void assertRecoveryLoginRetainsBinding(Browser browser, String token, UUID durable) throws Exception {
+        String anonymousSession = browser.sessionId();
+        String context = browser.contextId();
+        var stamp = registry().capture(probe().sessions.get(anonymousSession));
+        HttpResponse<String> initiation = loginPost(browser, token, Map.of());
+        assertNoContextCookie(initiation);
+        HttpResponse<String> callback = browser.get(authorize(browser, initiation));
+        assertRedirect(callback, origin + "/account");
+        assertNoContextCookie(callback);
+        assertThat(browser.sessionId().equals(anonymousSession)).as("Recovery uses real fixation rotation").isFalse();
+        assertThat(browser.contextId().equals(context)).isTrue();
+        assertThat(registry().capture(probe().sessions.get(browser.sessionId())).equals(stamp)).isTrue();
+        assertAccount(browser.get("/api/me"), durable);
+        assertThat(bindingId()).isEqualTo(durable);
+        assertThat(bindingCount(subject)).isEqualTo(1);
+        assertThat(counts()).isEqualTo(before.plusAccount());
+        System.out.println("COOKIE_CONTEXT_RECOVERY_RESULT full_oidc=true same_jar=true same_durable_identity=true");
+    }
+
+    @Test
+    @Timeout(60)
+    void cookieContextRecoveryConcurrentBootstrapLateDeliveryCannotRestoreOldAccount() throws Exception {
+        Browser jar = browser();
+        RecoveryFixture old = prepareActualRestartRecovery(jar);
+        int recordsBefore = registry().counts().contexts();
+        RecoveryCookieWriteProbe write = new RecoveryCookieWriteProbe(false);
+        FAULTS.recoveryCookieWriteProbe = write;
+        var executor = Executors.newSingleThreadExecutor();
+        Future<HttpResponse<String>> held = null;
+        try {
+            held = executor.submit(() -> jar.get("/auth/csrf", Map.of("X-Cookie-Control", "recovery-bootstrap")));
+            assertThat(write.entered.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(write.writes.get()).isEqualTo(1);
+            assertThat(write.beforeCommit.get()).isTrue();
+            assertThat(jar.sessionId()).as("The held first recovery response has not delivered its new SID").isEmpty();
+            assertThat(jar.contextId().equals(old.context())).isTrue();
+            String firstNewContext = write.context.get();
+            String firstNewSession = write.session.get().getId();
+            assertThat(firstNewContext.equals(old.context())).isFalse();
+            assertThat(hasAuthentication(write.session.get())).isFalse();
+            assertThat(registry().counts().contexts()).isEqualTo(recordsBefore + 1);
+
+            // A second ordinary request from the very same CookieManager still has no
+            // SID. It may create an independent new anonymous context, not reuse the first.
+            HttpResponse<String> second = jar.get("/auth/csrf");
+            assertSingleContextCookie(second);
+            String contextB = jar.contextId();
+            assertThat(contextB.equals(old.context()) || contextB.equals(firstNewContext)).isFalse();
+            assertThat(jar.sessionId().equals(firstNewSession)).isFalse();
+            assertThat(registry().counts().contexts()).isEqualTo(recordsBefore + 2);
+            HttpResponse<String> echoB = jar.get("/auth/csrf");
+            assertNoContextCookie(echoB);
+            String next = nextSubject();
+            provider.scenario(Scenario.verified(next));
+            HttpResponse<String> initiation = loginPost(jar, (String) json(echoB).get("token"), Map.of());
+            assertNoContextCookie(initiation);
+            HttpResponse<String> callbackB = jar.get(authorize(jar, initiation));
+            assertRedirect(callbackB, origin + "/account");
+            assertNoContextCookie(callbackB);
+            UUID userB = bindingId(next);
+            assertAccount(jar.get("/api/me"), userB);
+            assertThat(held.isDone()).isFalse();
+            assertThat(hasAuthentication(write.session.get())).isFalse();
+            assertThat(registry().finalAdmit(firstNewContext, write.stamp.get())).isFalse();
+
+            write.release.countDown();
+            HttpResponse<String> late = held.get(30, TimeUnit.SECONDS);
+            assertSingleContextCookie(late);
+            assertThat(jar.contextId().equals(firstNewContext)).isTrue();
+            assertThat(jar.sessionId().equals(firstNewSession)).isTrue();
+            assertJsonError(jar.get("/api/me"), 401);
+            assertNoContextCookie(jar.get("/auth/csrf"));
+            assertThat(registry().capture(write.session.get()).equals(write.stamp.get())).isTrue();
+            assertThat(write.writes.get()).isEqualTo(1);
+            assertThat(bindingId()).isEqualTo(old.durable());
+            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+
+            assertNoContextCookie(logout(jar));
+            HttpResponse<String> recovery = jar.get(begin(jar));
+            assertRedirect(recovery, origin + "/account");
+            assertNoContextCookie(recovery);
+            assertAccount(jar.get("/api/me"), userB);
+            assertThat(bindingId(next)).isEqualTo(userB);
+            assertThat(bindingCount(subject)).isEqualTo(1);
+            assertThat(bindingCount(next)).isEqualTo(1);
+            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+            System.out.println("COOKIE_CONTEXT_RECOVERY_CONCURRENCY independent_anonymous_contexts=2"
+                    + " late_response_after_B=401 same_jar_recovery=true browser_proof=NOT_RUN");
+        }
+        finally {
+            write.release.countDown();
+            try { finishWorkers(executor, held); }
+            finally { FAULTS.recoveryCookieWriteProbe = null; }
+        }
+    }
+
+    @Test
+    @Timeout(60)
+    void cookieContextRecoveryPartialIssuanceFailureDoesNotReissueOrAdoptTaggedSession() throws Exception {
+        Browser jar = browser();
+        RecoveryFixture old = prepareActualRestartRecovery(jar);
+        var resourcesBefore = registry().counts();
+        RecoveryCookieWriteProbe write = new RecoveryCookieWriteProbe(true);
+        FAULTS.recoveryCookieWriteProbe = write;
+        try {
+            HttpResponse<String> failed = jar.get("/auth/csrf", Map.of("X-Cookie-Control", "recovery-bootstrap"));
+            assertJsonError(failed, 503);
+            assertNoContextCookie(failed);
+            assertThat(write.writes.get()).isEqualTo(1);
+            assertThat(write.injectedFailure.get()).isTrue();
+            assertThat(write.beforeCommit.get()).isTrue();
+            assertThat(failed.headers().allValues("Set-Cookie").stream().anyMatch(
+                    AuthenticationHttpIntegrationTest::isHostOnlyRootSessionCookie))
+                    .as("The actual container's pending new SID reached the partial failure response").isTrue();
+            assertThat(jar.sessionId().equals(write.session.get().getId())).isTrue();
+            assertThat(jar.contextId().equals(old.context())).isTrue();
+            assertThat(write.context.get().equals(old.context())).isFalse();
+            assertThat(registry().counts().contexts()).isEqualTo(resourcesBefore.contexts() + 1);
+            assertThat(registry().counts().references()).isEqualTo(resourcesBefore.references() + 1);
+            assertThat(registry().capture(write.session.get()).equals(write.stamp.get())).isTrue();
+            assertThat(hasAuthentication(write.session.get())).isFalse();
+            assertThat(registry().finalAdmit(write.context.get(), write.stamp.get())).isFalse();
+
+            HttpResponse<String> repeated = jar.get("/auth/csrf");
+            assertThat(repeated.statusCode()).isEqualTo(200);
+            assertNoContextCookie(repeated);
+            assertThat(jar.contextId().equals(old.context())).isTrue();
+            assertThat(jar.sessionId().equals(write.session.get().getId())).isTrue();
+            assertThat(registry().capture(write.session.get()).equals(write.stamp.get())).isTrue();
+            assertThat(registry().counts().contexts()).isEqualTo(resourcesBefore.contexts() + 1);
+            assertThat(registry().counts().references()).isEqualTo(resourcesBefore.references() + 1);
+            String token = (String) json(repeated).get("token");
+            HttpResponse<String> denied = loginPost(jar, token, Map.of());
+            assertJsonError(denied, 409);
+            assertNoContextCookie(denied);
+            assertJsonError(jar.get("/api/me"), 401);
+            assertThat(counts()).isEqualTo(before.plusAccount());
+
+            HttpResponse<String> cleanup = jar.post(URI.create(origin + "/auth/logout"), "", Map.of(
+                    "Origin", origin, "X-CSRF-TOKEN", token));
+            assertJsonError(cleanup, 409);
+            assertNoContextCookie(cleanup);
+            assertThat(jar.sessionId()).isEmpty();
+            String newCsrf = assertNewRecoveryBootstrapAndEcho(jar, old.context(), old.session());
+            assertThat(jar.contextId().equals(write.context.get())).as("Failure does not permit reissue of its consumed Q").isFalse();
+            assertRecoveryLoginRetainsBinding(jar, newCsrf, old.durable());
+            assertThat(write.writes.get()).isEqualTo(1);
+            System.out.println("COOKIE_CONTEXT_RECOVERY_PARTIAL_FAILURE injected_cookie_write_failure=true"
+                    + " genuine_pending_SID_delivered=true consumed_Q_not_reissued=true browser_proof=NOT_RUN");
+        }
+        finally {
+            write.release.countDown();
+            FAULTS.recoveryCookieWriteProbe = null;
+        }
+    }
+
+    private RecoveryFixture prepareActualRestartRecovery(Browser jar) throws Exception {
+        complete(jar);
+        RecoveryFixture old = new RecoveryFixture(jar.contextId(), jar.sessionId(), bindingId());
+        application.close();
+        startBackend();
+        verifyOwnedListenerBindings();
+        jdbc = application.getBean(JdbcTemplate.class);
+        assertJsonError(jar.get("/api/me"), 401);
+        HttpResponse<String> csrf = jar.get("/auth/csrf");
+        assertThat(csrf.statusCode()).isEqualTo(200);
+        assertNoContextCookie(csrf);
+        assertThat(jar.contextId().equals(old.context())).isTrue();
+        HttpResponse<String> cleanup = jar.post(URI.create(origin + "/auth/logout"), "", Map.of(
+                "Origin", origin, "X-CSRF-TOKEN", (String) json(csrf).get("token")));
+        assertJsonError(cleanup, 409);
+        assertNoContextCookie(cleanup);
+        assertThat(jar.sessionId()).isEmpty();
+        assertThat(counts()).isEqualTo(before.plusAccount());
+        return old;
+    }
+
+    private record RecoveryFixture(String context, String session, UUID durable) {
+        @Override public String toString() { return "RecoveryFixture[redacted]"; }
+    }
+
+    @RepeatedTest(3)
+    @Timeout(60)
+    void cookieContextAtomicInitialPairingIssuesOnlyOneQ() throws Exception {
+        Browser browser = browser();
+        assertThat(browser.get("/actuator/health", Map.of("X-Cookie-Control", "create-untagged")).statusCode()).isEqualTo(200);
+        String session = browser.sessionId();
+        assertThat(session).isNotEmpty();
+        assertThat(registry().capture(probe().sessions.get(session))).isNull();
+        InitialPairPause pause = new InitialPairPause();
+        FAULTS.initialPairPause = pause;
+        var executor = Executors.newFixedThreadPool(2);
+        Future<HttpResponse<String>> a = null;
+        Future<HttpResponse<String>> b = null;
+        try {
+            a = executor.submit(() -> browser.exactRequest("GET", "/auth/csrf", "",
+                    Map.of("X-Cookie-Control", "pair-race"), "JSESSIONID=" + session));
+            b = executor.submit(() -> browser.exactRequest("GET", "/auth/csrf", "",
+                    Map.of("X-Cookie-Control", "pair-race"), "JSESSIONID=" + session));
+            assertThat(pause.entered.await(10, TimeUnit.SECONDS)).isTrue();
+            pause.release.countDown();
+            HttpResponse<String> first = a.get(30, TimeUnit.SECONDS);
+            HttpResponse<String> second = b.get(30, TimeUnit.SECONDS);
+            assertThat(first.statusCode()).isEqualTo(200);
+            assertThat(second.statusCode()).isEqualTo(200);
+            List<String> issued = Stream.of(first, second).flatMap(response -> response.headers().allValues("Set-Cookie").stream())
+                    .filter(header -> header.startsWith(BrowserSessionContextRegistry.COOKIE_NAME + "=")).toList();
+            assertThat(issued.size()).as("One untagged real session has exactly one first-issuance winner").isEqualTo(1);
+            String context = HttpCookie.parse(issued.getFirst()).getFirst().getValue();
+            var stamp = registry().capture(probe().sessions.get(session));
+            assertThat(stamp).isNotNull();
+            assertThat(registry().echo(context, stamp)).isTrue();
+            assertNoContextCookie(browser.exactRequest("GET", "/auth/csrf", "", Map.of(), "JSESSIONID=" + session));
+            assertThat(registry().capture(probe().sessions.get(session)).equals(stamp)).isTrue();
+            assertThat(counts()).isEqualTo(before);
+        }
+        finally {
+            pause.release.countDown();
+            try { finishWorkers(executor, a, b); }
+            finally { FAULTS.initialPairPause = null; }
+        }
+    }
+
+    private static BrowserSessionContextRegistry registry() {
+        return application.getBean(BrowserSessionContextRegistry.class);
+    }
+
+    private static void assertAccount(HttpResponse<String> response, UUID user) throws Exception {
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(json(response)).containsExactlyInAnyOrderEntriesOf(Map.of("id", user.toString(), "status", "ACTIVE"));
+        assertNoContextCookie(response);
+    }
+
+    private static void assertNoContextCookie(HttpResponse<String> response) {
+        assertThat(response.headers().allValues("Set-Cookie").stream()
+                .noneMatch(header -> header.startsWith(BrowserSessionContextRegistry.COOKIE_NAME + "=")))
+                .as("No setting or deleting Q cookie outside the unique initial issuance").isTrue();
+    }
+
+    private static void assertSingleContextCookie(HttpResponse<String> response) {
+        assertThat(response.statusCode()).isEqualTo(200);
+        List<String> headers = response.headers().allValues("Set-Cookie").stream()
+                .filter(header -> header.startsWith(BrowserSessionContextRegistry.COOKIE_NAME + "=")).toList();
+        assertThat(headers.size()).isEqualTo(1);
+        HttpCookie cookie = HttpCookie.parse(headers.getFirst()).getFirst();
+        assertThat(cookie.isHttpOnly()).isTrue();
+        assertThat(cookie.getDomain()).isNull();
+        assertThat(cookie.getPath()).isEqualTo("/");
+        assertThat(cookie.getMaxAge()).isEqualTo(-1);
+        assertThat(headers.getFirst().contains("SameSite=Lax")).isTrue();
+        assertThat(cookie.getSecure()).isFalse();
+    }
+
     @Test
     void staleAttemptFinallyCannotReleaseNewerBusyAdmission() throws Exception {
         Browser browser = browser();
@@ -1531,6 +2545,8 @@ class AuthenticationHttpIntegrationTest {
         private final CookieManager cookies = new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER);
         private final HttpClient client = HttpClient.newBuilder().cookieHandler(cookies)
                 .followRedirects(HttpClient.Redirect.NEVER).connectTimeout(Duration.ofSeconds(10)).build();
+        private final HttpClient exactClient = HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.NEVER).connectTimeout(Duration.ofSeconds(10)).build();
 
         HttpResponse<String> get(String path) throws Exception { return get(path, Map.of()); }
         HttpResponse<String> get(String path, Map<String, String> headers) throws Exception {
@@ -1555,7 +2571,153 @@ class AuthenticationHttpIntegrationTest {
                             && "/".equals(cookie.getPath()))
                     .map(java.net.HttpCookie::getValue).findFirst().orElse("");
         }
-        @Override public void close() { client.close(); }
+        String contextId() {
+            return cookies.getCookieStore().getCookies().stream()
+                    .filter(cookie -> cookie.getName().equals(BrowserSessionContextRegistry.COOKIE_NAME))
+                    .map(HttpCookie::getValue).findFirst().orElse("");
+        }
+        java.util.concurrent.CompletableFuture<HttpResponse<String>> cookieFreeGetAsync(String path) {
+            return exactClient.sendAsync(HttpRequest.newBuilder(URI.create(origin + path))
+                    .timeout(Duration.ofSeconds(25)).GET().build(), HttpResponse.BodyHandlers.ofString());
+        }
+        void applyHeaders(HttpResponse<String> response) throws IOException {
+            // Only the actual, original response headers are applied, once per held response.
+            // Explicit delivery ordering is a Java HTTP control, never a browser claim.
+            cookies.put(response.uri(), response.headers().map());
+        }
+        HttpResponse<String> exactRequest(String method, String path, String body,
+                Map<String, String> headers, String cookieHeader) throws Exception {
+            var request = HttpRequest.newBuilder(URI.create(origin + path)).timeout(Duration.ofSeconds(25));
+            headers.forEach(request::header);
+            if (cookieHeader != null && !cookieHeader.isEmpty()) request.header("Cookie", cookieHeader);
+            if (method.equals("POST")) request.header("Content-Type", "application/x-www-form-urlencoded");
+            return exactClient.send(request.method(method, body.isEmpty() ? HttpRequest.BodyPublishers.noBody()
+                    : HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+        }
+        @Override public void close() {
+            try { client.close(); }
+            finally { exactClient.close(); }
+        }
+    }
+
+    private record GateDecision(boolean allowed, int order, long atNanos) {}
+
+    private static final class GateProbe implements CurrentUserAccessFilter.GateObserver {
+        final String heldLabel;
+        final boolean holdAfter;
+        final AtomicInteger sequence = new AtomicInteger();
+        final AtomicReference<BrowserSessionContextRegistry.Stamp> stamp = new AtomicReference<>();
+        final Map<String, GateDecision> decisions = new ConcurrentHashMap<>();
+        final CountDownLatch entered = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+        GateProbe(String heldLabel, boolean holdAfter) { this.heldLabel = heldLabel; this.holdAfter = holdAfter; }
+        @Override public void beforeFinal(HttpServletRequest request, BrowserSessionContextRegistry.Stamp captured) {
+            String label = request.getHeader("X-Cookie-Control");
+            if (!heldLabel.equals(label)) return;
+            stamp.set(captured);
+            event(label + "-after-real-user-lookup-before-final");
+            if (!holdAfter) pause();
+        }
+        @Override public void afterFinal(HttpServletRequest request, BrowserSessionContextRegistry.Stamp captured,
+                boolean allowed) {
+            String label = request.getHeader("X-Cookie-Control");
+            if (label == null) return;
+            int order = event(label + "-final-admission-" + allowed);
+            assertThat(decisions.putIfAbsent(label, new GateDecision(allowed, order, System.nanoTime()))).isNull();
+            if (heldLabel.equals(label) && holdAfter) pause();
+        }
+        int event(String event) {
+            int order = sequence.incrementAndGet();
+            System.out.println("COOKIE_CONTEXT_EVENT order=" + order + " monotonic_ns=" + System.nanoTime()
+                    + " event=" + event);
+            return order;
+        }
+        void pause() {
+            entered.countDown();
+            awaitControl(release, "Final gate observer");
+        }
+    }
+
+    private static void awaitControl(CountDownLatch release, String label) {
+        try {
+            if (!release.await(10, TimeUnit.SECONDS)) throw new AssertionError(label + " timed out");
+        }
+        catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(label + " interrupted", interrupted);
+        }
+    }
+
+    private static final class SuccessPause {
+        final AtomicBoolean actualRotationCookie = new AtomicBoolean();
+        final AtomicBoolean uncommitted = new AtomicBoolean();
+        final AtomicReference<HttpSession> session = new AtomicReference<>();
+        final CountDownLatch entered = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+        void afterSuccessfulChain(HttpServletRequest request, HttpServletResponse response) {
+            assertThat(response.getStatus()).isEqualTo(303);
+            assertThat(response.getHeader("Location")).isEqualTo(origin + "/account");
+            HttpSession captured = request.getSession(false);
+            assertThat(captured).isNotNull();
+            session.set(captured);
+            uncommitted.set(!response.isCommitted());
+            actualRotationCookie.set(response.getHeaders("Set-Cookie").stream().anyMatch(header ->
+                    isHostOnlyRootSessionCookie(header)
+                    && HttpCookie.parse(header).getFirst().getValue().equals(captured.getId())));
+            System.out.println("COOKIE_CONTEXT_EVENT event=actual-success-selected-before-commit monotonic_ns="
+                    + System.nanoTime());
+            entered.countDown();
+            awaitControl(release, "Actual success response");
+        }
+    }
+
+    private static final class InitialPairPause {
+        final CountDownLatch entered = new CountDownLatch(2);
+        final CountDownLatch release = new CountDownLatch(1);
+    }
+
+    private static final class RecoveryCookieWriteProbe {
+        final boolean failWrite;
+        final AtomicInteger writes = new AtomicInteger();
+        final AtomicBoolean beforeCommit = new AtomicBoolean();
+        final AtomicBoolean injectedFailure = new AtomicBoolean();
+        final AtomicReference<String> context = new AtomicReference<>();
+        final AtomicReference<HttpSession> session = new AtomicReference<>();
+        final AtomicReference<BrowserSessionContextRegistry.Stamp> stamp = new AtomicReference<>();
+        final CountDownLatch entered = new CountDownLatch(1);
+        final CountDownLatch release = new CountDownLatch(1);
+
+        RecoveryCookieWriteProbe(boolean failWrite) { this.failWrite = failWrite; }
+
+        void beforeActualCookieWrite(HttpServletRequest request, HttpServletResponse response,
+                jakarta.servlet.http.Cookie cookie) {
+            assertThat(writes.incrementAndGet()).as("The exact recovery response has one initial issuance").isEqualTo(1);
+            HttpSession captured = request.getSession(false);
+            assertThat(captured).isNotNull();
+            session.set(captured);
+            stamp.set(registry().capture(captured));
+            assertThat(stamp.get()).isNotNull();
+            assertThat(cookie.getValue().equals(stamp.get().contextId())).isTrue();
+            context.set(cookie.getValue());
+            beforeCommit.set(!response.isCommitted());
+            entered.countDown();
+            if (failWrite) {
+                injectedFailure.set(true);
+                throw new RecoveryCookieWriteFailure();
+            }
+            awaitControl(release, "Actual first recovery-cookie write");
+        }
+    }
+
+    private static final class RecoveryCookieWriteFailure extends RuntimeException {
+        RecoveryCookieWriteFailure() { super("Test-only failure before actual recovery cookie write"); }
+    }
+
+    private static boolean isRecoveryCookieWriteFailure(Throwable failure) {
+        for (int depth = 0; failure != null && depth < 16; depth++, failure = failure.getCause()) {
+            if (failure instanceof RecoveryCookieWriteFailure) return true;
+        }
+        return false;
     }
 
     static final class MutableClock extends Clock {
@@ -1638,6 +2800,9 @@ class AuthenticationHttpIntegrationTest {
         volatile BindingRace bindingRace;
         volatile CommitPause commitPause;
         volatile RotationPause rotationPause;
+        volatile SuccessPause successPause;
+        volatile InitialPairPause initialPairPause;
+        volatile RecoveryCookieWriteProbe recoveryCookieWriteProbe;
         void reset() {
             failAcquisition.set(false);
             loseNextCommitAcknowledgement.set(false);
@@ -1865,6 +3030,55 @@ class AuthenticationHttpIntegrationTest {
                         return changedId;
                     }
                 }, response);
+            };
+            FilterRegistrationBean<Filter> registration = new FilterRegistrationBean<>(observer);
+            registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+            return registration;
+        }
+        @Bean FilterRegistrationBean<Filter> testCookieContextObservers() {
+            Filter observer = (request, response, chain) -> {
+                if (!(request instanceof HttpServletRequest http)
+                        || !(response instanceof HttpServletResponse output)) {
+                    chain.doFilter(request, response);
+                    return;
+                }
+                String control = http.getHeader("X-Cookie-Control");
+                if ("create-untagged".equals(control) && "/actuator/health".equals(http.getRequestURI())) {
+                    http.getSession(true); // Real anonymous fixture session, no Q or principal injected.
+                }
+                InitialPairPause pair = FAULTS.initialPairPause;
+                if (pair != null && "pair-race".equals(control)) {
+                    pair.entered.countDown();
+                    awaitControl(pair.release, "Initial pairing entry");
+                }
+                SuccessPause success = FAULTS.successPause;
+                RecoveryCookieWriteProbe recovery = FAULTS.recoveryCookieWriteProbe;
+                if (recovery != null && "recovery-bootstrap".equals(control)
+                        && "/auth/csrf".equals(http.getRequestURI())) {
+                    var observed = new jakarta.servlet.http.HttpServletResponseWrapper(output) {
+                        @Override public void addCookie(jakarta.servlet.http.Cookie cookie) {
+                            if (BrowserSessionContextRegistry.COOKIE_NAME.equals(cookie.getName())) {
+                                // Observe/delay the real issuance after registry pairing, never invent
+                                // a cookie or change a registry/authentication decision.
+                                recovery.beforeActualCookieWrite(http, output, cookie);
+                            }
+                            super.addCookie(cookie);
+                        }
+                    };
+                    try {
+                        chain.doFilter(request, observed);
+                    }
+                    catch (IOException | jakarta.servlet.ServletException | RuntimeException failure) {
+                        if (!recovery.injectedFailure.get() || !isRecoveryCookieWriteFailure(failure)) throw failure;
+                        // Controlled partial write failure only. Preserve the genuine pending
+                        // container SID and all other headers; do not reset or manufacture cookies.
+                        AuthenticationConfiguration.jsonError(output, 503);
+                    }
+                }
+                else {
+                    chain.doFilter(request, response);
+                }
+                if (success != null && "late-success".equals(control)) success.afterSuccessfulChain(http, output);
             };
             FilterRegistrationBean<Filter> registration = new FilterRegistrationBean<>(observer);
             registration.setOrder(Ordered.HIGHEST_PRECEDENCE);

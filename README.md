@@ -132,8 +132,10 @@ Constructor-only workflows and synthetic trusted facts are not a staff HTTP API
 or live session/MFA/step-up proof. Grant issuance, invitations,
 CHANGE/SUSPEND/RESUME execution, maintenance and full Audit Log remain deferred;
 no real owner, privilege, rollout or next slice is activated.
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN, browser proof INCOMPLETE and S003
-browser scenarios NOT RUN.
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN. The separate S003 candidate and its
+scoped browser evidence are described in the
+[authentication boundary](docs/authentication-pilot.md#s003-evidence-and-open-gates);
+they do not activate Platform Access workflows.
 
 ### Remaining DRAFT Domain Areas
 
@@ -159,11 +161,10 @@ No tests were rerun by this documentation change. The owner's 2026-09-14 local-p
 contract bounds publication to a short client/session/context/outcome section,
 not physical HTTP commit or browser delivery. The R2 remediation targets only the
 rejected attempt's session cookie on an uncommitted failure response and preserves
-durable binding commits and newer login state. Residual late-success cookie risk,
-including cooperative logout before HTTP commit, remains temporarily accepted
-only for the local nonpublic pilot under `AUTH-COOKIE-FOLLOWUP-001` (OPEN).
-It must be revisited during browser verification and before any public access,
-external-user invitations or rollout; test counts and merge cannot close it.
+durable binding commits and newer login state. That integrated R2 fix alone did
+not prevent the separate late-success cookie effect. Its 2026-09-14 temporary
+local-pilot acceptance is historical, not automatic acceptance of the subsequently
+observed B-to-A account selection or permission for public access.
 Author verification, native IDE execution, independent re-review, PR CI and
 post-merge CI are distinct evidence; none closes the cookie follow-up.
 React/Redux authentication integration, its dev proxy and browser verification F are not implemented here;
@@ -171,6 +172,31 @@ the real Auth0 walkthrough P, tenant setup and rollout have not been performed.
 Login does not create a Workspace. No Workspace/RMP HTTP API, linking, social
 login or commerce implementation is included, and no working user-facing login
 or complete authentication/MVP delivery is claimed.
+
+### S003 Cookie Pairing
+
+This checkout implements the exact independently source-reviewed S003
+forward-port. An immutable process-local Q/session stamp is captured before current-User lookup
+and checked again at final admission. G1 rejects a revoked or superseded
+same-Q stamp. G2 checks the current cookie jar's Q/SID pairing: a late A success
+cookie can require 401 and explicit recovery, rather than silently selecting A;
+uninterrupted availability of B is not promised.
+
+L1 remains explicit: an earlier request under a different still-live Q_A can
+first pass final admission after B was accepted under Q_B and return A. This is
+not a request already admitted before B, a global revocation guarantee or proof
+for future business writes. Already-admitted responses may also finish later.
+See the [cookie contract](docs/authentication-pilot.md#s003-cookie-pairing-contract)
+for one-time issuance, logout/recovery, resource bounds and frontend obligations.
+
+The exact isolated candidate passed 1618 tests in 32 suites, zero
+failures/errors/skipped, and package BUILD SUCCESS on 2026-10-07. Separate root
+dispositions accepted scoped browser and server evidence while retaining the
+original incomplete/failed orchestration reports. These are dated external
+evidence, not fresh IDE or CI results for this transfer. Full React/dev-proxy
+authentication F, real Auth0 P and rollout remain unverified.
+`AUTH-COOKIE-FOLLOWUP-001` stays OPEN until integration and explicit disposition;
+source transfer and historical evidence do not close it or authorize public access.
 
 ## Frontend UI Foundation
 

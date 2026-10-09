@@ -119,8 +119,10 @@ or real privileges. Remaining workflow/documentation review and any authorized
 transfer/integration must use exact final sources and separate evidence;
 source corrections can require narrow documentation follow-up.
 No next frontend, commerce or maintenance slice is selected.
-`AUTH-COOKIE-FOLLOWUP-001` stays OPEN; browser proof remains INCOMPLETE and
-S003 browser scenarios NOT RUN. Backend coverage does not close them.
+`AUTH-COOKIE-FOLLOWUP-001` stays OPEN. Separate S003 source, scoped browser and
+runtime evidence are distinguished in the
+[authentication boundary](docs/authentication-pilot.md#s003-evidence-and-open-gates).
+They do not supply the missing live Platform Access wiring or close its gates.
 
 ### Integrated authentication backend pilot
 
@@ -160,18 +162,39 @@ the separate cookie follow-up below. React/browser F and
 real Auth0 walkthrough P have not been performed. No Workspace is created by
 login; no Workspace/RMP API, account linking or new commerce decision is added.
 
-`AUTH-COOKIE-FOLLOWUP-001`: **OPEN — TEMPORARILY ACCEPTED FOR LOCAL NONPUBLIC PILOT ONLY**
-by the owner on 2026-09-14. After the last successful check/local success selection,
-logout or invalidation can occur before HTTP commit, including cooperative logout;
-a late success cookie can disturb a newer login. This residual risk is not fixed,
-already-committed responses cannot be recalled and delivery order is not guaranteed.
-Real browser behavior and frequency are unverified; account takeover is not proven.
-Revisit at React/dev-proxy/browser authentication verification, and mandatorily
-before any public access, external-user invitations or rollout through a separate
-owner/security decision and independent assessment. Local acceptance does not extend
-to public operation. Assess actual browser/cookie behavior and protection, not just
-Redux error hiding. Neither merge, test count nor the late-failure correction closes
-this item; no future mechanism or follow-up implementation is selected here.
+### S003 cookie pairing
+
+This checkout implements the exact independently source-reviewed S003
+forward-port. The process-local Q registry binds a session to one immutable stamp.
+Private access captures it before current-User lookup and checks that same stamp
+at final admission, after lookup. G1 denies a revoked/superseded same-Q generation.
+G2 protects fresh requests from the current cookie jar: late success-cookie
+delivery must not silently restore the old authorized Q_A/SID_A pair. A mismatched
+or obsolete pair receives 401 and needs explicit recovery; retaining B without
+interruption is not guaranteed.
+
+L1 is retained, not labelled a fixed defect: a previously sent request under a
+different still-live Q_A may first gain final admission after B/Q_B and return A.
+Already-admitted responses may finish after revocation too. Future frontend state
+must reject stale account responses; future business writes and global user or
+all-device revocation are not covered by this exception. One-time Q issuance,
+echo, exact-owner cleanup, restart/expiry recovery and bounded retained records
+are specified in the [cookie contract](docs/authentication-pilot.md#s003-cookie-pairing-contract).
+OIDC, CSRF, the late-failure correction and committed identity bindings are preserved.
+
+The isolated exact candidate's 2026-10-07 full run passed 1618/1618 in 32 suites,
+failures/errors/skipped 0/0/0, and package BUILD SUCCESS. Root dispositions separately
+accepted scoped browser/server evidence; original incomplete/failed reports remain
+historical and were not rewritten. These are external dated results, not new
+runtime, IDE or CI execution for this transfer. PA observer/HOLD and separate
+combined foundation/HTTP/CI candidates are not composed into this change.
+
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN until integration and explicit disposition.
+The 2026-09-14 temporary local-pilot acceptance did not automatically accept the
+later B-to-A consequence or public operation. Full React/dev-proxy authentication F,
+real Auth0 P, natural frequency, account takeover and the separate post-commit
+network-delay scenario are not proved. Revisit the follow-up at browser verification
+and before public access/invitations/rollout. No next implementation slice is selected.
 
 ### Frontend UI foundation
 

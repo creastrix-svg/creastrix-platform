@@ -8,6 +8,9 @@ Backend result B passed author, native IDE, independent R2 re-review and CI gate
 the distinct evidence is recorded below under verification gates.
 React/browser result F and actual Auth0 walkthrough P
 are not done; backend tests do not prove working user-facing login.
+This change implements the exact reviewed S003 forward-port described below.
+Source transfer and historical evidence alone do not prove repository integration,
+follow-up closure, a new APPROVED domain specification or public-access authorization.
 
 ## Identity and persistence boundary
 
@@ -58,12 +61,12 @@ derives trusted destinations from Host/Forwarded headers. No CORS is enabled.
 
 | Route | Response / boundary |
 | --- | --- |
-| `GET /auth/csrf` | JSON token, `_csrf` parameter name, `X-CSRF-TOKEN` header name; anonymous bootstrap is not login |
-| `POST /auth/login` | Exact Origin + form `_csrf`, explicit intent; authenticated caller gets 409; otherwise 303 to fixed OAuth entry |
+| `GET /auth/csrf` | JSON token, `_csrf` parameter name, `X-CSRF-TOKEN` header name; eligible anonymous bootstrap issues Q once, later requests echo it; this is not login |
+| `POST /auth/login` | Exact Origin + form `_csrf`, explicit intent and admissible Q/session stamp; authenticated or inadmissible pair gets 409; valid initiation gets fixed 303 |
 | `GET /oauth2/authorization/auth0` | One live session intent required before the standard OIDC redirect |
 | `GET /login/oauth2/code/auth0` | Protocol-gated callback; no local Origin required on this GET; busy/already-authenticated conflict uses fixed failure 303 |
-| `GET /api/me` | Current session/admission/ACTIVE; only own `id/status`, no identity-provider claims or tokens |
-| `POST /auth/logout` | Exact Origin + CSRF; local session/client-state removal and cookie expiration; 204 on success |
+| `GET /api/me` | Current session/admission/ACTIVE plus final captured-stamp admission after DB lookup; only own `id/status`, no identity-provider claims or tokens |
+| `POST /auth/logout` | Exact Origin + CSRF; revoke presented Q generation and clean caller SID; 204 for Q revocation, cleanup-only 409 for unknown/expired Q |
 | `GET /actuator/health` | Minimal health; other management and unknown routes denied |
 
 Security boundaries and OAuth/MVC routing use Spring's segment-aware
@@ -98,9 +101,10 @@ once; a newer entry cannot overwrite it, and old cleanup cannot remove a newer
 flow. Conflict cleanup is conditional on the exact flow, never whole-session
 invalidation. Coordination belongs to the session object, not the rotating ID.
 
-No mutex is held during provider or database work, and independent sessions do
-not share a lock. After that work, ownership is rechecked before Spring's first
-authorized-client save, not merely in the configured success handler. A short
+No mutex is held during provider or database work. Session publication has its
+own coordinator; S003 adds short shared memory coordination for Q ownership,
+without enclosing provider/DB or Servlet calls. After that work, ownership is
+rechecked before Spring's first authorized-client save, not merely in the configured success handler. A short
 local publication section covers client save, the unchanged Spring session-ID/CSRF
 rotation, SecurityContext save and callback outcome selection, coordinated with
 cooperative logout. Under the owner's 2026-09-14 local-pilot decision, publication
@@ -134,34 +138,89 @@ a rollback of durable identity state. Recovery uses a new complete login with th
 same external identity; no compensating account deletion, blind authorization-code
 replay or change to commit-unknown recovery is introduced.
 
+### S003 cookie-pairing contract
+
+S003 adds a process-local `CREASTRIX_Q` context and an immutable session stamp
+`(Q, generation, logical session token)`. Q is a random technical cookie, not a
+durable browser identity, User identity or permission. It is host-only, HttpOnly,
+SameSite=Lax, Path `/`, with the existing Secure policy. Anonymous bootstrap
+may issue Q once; an echo round trip is required before login. Callback success
+never sets Q. A tagged/authenticated session is not adopted into a new Q, and a
+lost initial issuance is not repaired by reissuing its Q.
+
+The guarantees and exception are distinct:
+
+1. **G1, same Q:** private access captures its session stamp before current-User
+   lookup. After the actual DB lookup, final admission checks that same immutable
+   capture against the live generation and accepted member. Revocation or
+   acceptance of a newer generation cannot authorize old A; the request cannot
+   borrow a newer stamp after lookup. Standard current-User/admission checks remain.
+2. **G2, current cookie jar:** fresh requests must present a valid Q/SID pair.
+   Ordinary late response delivery must not silently restore the old authorized
+   Q_A/SID_A pair after B. A stale A SID with current Q_B, or a retired same-Q
+   stamp, receives 401 and requires explicit recovery. Preserving B seamlessly
+   under every delivery order is not promised; fail-closed recovery is acceptable.
+3. **L1, older cross-Q request:** two initial bootstraps can create different Qs.
+   An A request under still-live Q_A can be delayed after User lookup but before
+   final admission; B is accepted under Q_B; A then resumes, first gains final
+   admission and returns A. It was not already admitted before B. This is an
+   explicit limitation, not a defect-fixed GREEN result or only a UI issue. It
+   does not permit a fresh current-jar B-to-A result. Already-admitted responses
+   may also finish after revocation. Future frontend code must discard stale
+   account responses; future business writes are not proved safe by this exception.
+
+Logout passes standard Origin/CSRF checks before revoking the presented Q
+generation, including its pending owner, rather than selecting Q from a stale
+SID. Exact old session references are cleaned separately, outside registry locks.
+204 means a known live Q was revoked and permits `LOCAL_LOGOUT_COMPLETED`;
+unknown/expired Q produces cleanup-only 409, expires the caller SID and does not
+claim successful Q revocation. This is not global provider or all-device logout.
+
+Recovery for unknown/expired Q or actual process restart first obtains CSRF,
+performs caller-SID cleanup, then bootstraps without an incoming or resolved SID.
+Only a proven unknown/expired Q permits a new random Q; any still-unexpired record,
+including pending/retired ones, prevents replacement issuance. A live Q uses
+ordinary anonymous attachment/echo instead, never adoption of old authentication.
+Recovery completes a new full OIDC login with the same external identity and
+unchanged committed User/Profile/binding. It neither deletes/duplicates bindings
+nor blindly replays an authorization code or guesses a commit-unknown outcome.
+
+The registry is single-instance memory with an eight-hour hard Q lifetime,
+64 context records, 128 references, eight members per Q and eight cleanup
+claims/workers without a task queue. Five minutes bounds pending pairing/owners.
+Retired records remain charged until exact acknowledged cleanup; no capacity
+repair evicts them. Memory-lock acquisition and cleanup caller waiting each have
+a 100 ms bound, not a full Servlet-operation deadline. Cleanup is explicitly
+requested and invalidates exact owned references outside coordination locks;
+stalled/failed cleanup remains charged. Capacity/coordination refusal fails closed
+with opaque 503 outside callbacks or fixed failure 303 on callbacks; an already
+committed response is not rewritten. No container monitor encloses commit/flush.
+
+Standard OIDC/PKCE, CSRF, fixation rotation, callback ownership, the integrated
+late-failure correction and immutable committed bindings are preserved. The
+stamp gate is a server admission decision, not Redux error hiding or reliance
+on a fresh `/api/me` alone. Other still-live Qs are not globally linked/revoked.
+Separate PA observer/HOLD and combined foundation/HTTP/CI candidates are not
+composed into this exact S003 transfer.
+
 ### Open cookie follow-up
 
-`AUTH-COOKIE-FOLLOWUP-001`: **OPEN — TEMPORARILY ACCEPTED FOR LOCAL NONPUBLIC PILOT ONLY**.
-The owner accepted this limited boundary on 2026-09-14, not universal atomicity
-between arbitrary session invalidation and physical HTTP commit. After the last
-successful check or local success selection, logout/invalidation can still occur
-before HTTP commit, including cooperative logout. A late success session cookie
-can then disturb a newer login. This residual risk is not fixed: already-committed
-responses are not recalled, and network delivery order is not guaranteed. Real
-browser behavior and frequency have not been measured; account takeover has not
-been demonstrated. Successful responses are not rewritten to imply a stronger
-transport guarantee.
+`AUTH-COOKIE-FOLLOWUP-001` remains **OPEN until integration and explicit disposition**.
+The owner's temporary local nonpublic acceptance on 2026-09-14 did not accept
+universal invalidation/HTTP-commit atomicity or automatically authorize the later
+observed B-to-A consequence. The S003 candidate and scoped evidence do not close
+the follow-up, authorize public access or promise revocation of delivered responses.
+Natural frequency, account takeover and the distinct post-commit network-delay
+scenario are not demonstrated. Earlier incomplete browser attempts remain historical.
 
-Return to this open item at both required gates:
+Required gates remain:
 
-1. React/dev-proxy/browser authentication verification must assess real overlapping
-   responses, cookie behavior and recovery. Hiding an error in Redux is not a
-   server-side fix or evidence that the protection is sufficient.
-2. Before any public access, external-user invitations or rollout, require a
-   separate owner/security decision with appropriate evidence and independent
-   assessment. Local-only acceptance does not extend to that operating mode.
-
-A merge, test count or the narrow late-failure fix does not close this follow-up.
-No future mechanism is selected or implemented here. Independent R2 re-review
-confirmed R1-REV-001 resolved only for the rejected callback's still-uncommitted
-response: the owned late-failure cookie is removed while newer login state and
-unrelated cookies are preserved. This integrated narrow correction neither
-repairs an already-sent response nor resolves the separate stale-success risk.
+1. Full React/dev-proxy/browser authentication verification must assess overlapping
+   responses, current cookie pairing, explicit recovery and stale-response UI
+   handling. The scoped browser proof below is not that complete F gate.
+2. Before public access, invitations or rollout, require separate owner/security
+   disposition and appropriate independent evidence. Local acceptance is not
+   public-operation authorization; a merge or test count alone is not closure.
 
 ### Callback navigation and opaque errors
 
@@ -231,8 +290,10 @@ password, form login or basic-auth alternative.
 
 Local logout does not log out Auth0 globally. Password reset/provider block does
 not guarantee immediate revocation of an existing local session. Already sent
-responses cannot be recalled. The future React must handle stale responses,
-clear cached identity on errors/logout and verify a fresh `/api/me`; a public
+responses cannot be recalled. The future React must handle stale responses
+without updating a newer account, clear cached identity on errors/logout and
+verify a fresh `/api/me` after explicit recovery. A fresh read alone is not a
+stale-cookie fix: the pre-S003 valid-A scenario already returned 200 A. A public
 page shell or Redux state is never authorization.
 
 ## Verification gates
@@ -329,3 +390,42 @@ These are distinct completed checks, not new executions by this documentation ch
 Backend B is verified within this local nonpublic contract; F and P remain
 unverified. AUTH-COOKIE-FOLLOWUP-001 remains OPEN under the required browser and
 pre-public-access gates above. No next implementation slice or rollout is selected.
+
+### S003 evidence and open gates
+
+These are distinct dated external results, not fresh executions, native IDE
+verification, PR CI or post-merge CI for this transfer:
+
+- The 2026-10-07 independent forward-port source review found no findings in its
+  narrow scope: seven Java paths, six modified plus one added, +3062/−25. The
+  reviewed patch and all frozen source bytes/modes match this Java transfer.
+  Static review alone did not prove runtime behavior.
+- `ROOT-COOKIE-NINE-DISPOSITION-20261007.json` accepted the retained nine-case
+  server evidence: three repetitions each of same-Q final admission, L1 cross-Q
+  first admission after B, and already-admitted response completion. Actual
+  compilation/test/cleanup exits were 0, with no failures/errors/skips. The
+  original parent report stays exit 1/evidence rejected because of its separate
+  classpath check; the disposition is scoped, not a rewritten clean orchestration
+  run. L1 is characterization, not a defect-fixed GREEN claim.
+- `ROOT-COOKIE-BROWSER-DISPOSITION-20261007.json` accepted seven scoped browser
+  scenarios and causal witnesses, with bounded offline ledger validation. Late
+  success yielded fresh 401 rather than A and explicit recovery returned B;
+  late failure retained B; dual-bootstrap late anonymous-pair delivery yielded
+  401 and recovery B. The original R6 parent INCOMPLETE/exit 2 report remains
+  unchanged. This acceptance does not turn earlier setup failures into RED
+  reproduction or complete the real React/dev-proxy authentication F gate.
+- `s003-full-package-binding-20261007-b6Wh7H/RESULT.json` binds the exact frozen
+  candidate to one isolated full run: 1618 tests in 32 suites, failures/errors/
+  skipped 0/0/0, no flaky/rerun nodes, exact testcase inventory and BUILD SUCCESS.
+  The following skip-tests package passed with exit 0, preserved all 64 original
+  XML/TXT report payloads and completed owned cleanup. Logs show Java 25.0.4.1,
+  Maven 3.9.16, PostgreSQL 18.4 and Flyway V1 → V12. Its external loopback helper
+  was test-classpath-only and is not transferred; packaged-start smoke was NOT RUN.
+
+This change implements the exact frozen Java forward-port. Its transfer and
+dated historical evidence alone do not prove repository integration or a new
+runtime, native IDE, PR CI or post-merge run. PA observer/HOLD and separate
+combined foundation/HTTP/CI changes remain separate. Full React/dev-proxy F, real Auth0 P, public application
+access, rollout and global revocation are not verified. Source transfer is not
+follow-up closure: `AUTH-COOKIE-FOLLOWUP-001` remains OPEN until integration and
+explicit disposition, with the browser and pre-public-access gates retained.
