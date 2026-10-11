@@ -121,18 +121,22 @@ and running applications were not updated; integration is not rollout.
 ### Platform Access Policy Foundation
 
 Platform Access Grant APPROVED 1.1 is accepted architecture, not activation.
-This checkout contains the unwired I1 pure policy plus I2A storage/generation
+Main contains the unwired I1 pure policy plus integrated I2A storage/generation
 and named registration, user-security READ, SUPPORT-grant REVOKE and receipt
 workflows. V12 provides bounded storage; owned READ COMMITTED transactions
 couple required access-workflow audit and outcomes before disclosure.
 See the [backend coverage and limits](backend/README.md#platform-access-policy-foundation).
 
-Verification and integration status are established by separate delivery evidence.
+[PR #33](https://github.com/creastrix-svg/creastrix-platform/pull/33) integrated this
+bounded coverage; its 2026-10-05
+[post-merge Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37312461778)
+passed 1513 tests and tests/package BUILD SUCCESS. These are historical results,
+not new runs by this documentation change.
 Constructor-only workflows and synthetic trusted facts are not a staff HTTP API
 or live session/MFA/step-up proof. Grant issuance, invitations,
 CHANGE/SUSPEND/RESUME execution, maintenance and full Audit Log remain deferred;
 no real owner, privilege, rollout or next slice is activated.
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN. The separate S003 candidate and its
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN. Integrated S003 and its distinct
 scoped browser evidence are described in the
 [authentication boundary](docs/authentication-pilot.md#s003-evidence-and-open-gates);
 they do not activate Platform Access workflows.
@@ -167,12 +171,12 @@ local-pilot acceptance is historical, not automatic acceptance of the subsequent
 observed B-to-A account selection or permission for public access.
 Author verification, native IDE execution, independent re-review, PR CI and
 post-merge CI are distinct evidence; none closes the cookie follow-up.
-The current feature branch proposes a bounded React/Redux client and dev proxy;
-they are not integrated or independently approved, and browser verification F is pending.
-the real Auth0 walkthrough P, tenant setup and rollout have not been performed.
+The bounded React/Redux client, dev proxy and finite local browser F are now
+independently reviewed and integrated through PR #35, as summarized below.
+The real Auth0 walkthrough P, tenant setup and rollout have not been performed.
 Login does not create a Workspace. No Workspace/RMP HTTP API, linking, social
-login or commerce implementation is included, and no working user-facing login
-or complete authentication/MVP delivery is claimed.
+login or commerce implementation is included. Verified local login with a synthetic
+IdP is not complete authentication/MVP delivery or real-provider verification.
 
 ### S003 Cookie Pairing
 
@@ -196,16 +200,17 @@ The exact isolated candidate passed 1618 tests in 32 suites, zero
 failures/errors/skipped, and package BUILD SUCCESS on 2026-10-07. Separate root
 dispositions accepted scoped browser and server evidence while retaining the
 original incomplete/failed orchestration reports. These are dated external
-evidence, not fresh IDE or CI results for this transfer. Full React/dev-proxy
-authentication F, real Auth0 P and rollout remain unverified.
-`AUTH-COOKIE-FOLLOWUP-001` stays OPEN for the remaining F and explicit disposition gates;
+evidence, not fresh IDE or CI results for this documentation change. The subsequent
+finite local React/dev-proxy/browser F is described below; real Auth0 P and rollout
+remain unverified.
+`AUTH-COOKIE-FOLLOWUP-001` stays OPEN for explicit final disposition and pre-public-access gates;
 source transfer and historical evidence do not close it or authorize public access.
 
 ## Frontend UI Foundation
 
 FRONTEND-BOOTSTRAP-001 provides a separately built [frontend](frontend/README.md)
-in this repository. The current `solar_wind/react-authentication-f` WIP adds a
-bounded client candidate: hosted-login native form, owned `/api/me` id/status
+in this repository. [PR #35](https://github.com/creastrix-svg/creastrix-platform/pull/35)
+integrated a bounded client: hosted-login native form, owned `/api/me` id/status
 display, local logout/switch and explicit recovery through a fixed development
 proxy. Fictional account data is removed; Redux private state is memory-only.
 DE/EN, the selected 3C logo, keyboard support and voluntary Workspace messaging
@@ -214,10 +219,16 @@ reject stale UI results; neither is server authorization or global login orderin
 G1/G2 and the cross-Q L1 limitation remain; suppressing an old response is not
 undoing its server effects or making future business writes safe.
 
-This candidate is not integrated, independently approved, browser F or real Auth0 P
-verified. Type/lint/unit/build checks do not prove cookie, OIDC, proxy or bfcache
-behavior. Separate signup/social login, Workspace/RMP API/forms, public operation
-and rollout remain absent. `AUTH-COOKIE-FOLLOWUP-001` stays OPEN.
+Independent review accepted the finite local F matrix using actual React/Vite,
+the integrated backend, a synthetic IdP and isolated native Chrome evidence.
+This is separate from source/unit/build and native IDE results, not proof of every
+browser or delivery order. The 2026-10-09
+[post-merge Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37962373086)
+passed 135 tests, typecheck, lint and build; CI does not execute that browser matrix.
+Its npm installation reported one unresolved HIGH warning, requiring separate
+triage before public deployment, not a security-clean dependency graph.
+Real Auth0 P, signup/social login, Workspace/RMP API/forms, public operation and
+rollout remain absent. `AUTH-COOKIE-FOLLOWUP-001` stays OPEN.
 
 Using Node 22.14.0 / npm 10.9.2, run from `frontend`:
 
