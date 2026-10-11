@@ -96,7 +96,7 @@ The remaining DRAFT domains are active architecture work and require their own a
 ### Platform Access Grant: bounded I1 + I2A coverage
 
 Platform Access Grant APPROVED 1.1 is separately accepted architecture.
-This checkout contains the unchanged I1 pure policy plus I2A storage/generation
+Main contains the unchanged I1 pure policy plus integrated I2A storage/generation
 and constructor-only workflows for named intent registration, user-security
 READ, other-SUPPORT-grant REVOKE and separately authorized receipts.
 V12 retains the non-REVOKED slot (including expired/suspended grants and
@@ -113,11 +113,11 @@ The trusted-facts adapter is synthetic; no live authentication assurance,
 Spring/HTTP staff wiring, issuance/invitations, CHANGE/SUSPEND/RESUME execution,
 maintenance, UI or full Audit Log is delivered.
 
-Verification, independent acceptance and integration are separate gates;
-source coverage in this checkout does not assert transfer into main, fresh CI
-or real privileges. Remaining workflow/documentation review and any authorized
-transfer/integration must use exact final sources and separate evidence;
-source corrections can require narrow documentation follow-up.
+[PR #33](https://github.com/creastrix-svg/creastrix-platform/pull/33) integrated the
+reviewed bounded coverage; its separate 2026-10-05
+[post-merge Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37312461778)
+passed 1513 tests and tests/package BUILD SUCCESS with PostgreSQL 18.4 / Flyway
+V1 → V12. These historical checks do not activate live privileges.
 No next frontend, commerce or maintenance slice is selected.
 `AUTH-COOKIE-FOLLOWUP-001` stays OPEN. Separate S003 source, scoped browser and
 runtime evidence are distinguished in the
@@ -158,8 +158,8 @@ passed 658/658, failures/errors/skipped 0/0/0, tests/package BUILD SUCCESS,
 PostgreSQL 18.4 and Flyway V1 → V11. See the exact merge and distinct verification
 evidence in the [authentication boundary](docs/authentication-pilot.md#verification-gates).
 No tests were rerun by this documentation change; none of these results closes
-the separate cookie follow-up below. React/browser F and
-real Auth0 walkthrough P have not been performed. No Workspace is created by
+the separate cookie follow-up below. Subsequent finite local React/browser F is
+recorded below; real Auth0 walkthrough P has not been performed. No Workspace is created by
 login; no Workspace/RMP API, account linking or new commerce decision is added.
 
 ### S003 cookie pairing
@@ -191,10 +191,10 @@ historical and were not rewritten. These are external dated results, not new
 runtime, IDE or CI execution for this transfer. PA observer/HOLD and separate
 combined foundation/HTTP/CI candidates are not composed into this change.
 
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN for the remaining F and explicit disposition gates.
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN for explicit final disposition and pre-public-access gates.
 The 2026-09-14 temporary local-pilot acceptance did not automatically accept the
-later B-to-A consequence or public operation. Full React/dev-proxy authentication F,
-real Auth0 P, natural frequency, account takeover and the separate post-commit
+later B-to-A consequence or public operation. Finite local React/dev-proxy/browser F
+subsequently completed; real Auth0 P, natural frequency, account takeover and the separate post-commit
 network-delay scenario are not proved. Revisit the follow-up at browser verification
 and before public access/invitations/rollout. No next implementation slice is selected.
 
@@ -203,8 +203,8 @@ and before public access/invitations/rollout. No next implementation slice is se
 FRONTEND-BOOTSTRAP-001 established a UI scaffold in a separately built `frontend` directory in
 the existing repository: React 19.3.0, TypeScript 6.0.3, Vite 8.3.1, Redux Toolkit
 2.13.0 / React Redux 9.3.0 and React Router 7.18.4, using pinned Node 22.14.0 /
-npm 10.9.2 and a lockfile. The current `solar_wind/react-authentication-f` WIP
-proposes a bounded hosted-login client, current own `id/status` rendering, local
+npm 10.9.2 and a lockfile. [PR #35](https://github.com/creastrix-svg/creastrix-platform/pull/35)
+integrated the bounded hosted-login client, current own `id/status` rendering, local
 logout/switch, explicit recovery and fixed development proxy. Private Redux state
 is memory-only; a non-secret replaceable intent marker is separate from language
 persistence. Owned result checks, peer invalidation and a synchronous DOM curtain
@@ -212,8 +212,15 @@ protect UI state without claiming server authorization or absolute cross-tab ord
 The fictional profile is removed. DE/EN, keyboard/focus support, the unchanged
 3C logo and voluntary Workspace messaging remain; palette/Atelier decisions stay open.
 
-This feature is not independently approved or integrated. Unit/static/build checks
-are not actual React/Vite/browser F, real Auth0 P or rollout evidence. G1/G2 and L1
+Independent review accepted the finite local F matrix from actual React/Vite,
+the integrated backend, a synthetic IdP and isolated native Chrome evidence.
+Source/unit/build and native IDE results remain separate from that browser proof.
+The 2026-10-09
+[post-merge Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37962373086)
+passed 135 tests, typecheck, lint and build; it did not run the browser matrix.
+The npm installation's one HIGH warning remains untriaged/open and requires
+separate triage before public deployment; successful CI is not full security.
+Real Auth0 P and rollout remain unverified. G1/G2 and L1
 remain distinct; stale UI response rejection does not close the old cross-Q server
 limitation or cover future business writes. Storage unavailability fails closed;
 completion/lifecycle events never republish the shared intent marker. Early native
@@ -221,7 +228,7 @@ login refusal may show opaque backend JSON outside React. No dependency/backend,
 Workspace/RMP API/forms, signup/social login or business decision changes are included.
 The connected origin is fixed `http://localhost:3000`, with loopback strict port;
 build preview is disconnected. See the [frontend guide](frontend/README.md).
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN pending browser and owner disposition gates.
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN pending explicit final disposition and pre-public-access gates.
 
 ## Domain Principles
 

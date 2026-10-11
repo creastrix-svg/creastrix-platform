@@ -1,10 +1,10 @@
 # Creastrix frontend
 
 FRONTEND-BOOTSTRAP-001 established this separately built React/TypeScript/Vite
-application in the existing repository. The current `solar_wind/react-authentication-f`
-change proposes a bounded authentication client on that foundation. It is WIP,
-not integrated in main or independently approved; real browser result F and
-Auth0 walkthrough P are still pending.
+application in the existing repository. [PR #35](https://github.com/creastrix-svg/creastrix-platform/pull/35)
+integrated the independently reviewed bounded authentication client and finite
+local React/dev-proxy/browser F. Real Auth0 walkthrough P remains unperformed and
+unverified; public access and rollout remain unverified and unauthorized.
 
 ## Local use
 
@@ -84,8 +84,8 @@ separate and usable when storage is blocked.
 Peer invalidation and hide/pagehide close a direct DOM curtain and clear private
 state/pending material synchronously. Visible/focus/pageshow re-entry requires a
 fresh owned check before reopening after the current React DOM commit. Hot-reload
-disposal removes owned listeners. Paused tabs, pixels already delivered and actual
-bfcache behavior still require the browser gate.
+disposal removes owned listeners. Actual bfcache behavior has finite local browser
+coverage; instant clearing of paused tabs or already-delivered pixels is not guaranteed.
 
 This is not a cross-tab lock or absolute latest-login-wins. Server G1/G2 remain:
 G2 may deny with 401 and require explicit recovery instead of preserving B
@@ -109,20 +109,31 @@ backend endpoint. The user explicitly returns/reloads; there is no blind retry.
 
 ## Verification and remaining gates
 
-Fresh author-side typecheck, lint, Vitest and build evidence belongs to the external
+Historical author-side typecheck, lint, Vitest and build evidence belongs to the external
 author report, not backend CI, native IDE or browser verification. Vitest uses
 Testing Library/happy-dom, injected finite responses and deferred bodies; it is
-not an actual HTTP/OIDC/cookie/bfcache proof. Independent source review, IDE and
-real React + Vite + exact integrated backend + isolated browser F are separate
-remaining gates. Real Auth0 P has not been performed.
+not an actual HTTP/OIDC/cookie/bfcache proof. Separate source review and native
+WebStorm verification completed before integration. Consolidated independent
+review accepted the finite local F matrix from actual React/Vite/backend,
+synthetic OIDC and isolated native Chrome runs, including both late-success A
+branches, explicit recovery, late-failure preservation and stale UI responses.
+Earlier INCOMPLETE attempts and helper failures retain their original outcomes.
+Real Auth0 P has not been performed.
+
+The 2026-10-09
+[post-merge Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37962373086)
+passed 135 tests, typecheck, lint and build. It is a separate unit/static/build
+gate, not a browser run. Both PR and post-merge npm installations reported one
+untriaged HIGH vulnerability warning; separate triage is required before public
+deployment. Successful CI is not a security-clean dependency graph.
 
 `AUTH-COOKIE-FOLLOWUP-001` remains **OPEN**. S003 is integrated through PR #34;
-the historical server/scoped browser/native/CI results do not close full F/P or
-authorize public access. No dependency, backend, workflow or domain decision is
-changed by this client candidate.
+finite local F is complete, but final follow-up disposition, real Auth0 P and
+public-access/rollout gates remain separate. L1 and future business-write limits
+are unchanged. This client changed no dependencies, backend, workflows or domain decisions.
 
 Use the existing WebStorm/project settings; do not commit IDE state. Ignored
 dependencies/build output may remain locally. [Frontend CI](../.github/workflows/frontend-ci.yml)
-has separate frontend/workflow path filters; no CI or backend execution occurred
-in this authoring stage. See the [root context](../README.md#frontend-ui-foundation)
-and [authentication contract](../docs/authentication-pilot.md#react-client-candidate-and-f-boundary).
+has separate frontend/workflow path filters; no tests or CI were run by this
+documentation change. See the [root context](../README.md#frontend-ui-foundation)
+and [authentication contract](../docs/authentication-pilot.md#react-client-and-f-boundary).

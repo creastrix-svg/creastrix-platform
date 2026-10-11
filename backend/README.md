@@ -338,8 +338,8 @@ is claimed here.
 
 Intentionally not implemented yet:
 
-- complete user-facing login (backend B is integrated and verified within the
-  pilot boundary; React/browser F, real provider walkthrough P and MFA remain absent);
+- real provider walkthrough P, MFA and public user-facing login (backend B,
+  S003 and finite local React/browser F are integrated within the pilot boundary);
 - concrete User Profile personal fields, which remain unimplemented until the
   approved specification defines them;
 - domain mutation HTTP APIs for User, Organization, or Workspace (the integrated
@@ -368,13 +368,16 @@ Intentionally not implemented yet:
 
 ## Platform access policy foundation
 
-This checkout contains bounded I1 + I2A coverage of
+Main contains integrated bounded I1 + I2A coverage of
 [Platform Access Grant APPROVED 1.1](../docs/domain/platform-access-grant.md):
 the unchanged pure policy, V12 storage/account-eligibility generation, and
 constructor-only registration, READ, REVOKE and receipt workflows.
-Verification, independent acceptance and integration are established by
-separate delivery evidence; these source descriptions do not assert transfer
-into main, a fresh CI run, live authentication or real authority.
+[PR #33](https://github.com/creastrix-svg/creastrix-platform/pull/33) integrated the
+reviewed coverage. Its separate 2026-10-05
+[post-merge Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37312461778)
+passed 1513 tests, zero failures/errors/skipped and tests/package BUILD SUCCESS
+with PostgreSQL 18.4 / Flyway V1 → V12. Integration is not live staff authentication
+or activation of real authority.
 
 ### Pure policy and persisted authority facts
 
@@ -498,12 +501,10 @@ From `backend`, the focused offline pure-policy command remains:
 It selects only the two pure-policy classes, not storage/workflow verification,
 and requires cached artifacts. Separate accepted S independent evidence reports
 1319 full tests and package PASS; the W author reports 1502 and package PASS.
-Those results have different scopes and authorship: they are not new runs for
-this documentation, W independent approval or integrated CI evidence.
-Independent W review, review of these coverage Notes and an authorized exact
-transfer/integration remain separate gates; source corrections may require
-narrow documentation follow-up. Historical test/CI results below remain historical.
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN. The separate S003 candidate has scoped
+Those earlier results have different scopes and authorship; they are not new runs
+for this documentation or substitutes for the subsequent reviewed PR #33 integration
+and its separate CI above. Historical test/CI results below remain historical.
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN. Integrated S003 has scoped
 browser/server evidence and an exact-candidate full/package result, as recorded
 in the [authentication verification boundary](../docs/authentication-pilot.md#s003-evidence-and-open-gates).
 None supplies missing staff HTTP/MFA wiring or composes the separate PA observer/HOLD.
@@ -759,7 +760,7 @@ passed 658/658, failures/errors/skipped 0/0/0, tests/package BUILD SUCCESS,
 PostgreSQL 18.4 and Flyway V1 → V11. This is the single-instance local nonpublic
 backend pilot, not a complete user-facing login or rollout.
 The [bounded authentication contract](../docs/authentication-pilot.md)
-separates backend B, future React/browser F and actual Auth0 walkthrough P.
+separates backend B, completed finite local React/browser F and unperformed real Auth0 P.
 
 Historical AUTH-001-R1 author verification passed AuthenticationPolicyTest 91/91,
 UserAuthenticationIntegrationTest 20/20, AuthenticationHttpIntegrationTest
@@ -811,7 +812,8 @@ below; it does not extend the publication lock through HTTP commit/flush.
 
 ### S003 cookie pairing, admission and recovery
 
-This checkout implements the exact independently source-reviewed S003 forward-port.
+The exact independently reviewed S003 forward-port is integrated through
+[PR #34](https://github.com/creastrix-svg/creastrix-platform/pull/34).
 `CREASTRIX_Q` is a random host-only, HttpOnly, SameSite=Lax cookie with Path `/`
 and the existing Secure policy. It
 identifies a process-local context, not a durable browser/User identity. Initial
@@ -860,9 +862,14 @@ and Flyway V1 → V12. Separate root dispositions accepted bounded browser/serve
 evidence without replacing original incomplete/failed orchestration reports.
 These are dated external results, not a fresh test, native IDE or CI run;
 packaged-start smoke was not run. The [evidence boundary](../docs/authentication-pilot.md#s003-evidence-and-open-gates)
-retains full React/dev-proxy F, real Auth0 P and rollout exclusions.
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN until integration and explicit disposition,
-and requires return at browser verification and before public access/invitations.
+records the later integration and finite local React/dev-proxy/browser F separately.
+The 2026-10-09
+[post-merge Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37917170767)
+passed 1618 tests, zero failures/errors/skipped and tests/package BUILD SUCCESS
+with PostgreSQL 18.4 / Flyway V1 → V12. These are historical server checks, not
+the frontend/browser matrix or new execution for this documentation change.
+`AUTH-COOKIE-FOLLOWUP-001` remains OPEN for explicit final disposition and
+pre-public-access/invitation gates; real Auth0 P and rollout remain unperformed.
 
 Only `GET /api/me` exposes the current account, after session, current exact
 issuer/subject admission, ACTIVE and final captured-stamp checks. No existing
@@ -875,7 +882,8 @@ other routes without form/basic login or generated-password fallback. OIDC
 properties, discovery and HTTP handlers are conditional on enabled servlet mode;
 non-web migration/domain contexts require no Auth0 configuration or network.
 The local profile keeps the backend on `127.0.0.1:8080` and trusts only the fixed
-future browser origin `http://localhost:3000`. It does not create a dev proxy.
+browser origin `http://localhost:3000`. The integrated frontend supplies the
+separate fixed loopback dev proxy; the backend does not create it.
 It requires external `CREASTRIX_AUTH_ISSUER`, `CREASTRIX_AUTH_CLIENT_ID`, and
 `CREASTRIX_AUTH_CLIENT_SECRET`; `CREASTRIX_AUTH_ALLOWED_SUBJECTS` is an exact
 issuer-scoped list, empty meaning no admitted users. Change admission only by
