@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.datasource.AbstractDataSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -155,7 +156,12 @@ class PlatformAccessConcurrencyIntegrationTest {
             Result<?> result = waiting.get(8, TimeUnit.SECONDS);
             if (conflict.writer == Writer.ACTOR_GRANT) {
                 // The immutable discovery slot changed while the grant lock was queued.
-                assertThat(result).isEqualTo(new Failure<>(Code.DATABASE_UNAVAILABLE));
+                assertThat(result).isEqualTo(new Denied<>());
+                try (Connection observer = source.getConnection()) {
+                    assertThat(scalar(observer, "SELECT count(*)::integer FROM platform_access_audit_events "
+                            + "WHERE event_kind='ACCESS_DENIED' AND reason='INCONSISTENT_FACTS' "
+                            + "AND supplied_target_user_id=?", Integer.class, intent.targetUserId())).isOne();
+                }
             } else {
                 assertThat(result).isInstanceOf(Denied.class);
             }
@@ -261,8 +267,9 @@ class PlatformAccessConcurrencyIntegrationTest {
         }
     }
 
-    @Test
-    void lockedReceiptTimesOutTechnicallyInsteadOfInventingMissingHistory() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void lockedReceiptTimesOutTechnicallyInsteadOfInventingMissingHistory(boolean cancelled) throws Exception {
         WorkflowFixture fixture = workflow(source, true);
         Intent intent = fixture.readIntent(UUID.randomUUID());
         register(fixture.service(), Operation.READ, intent);
@@ -274,10 +281,21 @@ class PlatformAccessConcurrencyIntegrationTest {
             lockIntent(blocker, intent);
             Future<Result<?>> waiting = workers.submit(() -> fixture.service(observed)
                     .readUserSecurityReceipt(intent, ReadReason.USER_REQUESTED_SUPPORT));
-            awaitBlocked(source, observed.nextPid(), pid(blocker));
+            int waiter = observed.nextPid();
+            awaitBlocked(source, waiter, pid(blocker));
+            if (cancelled) {
+                try (Connection observer = source.getConnection()) {
+                    assertThat(scalar(observer, "SELECT pg_cancel_backend(?)", Boolean.class, waiter)).isTrue();
+                }
+            }
             Result<?> result = waiting.get(8, TimeUnit.SECONDS);
-            assertThat(result).isEqualTo(new Failure<>(Code.DATABASE_UNAVAILABLE));
+            assertThat(result).isEqualTo(new Failure<>(cancelled ? Code.STATEMENT_CANCELLED : Code.LOCK_NOT_AVAILABLE));
             assertThat(result).isNotEqualTo(new Failure<>(Code.NO_DISCLOSABLE_RECEIPT));
+            try (Connection observer = source.getConnection()) {
+                assertThat(scalar(observer, "SELECT count(*)::integer FROM platform_access_audit_events "
+                        + "WHERE event_kind='OPERATION_FAILED' AND supplied_target_user_id=? AND reason=?",
+                        Integer.class, intent.targetUserId(), cancelled ? "STATEMENT_CANCELLED" : "LOCK_NOT_AVAILABLE")).isOne();
+            }
             blocker.rollback();
             assertThat(fixture.service().readUserSecurityReceipt(intent, ReadReason.USER_REQUESTED_SUPPORT))
                     .isInstanceOf(Success.class);

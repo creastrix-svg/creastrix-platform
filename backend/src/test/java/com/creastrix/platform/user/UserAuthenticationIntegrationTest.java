@@ -135,7 +135,7 @@ class UserAuthenticationIntegrationTest {
     void freshV1ThroughV13HasExactImmediateKeysAndRetainedBindings() {
         assertThat(sql.queryForObject("SHOW server_version", String.class)).startsWith("18.4");
         assertThat(sql.queryForList("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank",
-                String.class)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
+                String.class)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14");
         List<Map<String, Object>> keys = sql.queryForList("""
                 SELECT conname, contype::text, condeferrable, confdeltype::text
                 FROM pg_constraint WHERE conrelid='user_identity_bindings'::regclass

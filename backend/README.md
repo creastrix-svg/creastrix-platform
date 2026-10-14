@@ -460,10 +460,28 @@ lock and statement caps are 3 and 5 seconds, constrained by remaining budget.
 Acquisition/network/commit are budgeted; cancellation has a separate bounded
 2-second cleanup grace. This is not a guaranteed total wall-clock bound against
 arbitrary driver/OS hangs. A thrown commit remains UNKNOWN even if a subsequent
-rollback returns. No payload is released without positive commit acknowledgement,
-completed cleanup and a successful owned result; unfinished cleanup is unknown.
+rollback returns. Completion, resource cleanup and permission to release the
+result are separate. Only positive commit acknowledgement, completed cleanup
+and a permitted release produce `Success`; an ordinary post-ACK cleanup warning
+does not fabricate business failure. Cancellation or incomplete cleanup after
+ACK produces payload-free `CommittedResultWithheld`, not `COMMIT_UNKNOWN`.
+It refers to the current registration/read/revoke/receipt phase: registration
+does not yet have an execution outcome. Known rollback with incomplete cleanup
+returns `RESOURCE_CLEANUP_INCOMPLETE`; failed acquisition remains NOT_OBSERVED.
 Reconciliation uses the same intent under new current disclosure authorization,
 not desired-state inference or automatic new-ID retry.
+
+Within this owned JDBC path, typed changed authority is generic `Denied` with
+`AUTHORITY_CHANGED` diagnostics and `ACCESS_DENIED / INCONSISTENT_FACTS` audit.
+`55P03` is `LOCK_NOT_AVAILABLE`; `57014` is `STATEMENT_CANCELLED`, not proof of
+timeout or caller interruption. Owned budget/cancellation evidence uses
+`DEADLINE_EXCEEDED`/`INTERRUPTED`; connection/acquisition unavailability and
+mandatory audit failure stay separate from unexpected SQL/implementation faults.
+V14 extends only the confirmed-attempt-failure CHECK with those two SQL reasons;
+V1–V13 and existing authorization, intent, success/outcome and history guards
+are unchanged. No failure audit follows commit, UNKNOWN, incomplete cleanup or
+an unobserved transaction. Fresh authorization still precedes reconciliation;
+after a successful REVOKE, execution replay can be denied before history lookup.
 
 The JDBC boundary rejects submicrosecond or unrepresentable persisted inputs.
 Its finite database/Java interval is
@@ -657,6 +675,12 @@ arbitrary Throwable/message/SQL output. This is not a promise that every
 pre-phase service failure emits a diagnostic. Fallback is a separate phase,
 not a duplicate primary record; sink failure cannot replace the committed result.
 These observations neither write nor prove durable security audit.
+
+The scoped classifier does not change generic authentication failure classification.
+Post-ACK cleanup uses WARN `POST_COMMIT_CLEANUP_FAILURE` when appropriate, without
+masking a higher-severity companion failure. Original failure/category stay
+internal and separate from diagnostic severity; no cause or sensitive fields
+are added to the outward disposition or log boundary.
 
 A selected OIDC success/redirect does not establish HTTP commit, cookie delivery
 or the browser's final account. Missing session state may follow idle expiry,

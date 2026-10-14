@@ -61,7 +61,7 @@ class PlatformAccessWorkflowIntegrationTest {
 
     private static DataSource fresh() throws Exception {
         DataSource source = database(POSTGRES);
-        assertThat(flyway(source, "12").migrate().migrationsExecuted).isEqualTo(12);
+        assertThat(flyway(source, "14").migrate().migrationsExecuted).isEqualTo(14);
         return source;
     }
 
@@ -212,7 +212,7 @@ class PlatformAccessWorkflowIntegrationTest {
                 Integer waiterPid = connected.poll(5, TimeUnit.SECONDS);
                 assertThat(waiterPid).isNotNull();
                 awaitBlocked(source, waiterPid, blockerPid);
-                failure(future.get(8, TimeUnit.SECONDS), Code.DATABASE_UNAVAILABLE);
+                failure(future.get(8, TimeUnit.SECONDS), Code.LOCK_NOT_AVAILABLE);
             } finally {
                 blocker.rollback();
             }

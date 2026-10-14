@@ -44,6 +44,93 @@ class PlatformAccessStorageIntegrationTest {
             "organization_memberships", "workspaces", "workspace_memberships", "workspace_membership_scopes",
             "ready_made_products", "ready_made_product_manual_quantity_delta_commands", "user_identity_bindings");
 
+    @ParameterizedTest(name = "V14 populated V13 upgrade={0}")
+    @ValueSource(booleans = {false, true})
+    void v14ExtendsOnlyConfirmedFailureReasonsAndPreservesV13RowsHistoryAndOtherGuards(boolean populated)
+            throws Exception {
+        DataSource source = database(POSTGRES);
+        flyway(source, populated ? "11" : "13").migrate();
+        if (populated) {
+            populatePriorDomains(source);
+            flyway(source, "13").migrate();
+            WorkflowFixture fixture = workflow(source, true);
+            var intent = fixture.readIntent(UUID.randomUUID());
+            assertThat(fixture.service().registerUserSecurityRead(intent))
+                    .isInstanceOf(com.creastrix.platform.platformaccess.application.PlatformAccessOperations.Success.class);
+            assertThat(fixture.service().readUserSecurity(intent))
+                    .isInstanceOf(com.creastrix.platform.platformaccess.application.PlatformAccessOperations.Success.class);
+        }
+        List<String> tables = new ArrayList<>(PRIOR_TABLES);
+        tables.addAll(TABLES);
+        Map<String, List<String>> before;
+        List<String> history;
+        List<String> otherConstraints;
+        String oldShape;
+        try (Connection c = source.getConnection()) {
+            before = rows(c, tables, false);
+            history = strings(c, "SELECT to_jsonb(h)::text FROM flyway_schema_history h ORDER BY installed_rank");
+            otherConstraints = otherConstraintDefinitions(c);
+            oldShape = eventShape(c);
+        }
+        assertThat(flyway(source, "14").migrate().migrationsExecuted).isOne();
+        try (Connection c = source.getConnection()) {
+            assertThat(rows(c, tables, false)).isEqualTo(before);
+            assertThat(strings(c, "SELECT to_jsonb(h)::text FROM flyway_schema_history h WHERE version<>'14' ORDER BY installed_rank"))
+                    .isEqualTo(history);
+            assertThat(otherConstraintDefinitions(c)).isEqualTo(otherConstraints);
+            String newShape = eventShape(c);
+            assertThat(newShape.replace(", 'LOCK_NOT_AVAILABLE'::character varying, 'STATEMENT_CANCELLED'::character varying", ""))
+                    .isEqualTo(oldShape);
+            assertThat(strings(c, "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank"))
+                    .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14");
+        }
+        assertThat(flyway(source, "14").migrate().migrationsExecuted).isZero();
+        DataSource fresh = database(POSTGRES);
+        assertThat(flyway(fresh, "14").migrate().migrationsExecuted).isEqualTo(14);
+        try (Connection c = fresh.getConnection(); Connection upgraded = source.getConnection()) {
+            assertThat(eventShape(c)).isEqualTo(eventShape(upgraded));
+        }
+    }
+
+    private static String eventShape(Connection c) throws SQLException {
+        return scalar(c, "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname='platform_access_audit_events_event_shape'",
+                String.class);
+    }
+
+    private static List<String> otherConstraintDefinitions(Connection c) throws SQLException {
+        return strings(c, "SELECT conname || ':' || pg_get_constraintdef(oid) FROM pg_constraint "
+                + "WHERE connamespace='public'::regnamespace AND conname<>'platform_access_audit_events_event_shape' ORDER BY conname");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"OPERATION_FAILED,LOCK_NOT_AVAILABLE,true", "OPERATION_FAILED,STATEMENT_CANCELLED,true",
+            "OPERATION_FAILED,DEADLINE_EXCEEDED,true", "OPERATION_FAILED,NOT_A_FINITE_REASON,false",
+            "ACCESS_DENIED,LOCK_NOT_AVAILABLE,false", "ACCESS_DENIED,STATEMENT_CANCELLED,false"})
+    void v14NewReasonsDoNotWidenOtherEventShapes(String kind, String reason, boolean accepted) throws Exception {
+        DataSource source = database(POSTGRES);
+        flyway(source, "14").migrate();
+        Throwable failure = catchThrowable(() -> tx(source, c -> {
+            execute(c, """
+                    INSERT INTO platform_access_audit_events(id,event_version,event_kind,event_at,correlation_id,attempt_id,
+                        supplied_target_user_id,target_verification,action,permission,reason,outcome)
+                    VALUES (?,1,?,clock_timestamp(),?,?,?,'SUPPLIED','USER_SECURITY_READ','USER_SECURITY_READ',?,?)
+                    """, UUID.randomUUID(), kind, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), reason,
+                    kind.equals("OPERATION_FAILED") ? "CONFIRMED_FAILED" : "DENIED");
+            return Boolean.TRUE;
+        }));
+        if (accepted) { assertThat(failure).isNull(); }
+        else {
+            assertThat(failure).isInstanceOf(PSQLException.class);
+            PSQLException postgres = (PSQLException) failure;
+            assertThat(postgres.getSQLState()).isEqualTo("23514");
+            assertThat(postgres.getServerErrorMessage().getConstraint()).isEqualTo("platform_access_audit_events_event_shape");
+        }
+        try (Connection c = source.getConnection()) {
+            assertThat(scalar(c, "SELECT count(*)::integer FROM platform_access_audit_events", Integer.class))
+                    .isEqualTo(accepted ? 1 : 0);
+        }
+    }
+
     @org.junit.jupiter.params.ParameterizedTest(name = "populatedV11={0}, failAfterActualV12History={1}")
     @org.junit.jupiter.params.provider.CsvSource({"false,false", "false,true", "true,false", "true,true"})
     void v12ValidationSchemaGenerationAndHistoryShareOnePhysicalTransaction(boolean populated, boolean fail)

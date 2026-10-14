@@ -29,6 +29,7 @@ import com.creastrix.platform.observability.Diagnostics;
 import com.creastrix.platform.observability.TransactionDiagnostics.Operation;
 import com.creastrix.platform.platformaccess.application.OwnedPlatformAccessTransactions;
 import com.creastrix.platform.platformaccess.application.PlatformAccessOperations.Code;
+import com.creastrix.platform.platformaccess.application.PlatformAccessOperations.CommittedResultWithheld;
 import com.creastrix.platform.platformaccess.application.PlatformAccessOperations.Denied;
 import com.creastrix.platform.platformaccess.application.PlatformAccessOperations.Failure;
 import com.creastrix.platform.platformaccess.application.PlatformAccessOperations.Intent;
@@ -38,6 +39,7 @@ import com.creastrix.platform.platformaccess.application.PlatformAccessOperation
 import com.creastrix.platform.platformaccess.application.PlatformAccessOperations.UserSecurity;
 import com.creastrix.platform.platformaccess.application.PlatformAccessService;
 import com.creastrix.platform.platformaccess.domain.PlatformAccessContext.ReadReason;
+import com.creastrix.platform.platformaccess.application.port.PlatformAccessRepository.AuthorityChangedException;
 import com.creastrix.platform.platformaccess.persistence.JdbcPlatformAccessRepository;
 import com.creastrix.platform.user.domain.UserStatus;
 import com.zaxxer.hikari.HikariConfig;
@@ -46,6 +48,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.datasource.AbstractDataSource;
@@ -70,6 +73,380 @@ class PlatformAccessCommitOutcomeIntegrationTest {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.4-alpine");
     private static final String PRIVATE_VALUE = "synthetic-private-" + UUID.randomUUID();
+
+    enum AckPhase { REGISTER_READ, REGISTER_REVOKE, READ, REVOKE, READ_RECEIPT, REVOKE_RECEIPT }
+
+    @ParameterizedTest(name = "Post-ACK cleanup {0}, network-reset={1}")
+    @CsvSource({"REGISTER_READ,false", "REGISTER_READ,true", "REGISTER_REVOKE,false", "REGISTER_REVOKE,true",
+            "READ,false", "READ,true", "REVOKE,false", "REVOKE,true",
+            "READ_RECEIPT,false", "READ_RECEIPT,true", "REVOKE_RECEIPT,false", "REVOKE_RECEIPT,true"})
+    void acknowledgedCommitWithOnlyCleanupWarningReturnsThePhaseResult(AckPhase phase, boolean reset)
+            throws Exception {
+        WorkflowFixture fixture = fixture();
+        boolean revoke = phase.name().contains("REVOKE");
+        boolean registration = phase.name().startsWith("REGISTER");
+        boolean receipt = phase.name().endsWith("RECEIPT");
+        Intent intent = revoke ? fixture.revokeIntent(UUID.randomUUID()) : fixture.readIntent(UUID.randomUUID());
+        if (!registration) { register(fixture.service(), intent, revoke); }
+        if (receipt) { assertThat(execute(fixture.service(), intent, revoke)).isInstanceOf(Success.class); }
+        AtomicBoolean injected = new AtomicBoolean();
+        Trace trace = new Trace(fixture.source(), new Plan() {
+            private void fault(ObservedSession session) throws SQLException {
+                assertThat(session.commits.get()).as("Commit delegate returned before the cleanup seam").isOne();
+                if (injected.compareAndSet(false, true)) { throw new SQLException(PRIVATE_VALUE, "08006"); }
+            }
+            @Override void afterNetworkReset(ObservedSession session) throws Exception {
+                if (reset) { fault(session); }
+            }
+            @Override void afterClose(ObservedSession session) throws Exception {
+                if (!reset) { fault(session); }
+            }
+        });
+        try (LogCapture logs = new LogCapture(trace)) {
+            Result<?> result = registration
+                    ? (revoke ? fixture.service(trace).registerSupportRevoke(intent)
+                            : fixture.service(trace).registerUserSecurityRead(intent))
+                    : receipt ? receipt(fixture.service(trace), intent, revoke)
+                    : execute(fixture.service(trace), intent, revoke);
+            assertThat(injected.get()).as("The real post-ACK cleanup seam was reached").isTrue();
+            assertThat(result).isInstanceOf(Success.class);
+            if (phase == AckPhase.READ) {
+                assertThat(result).isEqualTo(new Success<>(new UserSecurity(fixture.target(), UserStatus.ACTIVE)));
+            }
+            trace.assertClosed(1);
+            assertThat(trace.sessions.getFirst().commits.get()).isOne();
+            assertThat(trace.sessions.getFirst().rollbacks.get()).isZero();
+            assertThat(trace.sessions.getFirst().aborts.get()).isZero();
+            try (Connection observer = fixture.source().getConnection()) {
+                assertThat(intents(observer, intent)).isOne();
+                assertThat(outcomes(observer, intent)).isEqualTo(registration ? 0 : 1);
+                assertThat(audits(observer, intent, "INTENT_RECORDED")).isOne();
+                assertThat(successAudits(observer, intent)).isEqualTo(registration ? 0 : receipt ? 2 : 1);
+                assertThat(grantState(observer, fixture)).isEqualTo(revoke && !registration ? "REVOKED:2" : "ACTIVE:1");
+                assertThat(attemptAudits(observer, intent, "OPERATION_FAILED")).isZero();
+            }
+            assertThat(logs.messages()).singleElement().asString()
+                    .contains("completion=COMMITTED reason=POST_COMMIT_CLEANUP_FAILURE");
+            logs.assertSafe(fixture, intent);
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(AckPhase.class)
+    void cancellationAfterAckWithCleanupInsideGraceWithholdsOnlyTheCurrentPhaseResult(AckPhase phase)
+            throws Exception {
+        WorkflowFixture fixture = fixture();
+        boolean revoke = phase.name().contains("REVOKE");
+        boolean registration = phase.name().startsWith("REGISTER");
+        boolean receipt = phase.name().endsWith("RECEIPT");
+        Intent intent = revoke ? fixture.revokeIntent(UUID.randomUUID()) : fixture.readIntent(UUID.randomUUID());
+        if (!registration) { register(fixture.service(), intent, revoke); }
+        if (receipt) { assertThat(execute(fixture.service(), intent, revoke)).isInstanceOf(Success.class); }
+        CountDownLatch closed = new CountDownLatch(1);
+        Trace trace = new Trace(fixture.source(), new Plan() {
+            @Override void afterClose(ObservedSession session) throws Exception {
+                assertThat(session.commits.get()).isOne();
+                assertThat(session.connection.isClosed()).isTrue();
+                closed.countDown();
+                try {
+                    assertThat(new CountDownLatch(1).await(10, TimeUnit.SECONDS)).as("Caller must cancel the waiter").isTrue();
+                } catch (InterruptedException expected) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        });
+        AtomicReference<Result<?>> result = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        AtomicBoolean callerInterrupted = new AtomicBoolean();
+        Thread caller = Thread.ofPlatform().unstarted(() -> {
+            try {
+                result.set(registration
+                        ? (revoke ? fixture.service(trace).registerSupportRevoke(intent)
+                                : fixture.service(trace).registerUserSecurityRead(intent))
+                        : receipt ? receipt(fixture.service(trace), intent, revoke)
+                        : execute(fixture.service(trace), intent, revoke));
+                callerInterrupted.set(Thread.currentThread().isInterrupted());
+            } catch (Throwable unexpected) { failure.set(unexpected); }
+        });
+        try (LogCapture logs = new LogCapture(trace)) {
+            caller.start();
+            assertThat(closed.await(8, TimeUnit.SECONDS)).isTrue();
+            caller.interrupt();
+            caller.join(5_000);
+            assertThat(caller.isAlive()).isFalse();
+            assertThat(failure.get()).isNull();
+            assertThat(callerInterrupted.get()).isTrue();
+            assertThat(result.get()).isEqualTo(new CommittedResultWithheld<>());
+            assertThat(CommittedResultWithheld.class.getRecordComponents()).isEmpty();
+            trace.assertClosed(1);
+            assertThat(trace.sessions.getFirst().aborts.get()).isZero();
+            try (Connection observer = fixture.source().getConnection()) {
+                assertThat(intents(observer, intent)).isOne();
+                assertThat(outcomes(observer, intent)).isEqualTo(registration ? 0 : 1);
+                assertThat(successAudits(observer, intent)).isEqualTo(registration ? 0 : receipt ? 2 : 1);
+                assertThat(attemptAudits(observer, intent, "OPERATION_FAILED")).isZero();
+                assertThat(grantState(observer, fixture)).isEqualTo(revoke && !registration ? "REVOKED:2" : "ACTIVE:1");
+            }
+            assertThat(logs.messages()).singleElement().asString().contains("completion=COMMITTED reason=INTERRUPTED");
+            logs.assertSafe(fixture, intent);
+        } finally {
+            caller.interrupt();
+            caller.join(5_000);
+        }
+        if (registration) { register(fixture.service(), intent, revoke); }
+        else {
+            if (!receipt) {
+                if (revoke) { assertThat(execute(fixture.service(), intent, true)).isInstanceOf(Denied.class); }
+                else { assertFailure(execute(fixture.service(), intent, false), Code.TERMINAL_RECEIPT_REQUIRED); }
+            }
+            assertThat(receipt(fixture.service(), intent, revoke)).isInstanceOf(Success.class);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void acknowledgedCompletionSurvivesUnconfirmedCleanupWithoutDisclosureOrFallback(boolean commit)
+            throws Exception {
+        WorkflowFixture fixture = fixture();
+        Intent intent = fixture.readIntent(UUID.randomUUID());
+        register(fixture.service(), intent, false);
+        Trace trace = new Trace(fixture.source(), new Plan() {
+            @Override void afterStatement(ObservedSession session, Stage stage) throws Exception {
+                if (!commit && stage == Stage.OUTCOME) { throw new SQLException(PRIVATE_VALUE, "XX000"); }
+            }
+            @Override void afterClose(ObservedSession session) throws Exception {
+                assertThat(session.connection.isClosed()).isTrue();
+                throw new SQLException(PRIVATE_VALUE, "08006");
+            }
+            @Override void beforeClosedInspection(ObservedSession session) throws Exception {
+                if (session.closed.get()) { throw new SQLException(PRIVATE_VALUE, "08006"); }
+            }
+        });
+        try (LogCapture logs = new LogCapture(trace)) {
+            Result<?> result = fixture.service(trace).readUserSecurity(intent);
+            assertThat(result).isEqualTo(commit ? new CommittedResultWithheld<>()
+                    : new Failure<>(Code.RESOURCE_CLEANUP_INCOMPLETE));
+            trace.assertClosed(1);
+            assertThat(trace.sessions.getFirst().commits.get()).isEqualTo(commit ? 1 : 0);
+            assertThat(trace.sessions.getFirst().rollbacks.get()).isEqualTo(commit ? 0 : 1);
+            assertThat(trace.sessions.getFirst().aborts.get()).isZero();
+            assertThat(logs.messages()).isEmpty();
+            try (Connection observer = fixture.source().getConnection()) {
+                assertThat(outcomes(observer, intent)).isEqualTo(commit ? 1 : 0);
+                assertThat(successAudits(observer, intent)).isEqualTo(commit ? 1 : 0);
+                assertThat(attemptAudits(observer, intent, "OPERATION_FAILED")).isZero();
+            }
+        }
+    }
+
+    @ParameterizedTest(name = "Scoped SQL classification {0}: {1}")
+    @CsvSource({"55P03,LOCK_NOT_AVAILABLE", "57014,STATEMENT_CANCELLED", "08006,DATABASE_UNAVAILABLE",
+            "57P01,DATABASE_UNAVAILABLE", "XX000,UNEXPECTED_FAILURE", "23505,UNEXPECTED_FAILURE", "PA001,UNEXPECTED_FAILURE"})
+    void ownedSqlClassificationUsesFiniteConditionsWithoutReadingPrivateMessages(String state, String reason)
+            throws Exception {
+        WorkflowFixture fixture = fixture();
+        SQLException injected = new SQLException(PRIVATE_VALUE, state) {
+            @Override public String getMessage() { throw new AssertionError("No exception text classification"); }
+            @Override public String toString() { throw new AssertionError("No exception rendering"); }
+        };
+        Trace trace = new Trace(fixture.source(), new Plan() { });
+        try (LogCapture logs = new LogCapture(trace)) {
+            var phase = new OwnedPlatformAccessTransactions(trace).primary(Operation.PLATFORM_USER_SECURITY_READ,
+                    (connection, deadline) -> { throw injected; });
+            assertThat(phase.completion()).isEqualTo(Diagnostics.Completion.ROLLED_BACK);
+            assertThat(phase.value()).isNull();
+            assertThat(phase.failure()).isSameAs(injected);
+            assertThat(phase.reason().name()).isEqualTo(reason);
+            assertThat(phase.failureReason().name()).isEqualTo(reason);
+            trace.assertClosed(1);
+            assertThat(logs.messages()).singleElement().asString().contains("completion=ROLLED_BACK reason=" + reason);
+            assertThat(logs.messages().stream().noneMatch(message -> message.contains(PRIVATE_VALUE))).isTrue();
+        }
+    }
+
+    @Test
+    void typedAuthorityConflictIsNotDatabaseUnavailability() throws Exception {
+        WorkflowFixture fixture = fixture();
+        var phase = new OwnedPlatformAccessTransactions(fixture.source()).primary(Operation.PLATFORM_USER_SECURITY_READ,
+                (connection, deadline) -> { throw new AuthorityChangedException(); });
+        assertThat(phase.reason().name()).isEqualTo("AUTHORITY_CHANGED");
+        assertThat(phase.completion()).isEqualTo(Diagnostics.Completion.ROLLED_BACK);
+        assertThat(phase.value()).isNull();
+    }
+
+    @Test
+    void ownedCauseTraversalIsBoundedWithoutReadingDiagnosticText() throws Exception {
+        WorkflowFixture fixture = fixture();
+        AtomicInteger visits = new AtomicInteger();
+        RuntimeException cyclic = new RuntimeException() {
+            @Override public synchronized Throwable getCause() { visits.incrementAndGet(); return this; }
+            @Override public String getMessage() { throw new AssertionError("No diagnostic text"); }
+            @Override public String toString() { throw new AssertionError("No exception rendering"); }
+        };
+        var phase = new OwnedPlatformAccessTransactions(fixture.source()).primary(Operation.PLATFORM_USER_SECURITY_READ,
+                (connection, deadline) -> { throw cyclic; });
+        assertThat(phase.failure()).isSameAs(cyclic);
+        assertThat(phase.reason()).isEqualTo(Diagnostics.Reason.UNEXPECTED_FAILURE);
+        assertThat(phase.completion()).isEqualTo(Diagnostics.Completion.ROLLED_BACK);
+        assertThat(visits.get()).isEqualTo(16);
+    }
+
+    @Test
+    void acquisitionFailureRemainsUnobservedWithoutWorkRollbackOrFallback() throws Exception {
+        WorkflowFixture fixture = fixture();
+        AtomicInteger acquisitions = new AtomicInteger();
+        DataSource unavailable = new AbstractDataSource() {
+            @Override public Connection getConnection() throws SQLException {
+                acquisitions.incrementAndGet();
+                throw new java.sql.SQLTransientConnectionException(PRIVATE_VALUE);
+            }
+            @Override public Connection getConnection(String user, String password) throws SQLException {
+                return getConnection();
+            }
+        };
+        Trace trace = new Trace(unavailable, new Plan() { });
+        Intent intent = fixture.readIntent(UUID.randomUUID());
+        try (LogCapture logs = new LogCapture(trace)) {
+            assertFailure(fixture.service(trace).registerUserSecurityRead(intent), Code.DATABASE_UNAVAILABLE);
+            assertThat(acquisitions.get()).isOne();
+            trace.assertClosed(0);
+            logs.assertMessages("event=DOMAIN_TRANSACTION operation=PLATFORM_INTENT_REGISTER"
+                    + " completion=NOT_OBSERVED reason=DATABASE_UNAVAILABLE");
+            logs.assertSafe(fixture, intent);
+        }
+        try (Connection observer = fixture.source().getConnection()) {
+            assertThat(intents(observer, intent)).isZero();
+            assertThat(outcomes(observer, intent)).isZero();
+            assertThat(attemptAudits(observer, intent, "OPERATION_FAILED")).isZero();
+        }
+    }
+
+    @Test
+    void rollbackAckBeforeCleanupGraceExpiryNeverBecomesUnknownOrStartsFallback() throws Exception {
+        WorkflowFixture fixture = fixture();
+        Intent intent = fixture.readIntent(UUID.randomUUID());
+        register(fixture.service(), intent, false);
+        CountDownLatch closed = new CountDownLatch(1);
+        CountDownLatch releaseCleanup = new CountDownLatch(1);
+        Trace trace = new Trace(fixture.source(), new Plan() {
+            @Override void afterStatement(ObservedSession session, Stage stage) throws Exception {
+                if (stage == Stage.OUTCOME) { throw new SQLException(PRIVATE_VALUE, "XX000"); }
+            }
+            @Override void afterClose(ObservedSession session) throws Exception {
+                assertThat(session.rollbacks.get()).isOne();
+                assertThat(session.connection.isClosed()).isTrue();
+                closed.countDown();
+                long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                while (true) {
+                    long remaining = end - System.nanoTime();
+                    assertThat(remaining).as("Bounded rollback cleanup acknowledgement barrier").isPositive();
+                    try {
+                        assertThat(releaseCleanup.await(remaining, TimeUnit.NANOSECONDS)).isTrue();
+                        break;
+                    } catch (InterruptedException expectedCancellation) { }
+                }
+            }
+        });
+        AtomicReference<Result<?>> result = new AtomicReference<>();
+        Thread caller = Thread.ofPlatform().unstarted(() -> result.set(fixture.service(trace).readUserSecurity(intent)));
+        try (LogCapture logs = new LogCapture(trace)) {
+            caller.start();
+            assertThat(closed.await(8, TimeUnit.SECONDS)).isTrue();
+            caller.interrupt();
+            caller.join(5_000);
+            assertThat(caller.isAlive()).isFalse();
+            assertFailure(result.get(), Code.RESOURCE_CLEANUP_INCOMPLETE);
+            assertThat(logs.messages()).isEmpty();
+            trace.assertClosed(1);
+            assertThat(trace.sessions.getFirst().commits.get()).isZero();
+            assertThat(trace.sessions.getFirst().aborts.get()).isZero();
+            try (Connection observer = fixture.source().getConnection()) {
+                assertThat(outcomes(observer, intent)).isZero();
+                assertThat(successAudits(observer, intent)).isZero();
+                assertThat(attemptAudits(observer, intent, "OPERATION_FAILED")).isZero();
+            }
+            releaseCleanup.countDown();
+            assertThat(logs.firstWrite.await(5, TimeUnit.SECONDS)).isTrue();
+            logs.assertMessages("event=DOMAIN_TRANSACTION operation=PLATFORM_USER_SECURITY_READ"
+                    + " completion=ROLLED_BACK reason=UNEXPECTED_FAILURE");
+        } finally {
+            releaseCleanup.countDown();
+            caller.interrupt();
+            caller.join(5_000);
+        }
+    }
+
+    @Test
+    void configuredStatementTimeoutIsSqlCancellationNotDatabaseOutageOrInventedCallerInterruption() throws Exception {
+        WorkflowFixture fixture = fixture();
+        var phase = new OwnedPlatformAccessTransactions(fixture.source()).primary(Operation.PLATFORM_USER_SECURITY_READ,
+                (connection, deadline) -> {
+                    try (var statement = connection.prepareStatement("SELECT pg_sleep(8)")) {
+                        // Only the installed server statement cap fires; no client cancel is issued.
+                        statement.execute();
+                        return Boolean.TRUE;
+                    }
+                });
+        assertThat(phase.failure()).isInstanceOf(SQLException.class);
+        assertThat(((SQLException) phase.failure()).getSQLState()).isEqualTo("57014");
+        assertThat(phase.completion()).isEqualTo(Diagnostics.Completion.ROLLED_BACK);
+        assertThat(phase.reason()).isEqualTo(Diagnostics.Reason.STATEMENT_CANCELLED);
+        assertThat(phase.value()).isNull();
+        assertThat(phase.cleanupComplete()).isTrue();
+    }
+
+    @Test
+    void explicitServerCancellationOfAnExactlyBlockedOwnedPidIsNotAssumedToBeTimeout() throws Exception {
+        WorkflowFixture fixture = fixture();
+        java.util.concurrent.ArrayBlockingQueue<Integer> waiting = new java.util.concurrent.ArrayBlockingQueue<>(1);
+        try (Connection blocker = fixture.source().getConnection(); var executor = Executors.newSingleThreadExecutor()) {
+            blocker.setAutoCommit(false);
+            scalar(blocker, "SELECT pg_advisory_xact_lock(701402)::text", String.class);
+            var future = executor.submit(() -> new OwnedPlatformAccessTransactions(fixture.source())
+                    .primary(Operation.PLATFORM_USER_SECURITY_READ, (connection, deadline) -> {
+                        waiting.add(pid(connection));
+                        try (var statement = connection.prepareStatement("SELECT pg_advisory_xact_lock(701402)")) {
+                            statement.execute();
+                            return Boolean.TRUE;
+                        }
+                    }));
+            int waiter = waiting.poll(5, TimeUnit.SECONDS);
+            awaitBlocked(fixture.source(), waiter, pid(blocker));
+            try (Connection observer = fixture.source().getConnection()) {
+                assertThat(scalar(observer, "SELECT pg_cancel_backend(?)", Boolean.class, waiter)).isTrue();
+            }
+            var phase = future.get(5, TimeUnit.SECONDS);
+            assertThat(phase.failure()).isInstanceOf(SQLException.class);
+            assertThat(((SQLException) phase.failure()).getSQLState()).isEqualTo("57014");
+            assertThat(phase.reason()).isEqualTo(Diagnostics.Reason.STATEMENT_CANCELLED);
+            assertThat(phase.completion()).isEqualTo(Diagnostics.Completion.ROLLED_BACK);
+            assertThat(phase.cleanupComplete()).isTrue();
+            assertThat(phase.value()).isNull();
+            blocker.rollback();
+        }
+    }
+
+    @Test
+    void postCommitCleanupWarningCannotHideAHigherSeverityCleanupFailure() throws Exception {
+        WorkflowFixture fixture = fixture();
+        Trace trace = new Trace(fixture.source(), new Plan() {
+            @Override void afterNetworkReset(ObservedSession session) throws Exception { throw new SQLException(PRIVATE_VALUE, "08006"); }
+            @Override void afterClose(ObservedSession session) { throw new IllegalStateException(PRIVATE_VALUE); }
+        });
+        try (LogCapture logs = new LogCapture(trace)) {
+            var phase = new OwnedPlatformAccessTransactions(trace).primary(Operation.PLATFORM_USER_SECURITY_READ,
+                    (connection, deadline) -> Boolean.TRUE);
+            assertThat(phase.succeeded()).isTrue();
+            assertThat(phase.completion()).isEqualTo(Diagnostics.Completion.COMMITTED);
+            assertThat(phase.failure()).isInstanceOf(SQLException.class);
+            assertThat(phase.failureReason()).isEqualTo(Diagnostics.Reason.POST_COMMIT_CLEANUP_FAILURE);
+            assertThat(phase.reason()).isEqualTo(Diagnostics.Reason.UNEXPECTED_FAILURE);
+            trace.assertClosed(1);
+            assertThat(logs.capture.list.getFirst().getLevel()).isEqualTo(ch.qos.logback.classic.Level.ERROR);
+            assertThat(logs.messages()).singleElement().asString().contains("completion=COMMITTED reason=UNEXPECTED_FAILURE");
+            assertThat(logs.messages().stream().noneMatch(message -> message.contains(PRIVATE_VALUE))).isTrue();
+        }
+    }
 
     @ParameterizedTest(name = "Physical atomicity revoke={0}")
     @ValueSource(booleans = {false, true})
@@ -108,7 +485,7 @@ class PlatformAccessCommitOutcomeIntegrationTest {
             assertThat(successAudits(observer, intent)).isOne();
             assertThat(grantState(observer, fixture)).isEqualTo(revoke ? "REVOKED:2" : "ACTIVE:1");
             assertThat(strings(observer, "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank"))
-                    .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
+                    .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14");
         }
         System.out.printf("PLATFORM_ACCESS_ATOMICITY operation=%s pid=%d xid=%s committed=true%n",
                 revoke ? "REVOKE" : "READ", observed.pid, observed.transactionId);
@@ -135,7 +512,7 @@ class PlatformAccessCommitOutcomeIntegrationTest {
 
         assertThat(injected.get()).as("Real selected SQL boundary reached").isTrue();
         assertThat(result).isInstanceOf(Failure.class);
-        assertThat(((Failure<?>) result).code()).isIn(Code.DATABASE_UNAVAILABLE, Code.AUDIT_UNAVAILABLE);
+        assertThat(((Failure<?>) result).code()).isIn(Code.UNEXPECTED_FAILURE, Code.AUDIT_UNAVAILABLE);
         trace.assertClosed(2);
         assertThat(trace.sessions.get(0).commits.get()).isZero();
         assertThat(trace.sessions.get(0).rollbacks.get()).isOne();
@@ -304,7 +681,7 @@ class PlatformAccessCommitOutcomeIntegrationTest {
     void scopeReplacementPreservesBoundedDisclosureForRealLostAckAndRolledBackHistories(boolean committed)
             throws Exception {
         DataSource source = database(POSTGRES);
-        flyway(source, "12").migrate();
+        flyway(source, "14").migrate();
         WorkflowFixture original = workflow(source, false);
         UUID operation = UUID.randomUUID();
         Intent a = original.readIntent(operation);
@@ -324,7 +701,7 @@ class PlatformAccessCommitOutcomeIntegrationTest {
         });
 
         assertFailure(original.service(trace).registerUserSecurityRead(a),
-                committed ? Code.COMMIT_UNKNOWN : Code.DATABASE_UNAVAILABLE);
+                committed ? Code.COMMIT_UNKNOWN : Code.UNEXPECTED_FAILURE);
         assertThat(injected.get()).as("Real INSERT or real commit boundary was reached").isTrue();
         trace.assertClosed(committed ? 1 : 2);
         assertThat(trace.sessions.getFirst().commits.get()).isEqualTo(committed ? 1 : 0);
@@ -518,7 +895,7 @@ class PlatformAccessCommitOutcomeIntegrationTest {
                     assertThat(fallbackAudit.await(8, TimeUnit.SECONDS)).isTrue();
                     assertThat(fallbackPid.get()).isNotEqualTo(blockerPid);
                     awaitBlocked(fixture.source(), fallbackPid.get(), blockerPid);
-                    assertFailure(future.get(6, TimeUnit.SECONDS), Code.DATABASE_UNAVAILABLE);
+                    assertFailure(future.get(6, TimeUnit.SECONDS), Code.UNEXPECTED_FAILURE);
                     long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - fallbackStarted.get());
                     assertThat(elapsed).as("Actual two-second fallback deadline plus bounded cleanup")
                             .isBetween(1_500L, 4_500L);
@@ -527,7 +904,7 @@ class PlatformAccessCommitOutcomeIntegrationTest {
                     assertThat(logs.writes.get()).as("Only primary and one bounded fallback phase").isEqualTo(2);
                     assertThat(logs.capture.list.getFirst().getFormattedMessage().equals(
                             "event=DOMAIN_TRANSACTION operation=PLATFORM_SUPPORT_REVOKE"
-                                    + " completion=ROLLED_BACK reason=DATABASE_UNAVAILABLE")).isTrue();
+                                    + " completion=ROLLED_BACK reason=UNEXPECTED_FAILURE")).isTrue();
                     assertThat(logs.capture.list.get(1).getFormattedMessage()
                             .startsWith("event=DOMAIN_TRANSACTION operation=PLATFORM_ATTEMPT_AUDIT completion="))
                             .isTrue();
@@ -571,9 +948,9 @@ class PlatformAccessCommitOutcomeIntegrationTest {
                     Code.UNEXPECTED_FAILURE);
             trace.assertClosed(2);
             logs.assertMessages(
-                    "event=DOMAIN_TRANSACTION operation=PLATFORM_SUPPORT_REVOKE completion=ROLLED_BACK reason=DATABASE_UNAVAILABLE",
+                    "event=DOMAIN_TRANSACTION operation=PLATFORM_SUPPORT_REVOKE completion=ROLLED_BACK reason=UNEXPECTED_FAILURE",
                     "event=DOMAIN_TRANSACTION operation=PLATFORM_ATTEMPT_AUDIT completion=ROLLED_BACK reason=UNEXPECTED_FAILURE");
-            assertThat(logs.capture.list.get(0).getLevel()).isEqualTo(ch.qos.logback.classic.Level.WARN);
+            assertThat(logs.capture.list.get(0).getLevel()).isEqualTo(ch.qos.logback.classic.Level.ERROR);
             assertThat(logs.capture.list.get(1).getLevel()).isEqualTo(ch.qos.logback.classic.Level.ERROR);
             logs.assertSafe(fixture, intent);
         }
@@ -690,8 +1067,9 @@ class PlatformAccessCommitOutcomeIntegrationTest {
         }
     }
 
-    @Test
-    void cancellationAfterPoolReturnNeverAbortsTheSamePhysicalConnectionOwnedByANewBorrower() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void cancellationAfterPoolReturnNeverAbortsTheSamePhysicalConnectionOwnedByANewBorrower(boolean insideGrace) throws Exception {
         WorkflowFixture fixture = fixture();
         Intent intent = fixture.readIntent(UUID.randomUUID());
         register(fixture.service(), intent, false);
@@ -707,6 +1085,7 @@ class PlatformAccessCommitOutcomeIntegrationTest {
         configuration.setPoolName("platform-access-returned-lease-test");
         CountDownLatch returnedToPool = new CountDownLatch(1);
         CountDownLatch releaseCloseAcknowledgement = new CountDownLatch(1);
+        CountDownLatch workerCancellationObserved = new CountDownLatch(1);
         CountDownLatch callerFinished = new CountDownLatch(1);
         AtomicReference<Result<UserSecurity>> result = new AtomicReference<>();
         AtomicReference<Throwable> unexpected = new AtomicReference<>();
@@ -727,6 +1106,7 @@ class PlatformAccessCommitOutcomeIntegrationTest {
                                 throw new AssertionError("Observer close-ack barrier timed out");
                             } catch (InterruptedException expectedCancellation) {
                                 interrupted = true;
+                                workerCancellationObserved.countDown();
                             }
                         }
                     } finally {
@@ -751,9 +1131,13 @@ class PlatformAccessCommitOutcomeIntegrationTest {
                                 .isEqualTo(trace.sessions.getFirst().pid);
                         nextBorrower.setAutoCommit(false);
                         caller.interrupt();
+                        if (insideGrace) {
+                            assertThat(workerCancellationObserved.await(1, TimeUnit.SECONDS)).isTrue();
+                            releaseCloseAcknowledgement.countDown();
+                        }
                         assertThat(callerFinished.await(5, TimeUnit.SECONDS)).isTrue();
                         assertThat(unexpected.get() == null).as("No uncaught caller failure").isTrue();
-                        assertFailure(result.get(), Code.COMMIT_UNKNOWN);
+                        assertThat(result.get()).isEqualTo(new CommittedResultWithheld<>());
                         assertThat(trace.sessions.getFirst().aborts.get()).isZero();
                         assertThat(nextBorrower.isValid(2)).isTrue();
                         assertThat(pid(nextBorrower)).isEqualTo(reusedPid);
@@ -807,7 +1191,7 @@ class PlatformAccessCommitOutcomeIntegrationTest {
 
     private static WorkflowFixture fixture() throws Exception {
         DataSource source = database(POSTGRES);
-        flyway(source, "12").migrate();
+        flyway(source, "14").migrate();
         return workflow(source, true);
     }
 
@@ -888,6 +1272,8 @@ class PlatformAccessCommitOutcomeIntegrationTest {
         void afterStatement(ObservedSession session, Stage stage) throws Exception { }
         void beforeCommit(ObservedSession session) throws Exception { }
         void afterCommit(ObservedSession session) throws Exception { }
+        void afterNetworkReset(ObservedSession session) throws Exception { }
+        void beforeClosedInspection(ObservedSession session) throws Exception { }
         void afterClose(ObservedSession session) throws Exception { }
     }
 
@@ -938,7 +1324,11 @@ class PlatformAccessCommitOutcomeIntegrationTest {
                             return result;
                         }
                         if (name.equals("abort")) { session.aborts.incrementAndGet(); }
+                        if (name.equals("isClosed")) { plan.beforeClosedInspection(session); }
                         Object result = invoke(method, connection, arguments);
+                        if (name.equals("setNetworkTimeout") && session.commits.get() == 1) {
+                            plan.afterNetworkReset(session);
+                        }
                         if (name.equals("setAutoCommit")) {
                             session.autoCommitValues.add((Boolean) arguments[0]);
                             if (Boolean.FALSE.equals(arguments[0])) {
