@@ -124,6 +124,14 @@ runtime evidence are distinguished in the
 [authentication boundary](docs/authentication-pilot.md#s003-evidence-and-open-gates).
 They do not supply the missing live Platform Access wiring or close its gates.
 
+The bounded CFA-01/02 correction in this source checkout separates acknowledged
+owned-phase completion from cleanup/result release: known commit is not a
+fabricated failure or UNKNOWN when its payload must be withheld. Scoped
+authority/SQL/budget/audit diagnostics and V14's two confirmed-failure reasons
+leave APPROVED 1.1 permissions, generic authentication classification and V1–V13
+unchanged. Coverage stays constructor-only; verification and delivery evidence
+are separate, with no live staff wiring, rollout or next business slice implied.
+
 ### Integrated authentication backend pilot
 
 The owner authorized AUTH-FIRST-LOGIN-001 against reviewed AUTH-SELECTION-003:

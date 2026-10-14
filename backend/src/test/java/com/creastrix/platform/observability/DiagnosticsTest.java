@@ -126,7 +126,8 @@ class DiagnosticsTest {
             case UNEXPECTED_FAILURE -> Level.ERROR;
             case SESSION_COORDINATION_UNAVAILABLE, IDENTITY_RESOLUTION_UNAVAILABLE,
                     DATABASE_UNAVAILABLE, DEADLINE_EXCEEDED, INTERRUPTED,
-                    PROVIDER_REQUEST_UNAVAILABLE -> Level.WARN;
+                    PROVIDER_REQUEST_UNAVAILABLE, LOCK_NOT_AVAILABLE, STATEMENT_CANCELLED,
+                    AUDIT_UNAVAILABLE, POST_COMMIT_CLEANUP_FAILURE, RESOURCE_CLEANUP_INCOMPLETE -> Level.WARN;
             default -> Level.INFO;
         };
         filter.doFilter(new MockHttpServletRequest("GET", "/api/me"), new MockHttpServletResponse(),
@@ -651,7 +652,8 @@ class DiagnosticsTest {
                         || switch (reason) {
                             case SESSION_COORDINATION_UNAVAILABLE, IDENTITY_RESOLUTION_UNAVAILABLE,
                                     DATABASE_UNAVAILABLE, DEADLINE_EXCEEDED, INTERRUPTED,
-                                    PROVIDER_REQUEST_UNAVAILABLE -> true;
+                                    PROVIDER_REQUEST_UNAVAILABLE, LOCK_NOT_AVAILABLE, STATEMENT_CANCELLED,
+                                    AUDIT_UNAVAILABLE, POST_COMMIT_CLEANUP_FAILURE, RESOURCE_CLEANUP_INCOMPLETE -> true;
                             default -> false;
                         } ? ch.qos.logback.classic.Level.WARN : ch.qos.logback.classic.Level.INFO;
         String message = "event=DOMAIN_TRANSACTION operation=PLATFORM_USER_SECURITY_READ completion=" + completion

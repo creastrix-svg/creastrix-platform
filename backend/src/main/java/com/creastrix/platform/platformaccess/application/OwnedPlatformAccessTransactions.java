@@ -4,12 +4,16 @@ import com.creastrix.platform.observability.Diagnostics;
 import com.creastrix.platform.observability.Diagnostics.Completion;
 import com.creastrix.platform.observability.Diagnostics.Reason;
 import com.creastrix.platform.observability.TransactionDiagnostics.Operation;
+import com.creastrix.platform.platformaccess.application.port.PlatformAccessRepository.AuthorityChangedException;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.SQLNonTransientConnectionException;
+import java.sql.SQLTimeoutException;
+import java.sql.SQLTransientConnectionException;
 import java.sql.Statement;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
@@ -32,7 +36,7 @@ import java.util.concurrent.TimeoutException;
  * Hikari/PostgreSQL path provides interruptible acquisition and socket abort;
  * an arbitrary uninterruptible driver is not given a fictitious real-time
  * guarantee. After a bounded two-second cleanup grace, an unfinished worker
- * yields UNKNOWN without payload or permission to start fallback. Only that
+ * withholds payload and preserves the last acknowledged completion. Only that
  * worker may later report its actual completion, after cleanup really finishes.
  * There is no Spring bean, implicit transaction join, retry, or audit writer here.
  */
@@ -67,10 +71,10 @@ public final class OwnedPlatformAccessTransactions {
     }
 
     /** Internal result: failure objects must not cross the outward service API. */
-    public record Phase<T>(T value, Completion completion, Reason reason,
-                           Throwable failure, boolean ambient, boolean cleanupComplete) {
+    public record Phase<T>(T value, Completion completion, Reason reason, Reason failureReason,
+                           Throwable failure, boolean ambient, boolean cleanupComplete, boolean releaseAllowed) {
         public boolean succeeded() {
-            return !ambient && cleanupComplete && completion == Completion.COMMITTED && failure == null;
+            return !ambient && cleanupComplete && completion == Completion.COMMITTED && releaseAllowed;
         }
     }
 
@@ -92,8 +96,8 @@ public final class OwnedPlatformAccessTransactions {
     private <T> Phase<T> run(Operation operation, int millis, Work<T> work) {
         // Do not allocate a worker/lease or touch any sink under someone else's locks.
         if (ambientPresent()) {
-            return new Phase<>(null, Completion.NOT_OBSERVED, Reason.ADMISSION_DENIED,
-                    new Rejected(Reason.ADMISSION_DENIED), true, true);
+            return new Phase<>(null, Completion.NOT_OBSERVED, Reason.ADMISSION_DENIED, Reason.ADMISSION_DENIED,
+                    new Rejected(Reason.ADMISSION_DENIED), true, true, false);
         }
         Objects.requireNonNull(work, "work");
         FailureState failures = new FailureState();
@@ -119,11 +123,10 @@ public final class OwnedPlatformAccessTransactions {
                 return task.get(deadline.remainingMillis(), TimeUnit.MILLISECONDS);
             } catch (InterruptedException interruption) {
                 interrupted = true;
-                Phase<T> completed = failures.completed();
+                Phase<T> completed = deadline.cancel(Reason.INTERRUPTED);
                 if (completed != null) {
                     return completed;
                 }
-                deadline.cancel(Reason.INTERRUPTED);
             } catch (TimeoutException | BudgetExpired expiry) {
                 Reason cancellation = expiry instanceof BudgetExpired budget
                         ? budget.diagnosticReason() : Reason.DEADLINE_EXCEEDED;
@@ -132,11 +135,10 @@ public final class OwnedPlatformAccessTransactions {
                     Thread.interrupted();
                 }
                 // A slow diagnostic sink is outside the completed owned phase, not lost commit ACK.
-                Phase<T> completed = failures.completed();
+                Phase<T> completed = deadline.cancel(cancellation);
                 if (completed != null) {
                     return completed;
                 }
-                deadline.cancel(cancellation);
             }
             worker.interrupt();
             // Abort has its own thread so an unsupported blocking abort cannot hang the caller.
@@ -148,9 +150,7 @@ public final class OwnedPlatformAccessTransactions {
                     return failures.unfinished();
                 }
                 try {
-                    Phase<T> phase = task.get(remaining, TimeUnit.NANOSECONDS);
-                    // A caller that lost the acknowledgement must never release a read value.
-                    return failures.snapshot(null, phase.completion(), phase.cleanupComplete());
+                    return task.get(remaining, TimeUnit.NANOSECONDS);
                 } catch (InterruptedException interruption) {
                     interrupted = true;
                     deadline.cancel(Reason.INTERRUPTED);
@@ -178,9 +178,11 @@ public final class OwnedPlatformAccessTransactions {
         boolean rollbackAcknowledged = false;
         boolean cleanupComplete = true;
         int originalNetworkTimeout = -1;
+        boolean acquiring = true;
         try {
             deadline.remainingMillis();
             connection = dataSource.getConnection();
+            acquiring = false;
             deadline.install(connection);
             originalNetworkTimeout = connection.getNetworkTimeout();
             connection.setNetworkTimeout(Runnable::run, deadline.remainingMillis());
@@ -191,6 +193,7 @@ public final class OwnedPlatformAccessTransactions {
             connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
             transactionStarted = true;
             completion = Completion.UNKNOWN;
+            failures.observe(completion);
             connection.setAutoCommit(false);
             deadline.configure(connection);
             value = work.run(connection, deadline);
@@ -199,8 +202,10 @@ public final class OwnedPlatformAccessTransactions {
             commitAttempted = true;
             connection.commit();
             completion = Completion.COMMITTED;
+            // Only an actual returned commit call publishes ACK; close/isClosed never proves it.
+            failures.observe(completion);
         } catch (Throwable failure) {
-            failures.add(failure);
+            failures.add(failure, acquiring);
         } finally {
             // Interrupt delivery must not prevent rollback/close; restore it only after cleanup.
             boolean interrupted = Thread.interrupted();
@@ -211,10 +216,12 @@ public final class OwnedPlatformAccessTransactions {
                         rollbackAcknowledged = true;
                         if (!commitAttempted) {
                             completion = Completion.ROLLED_BACK;
+                            failures.observe(completion);
                         }
                     } catch (Throwable rollbackFailure) {
                         failures.add(rollbackFailure);
                         completion = Completion.UNKNOWN;
+                        failures.observe(completion);
                     }
                 }
                 // Never turn autoCommit on after an uncertain transaction: that could commit work.
@@ -226,13 +233,13 @@ public final class OwnedPlatformAccessTransactions {
                         connection.setNetworkTimeout(Runnable::run, originalNetworkTimeout);
                     }
                 } catch (Throwable resetFailure) {
-                    failures.add(resetFailure);
+                    failures.addCleanup(resetFailure);
                 }
                 deadline.release(connection);
                 try {
                     connection.close();
                 } catch (Throwable closeFailure) {
-                    failures.add(closeFailure);
+                    failures.addCleanup(closeFailure);
                     // A delegate may close successfully and then lose acknowledgement. Do not
                     // abort a handle after pool return: a new borrower may own the physical socket.
                     try {
@@ -245,7 +252,7 @@ public final class OwnedPlatformAccessTransactions {
                             cleanupComplete = true;
                         }
                     } catch (Throwable inspectionFailure) {
-                        failures.add(inspectionFailure);
+                        failures.addCleanup(inspectionFailure);
                         cleanupComplete = false;
                     }
                 }
@@ -255,7 +262,7 @@ public final class OwnedPlatformAccessTransactions {
             }
         }
         // Deadline cancellation is recorded before abort/interrupt, including a late commit ACK.
-        return failures.finished(value, completion, cleanupComplete);
+        return failures.finished(value, cleanupComplete, deadline);
     }
 
     /**
@@ -267,7 +274,6 @@ public final class OwnedPlatformAccessTransactions {
         private final long expiresAt;
         private final FailureState failures;
         private Connection owned;
-        private volatile boolean cancelled;
 
         private Deadline(int millis, FailureState failures) {
             this.expiresAt = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis);
@@ -279,7 +285,7 @@ public final class OwnedPlatformAccessTransactions {
                 throw new BudgetExpired(Reason.INTERRUPTED);
             }
             long remaining = TimeUnit.NANOSECONDS.toMillis(expiresAt - System.nanoTime());
-            if (cancelled || remaining <= 0) {
+            if (failures.cancelled() || remaining <= 0) {
                 throw new BudgetExpired(Reason.DEADLINE_EXCEEDED);
             }
             return (int) Math.min(Integer.MAX_VALUE, remaining);
@@ -318,9 +324,8 @@ public final class OwnedPlatformAccessTransactions {
             }
         }
 
-        private void cancel(Reason reason) {
-            failures.add(new BudgetExpired(reason));
-            cancelled = true;
+        private <T> Phase<T> cancel(Reason reason) {
+            return failures.cancel(reason);
         }
 
         private synchronized void abortOwned() {
@@ -352,43 +357,94 @@ public final class OwnedPlatformAccessTransactions {
     private static final class FailureState {
         private Throwable failure;
         private Reason reason;
+        private Reason failureReason;
+        private Completion completion = Completion.NOT_OBSERVED;
+        private boolean cancelled;
         private Phase<?> completed;
 
         private synchronized void add(Throwable candidate) {
+            add(candidate, false);
+        }
+
+        private synchronized void add(Throwable candidate, boolean acquisition) {
+            add(candidate, classify(candidate, acquisition));
+        }
+
+        private synchronized void addCleanup(Throwable candidate) {
+            Reason classified = classify(candidate, false);
+            if (completion == Completion.COMMITTED && Diagnostics.level(classified).toInt()
+                    <= org.slf4j.event.Level.WARN.toInt()) {
+                classified = Reason.POST_COMMIT_CLEANUP_FAILURE;
+            }
+            add(candidate, classified);
+        }
+
+        private void add(Throwable candidate, Reason classified) {
             if (candidate == null) {
                 return;
             }
             if (failure == null) {
                 failure = candidate;
-            }
-            Reason classified = Diagnostics.failureReason(candidate);
-            if (classified == null) {
-                classified = Reason.UNEXPECTED_FAILURE;
+                failureReason = classified;
             }
             if (reason == null || Diagnostics.level(classified).toInt() > Diagnostics.level(reason).toInt()) {
                 reason = classified;
             }
         }
 
-        private synchronized <T> Phase<T> snapshot(T value, Completion completion, boolean cleanupComplete) {
-            return new Phase<>(failure == null && cleanupComplete && completion == Completion.COMMITTED ? value : null,
-                    completion, reason, failure, false, cleanupComplete);
+        private synchronized void observe(Completion observed) {
+            completion = observed;
         }
 
-        private synchronized <T> Phase<T> finished(T value, Completion completion, boolean cleanupComplete) {
-            Phase<T> phase = snapshot(value, completion, cleanupComplete);
+        private synchronized boolean cancelled() { return cancelled; }
+
+        private synchronized <T> Phase<T> finished(T value, boolean cleanupComplete, Deadline deadline) {
+            if (!cancelled && (Thread.currentThread().isInterrupted() || System.nanoTime() >= deadline.expiresAt)) {
+                cancel(Thread.currentThread().isInterrupted() ? Reason.INTERRUPTED : Reason.DEADLINE_EXCEEDED);
+            }
+            boolean release = cleanupComplete && completion == Completion.COMMITTED && !cancelled && value != null;
+            Phase<T> phase = new Phase<>(release ? value : null, completion, reason, failureReason,
+                    failure, false, cleanupComplete, release);
             completed = phase;
             return phase;
         }
 
         @SuppressWarnings("unchecked")
-        private synchronized <T> Phase<T> completed() {
-            // Each FailureState belongs to exactly one phase with one result type.
-            return (Phase<T>) completed;
+        private synchronized <T> Phase<T> cancel(Reason cancellation) {
+            // Cancellation and the final release choice share this monitor. A completed
+            // phase is immutable even if a diagnostic sink is still running outside it.
+            if (completed != null) { return (Phase<T>) completed; }
+            cancelled = true;
+            add(new BudgetExpired(cancellation));
+            return null;
         }
 
         private synchronized <T> Phase<T> unfinished() {
-            return new Phase<>(null, Completion.UNKNOWN, reason, failure, false, false);
+            return new Phase<>(null, completion, reason, failureReason, failure, false, false, false);
         }
+    }
+
+    /** Scoped to this owned JDBC path; the generic authentication classifier is unchanged. */
+    private static Reason classify(Throwable failure, boolean acquisition) {
+        Throwable current = failure;
+        Reason sql = null;
+        for (int depth = 0; current != null && depth < 16; depth++, current = current.getCause()) {
+            if (current instanceof Diagnostics.ClassifiedFailure classified) { return classified.diagnosticReason(); }
+            if (current instanceof AuthorityChangedException) { return Reason.AUTHORITY_CHANGED; }
+            if (current instanceof InterruptedException) { return Reason.INTERRUPTED; }
+            if (current instanceof TimeoutException || current instanceof SQLTimeoutException) { return Reason.DEADLINE_EXCEEDED; }
+            if (current instanceof SQLException database) {
+                String state = database.getSQLState();
+                if ("55P03".equals(state)) { sql = Reason.LOCK_NOT_AVAILABLE; }
+                else if ("57014".equals(state)) { sql = Reason.STATEMENT_CANCELLED; }
+                else if (sql == null && (acquisition || database instanceof SQLTransientConnectionException
+                        || database instanceof SQLNonTransientConnectionException
+                        || (state != null && state.startsWith("08")) || "57P01".equals(state)
+                        || "57P02".equals(state) || "57P03".equals(state) || "57P04".equals(state))) {
+                    sql = Reason.DATABASE_UNAVAILABLE;
+                }
+            }
+        }
+        return sql == null ? Reason.UNEXPECTED_FAILURE : sql;
     }
 }

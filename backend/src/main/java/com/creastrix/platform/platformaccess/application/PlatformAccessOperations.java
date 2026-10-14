@@ -50,7 +50,7 @@ public final class PlatformAccessOperations {
     public record Receipt(Intent intent, Instant registeredAt, Instant admittedAt, OutcomeKind kind,
                           State beforeState, Long beforeRevision, State afterState, Long afterRevision) { }
 
-    public sealed interface Result<T> permits Success, Failure, Denied { }
+    public sealed interface Result<T> permits Success, Failure, Denied, CommittedResultWithheld { }
     public record Success<T>(T payload) implements Result<T> {
         public Success { Objects.requireNonNull(payload, "A success requires its closed payload."); }
     }
@@ -60,6 +60,13 @@ public final class PlatformAccessOperations {
     }
     public record Denied<T>() implements Result<T> {
         public String message() { return "The operation is not authorized."; }
+    }
+
+    /** The current phase committed, not necessarily the registered operation's execution. */
+    public record CommittedResultWithheld<T>() implements Result<T> {
+        public String message() {
+            return "The current phase committed; its result was not released. Reconcile the same intent under current authorization.";
+        }
     }
 
     public enum Code {
@@ -74,6 +81,9 @@ public final class PlatformAccessOperations {
         DATABASE_UNAVAILABLE("The database is unavailable."),
         DEADLINE_EXCEEDED("The operation deadline was exceeded."),
         INTERRUPTED("The operation was interrupted."),
+        LOCK_NOT_AVAILABLE("The required lock was not available."),
+        STATEMENT_CANCELLED("The SQL operation was cancelled."),
+        RESOURCE_CLEANUP_INCOMPLETE("Owned resource cleanup is incomplete."),
         COMMIT_UNKNOWN("The transaction outcome is unknown."),
         UNEXPECTED_FAILURE("The operation could not be completed.");
 
@@ -98,7 +108,8 @@ public final class PlatformAccessOperations {
         STALE_REVISION, NO_CHANGE, REVISION_OVERFLOW, INVITATION_MISMATCH,
         INTENT_ABSENT, INTENT_MISMATCH, INTENT_UNRESOLVED, HISTORICAL_INITIATOR_UNAVAILABLE,
         ID_UNAVAILABLE, INVALID_INPUT, TERMINAL_RECEIPT_REQUIRED,
-        AUDIT_UNAVAILABLE, DATABASE_UNAVAILABLE, DEADLINE_EXCEEDED, INTERRUPTED, UNEXPECTED_FAILURE
+        AUDIT_UNAVAILABLE, DATABASE_UNAVAILABLE, DEADLINE_EXCEEDED, INTERRUPTED, UNEXPECTED_FAILURE,
+        LOCK_NOT_AVAILABLE, STATEMENT_CANCELLED
     }
 
     /**

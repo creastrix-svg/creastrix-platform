@@ -194,9 +194,11 @@ public final class PlatformAccessService {
         });
         if (primary.succeeded()) { return new Success<>(primary.value()); }
         if (primary.ambient()) { return new Failure<>(Code.AMBIENT_TRANSACTION); }
-        if (!primary.cleanupComplete() || primary.completion() == Completion.UNKNOWN) {
+        if (primary.completion() == Completion.COMMITTED) { return new CommittedResultWithheld<>(); }
+        if (primary.completion() == Completion.UNKNOWN) {
             return new Failure<>(Code.COMMIT_UNKNOWN);
         }
+        if (!primary.cleanupComplete()) { return new Failure<>(Code.RESOURCE_CLEANUP_INCOMPLETE); }
         Result<T> result;
         AuditReason auditReason;
         boolean denial;
@@ -204,8 +206,12 @@ public final class PlatformAccessService {
             result = rejection.result();
             auditReason = rejection.auditReason;
             denial = rejection.diagnosticReason() == Reason.ADMISSION_DENIED;
+        } else if (primary.failureReason() == Reason.AUTHORITY_CHANGED) {
+            result = new Denied<>();
+            auditReason = AuditReason.INCONSISTENT_FACTS;
+            denial = true;
         } else {
-            Code code = technicalCode(primary.reason());
+            Code code = technicalCode(primary.failureReason());
             result = new Failure<>(code);
             auditReason = AuditReason.valueOf(code.name());
             denial = false;
@@ -274,7 +280,7 @@ public final class PlatformAccessService {
         try { session.writeAudit(event); }
         catch (SQLException failure) {
             Rejection rejected = new Rejection(new Failure<>(Code.AUDIT_UNAVAILABLE),
-                    AuditReason.AUDIT_UNAVAILABLE, Reason.DATABASE_UNAVAILABLE);
+                    AuditReason.AUDIT_UNAVAILABLE, Reason.AUDIT_UNAVAILABLE);
             rejected.initCause(failure);
             throw rejected;
         }
@@ -325,6 +331,9 @@ public final class PlatformAccessService {
         if (reason == Reason.DEADLINE_EXCEEDED) { return Code.DEADLINE_EXCEEDED; }
         if (reason == Reason.INTERRUPTED) { return Code.INTERRUPTED; }
         if (reason == Reason.DATABASE_UNAVAILABLE) { return Code.DATABASE_UNAVAILABLE; }
+        if (reason == Reason.LOCK_NOT_AVAILABLE) { return Code.LOCK_NOT_AVAILABLE; }
+        if (reason == Reason.STATEMENT_CANCELLED) { return Code.STATEMENT_CANCELLED; }
+        if (reason == Reason.AUDIT_UNAVAILABLE) { return Code.AUDIT_UNAVAILABLE; }
         return Code.UNEXPECTED_FAILURE;
     }
 
