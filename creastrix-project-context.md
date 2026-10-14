@@ -305,10 +305,14 @@ passed 234/234, locked install, typecheck, lint and build. These are integration
 not new browser/native proofs. Local operator results remain distinct; rollout
 and broader cookie safety are not authorized by source integration.
 
-### Auth0 source-retirement candidate
+<a id="auth0-source-retirement-candidate"></a>
+
+### Integrated Auth0 source retirement
 
 On 2026-10-14 the owner authorized removal of active Auth0 support while keeping
-Cognito and the same internal account. The new candidate uses only the Cognito
+Cognito and the same internal account. [PR #39](https://github.com/creastrix-svg/creastrix-platform/pull/39)
+integrated the reviewed source as `6d9653c338702cb0530ec31b8d0c04a1ef796ed0`.
+The backend uses only the Cognito
 Frankfurt adapter, defaults to COGNITO/existing-only, and rejects legacy AUTH0
 selection and entry/callback routes. It preserves strict signed ID-token claims,
 common OIDC/session/Q checks, User UUID/Profile/rights, the current identity
@@ -317,8 +321,16 @@ schema change or domain decision is needed.
 
 Future providers require a separately reviewed adapter plus an explicitly
 authorized, verified exact-identity operation through the preserved V13 boundary.
-Email auto-linking, bulk migration and password export are not provided.
-Source retirement is a candidate, not a merged or browser-verified result.
+Internal account mapping is exact issuer/subject; email auto-linking, bulk
+migration and password export are not provided. The planned unified email/password,
+Google and Apple experience needs separately implemented/reviewed secure linking,
+not additional AWS prerequisites for using Cognito.
+Fresh post-merge [Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38562911789)
+passed 1832/1832, zero failures/errors/skipped, tests/package BUILD SUCCESS,
+PostgreSQL 18.4 / Flyway V1 → V13; [Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38562912006)
+passed 234/234, typecheck, lint and build. The live backend and its 359 target files
+were not rebuilt/restarted; it still uses older Cognito-configured binaries.
+Source integration and CI are not a new-source real-browser result.
 Separately, exact-target owner confirmation preceded deletion of the external
 Auth0 application Creastrix Local Pilot on 2026-10-14. Tenant, Default App, users
 and private configuration remain; a fresh account recheck on the previous live
