@@ -135,7 +135,8 @@ Isolated author verification passed 234 tests, typecheck, lint, build and both
 development/omit-dev lockfile audits with zero findings; evidence is retained in
 `frontend-high-triage-20261014-YiOqAj/ISOLATED-REPORT.md`.
 Installed environments need reinstallation/restart to use the patched version.
-Independent review, publication and deployment status remain separate.
+The lockfile update is integrated through [PR #38](https://github.com/creastrix-svg/creastrix-platform/pull/38);
+installed-environment updates and deployment remain separate.
 Audit zero covers known advisories for that lock snapshot, not full security.
 
 The [local cookie disposition and retained public gate](../docs/authentication-pilot.md#open-cookie-follow-up) records scoped local closure. S003 is integrated through PR #34;
@@ -158,13 +159,13 @@ and [authentication contract](../docs/authentication-pilot.md#react-client-and-f
 
 The frontend keeps its native POST to `/auth/login`; it does not choose the
 provider, store provider tokens or collect a password. Backend configuration
-selects exactly one registration. The owner-authorized 2026-10-14 source-retirement
-candidate supports Cognito only; legacy AUTH0 configuration fails closed and the
-Auth0 entry/callback paths are unsupported. This is a new candidate, not an
-integrated or browser-verified retirement result. The existing proxy namespaces route
+selects exactly one registration. [PR #39](https://github.com/creastrix-svg/creastrix-platform/pull/39)
+integrated Cognito-only source support on 2026-10-14; legacy AUTH0 configuration
+fails closed and the Auth0 entry/callback paths are unsupported. The existing proxy namespaces route
 `/oauth2/authorization/cognito` and `/login/oauth2/code/cognito`, including accepted
 encoded segments, without rewriting headers, URI/query, Location or cookies.
-Config-unit checks are not a real Cognito/browser proxy proof.
+Config-unit checks are not a real Cognito/browser proxy proof. The live backend
+still runs older Cognito-configured binaries; integration did not rebuild/restart it.
 
 Hosted Cognito self-registration and provider email/recovery are separate from
 the owner's exact closed Creastrix admission. No separate React signup form,
@@ -173,13 +174,22 @@ The [controlled migration runbook](../docs/authentication-provider-migration.md)
 records the separately authorized 2026-10-13 local owner transfer: same internal
 ACTIVE User, local logout/private refusal, repeat login and new-password login.
 The local backend selects Cognito existing-only for that one owner through private
-environment. The retirement candidate makes COGNITO/existing-only the source
+environment. Integrated retirement makes COGNITO/existing-only the source
 defaults without changing that internal account or the frontend's provider-neutral
 login form. The 2026-10-13 transfer retained Auth0 externally, not as a current alias;
 the separately confirmed deletion of its old client is recorded in the
 [operator evidence](../docs/authentication-provider-migration.md#2026-10-14-auth0-retirement-boundary).
 The DE/EN pilot notice
 reflects the bounded local Cognito runtime only.
+
+Matching email never merges Creastrix accounts; the owner continuity above came
+from an authorized exact-identity transfer. The planned unified email/password,
+Google and Apple experience needs separate secure linking implementation/review,
+not a new AWS prerequisite. This client has no such linking or social-login feature.
+
+PR #39's separate post-merge [Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38562912006)
+passed 234/234, typecheck, lint and build. This is unit/static/build evidence,
+not a new browser or real-provider walkthrough on the newly integrated backend.
 
 The earlier migration/recovery source was integrated by [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37) as
 `e5b58d43a9dc07c76efc905bc63d8269feaa40fe`. Historical independent frontend 140,

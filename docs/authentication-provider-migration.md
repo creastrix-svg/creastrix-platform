@@ -10,20 +10,38 @@ preserve the existing OIDC/session/Q/CSRF and deadline rules.
 
 ### 2026-10-14 Auth0 retirement boundary
 
-The owner authorized a new source-retirement candidate: Cognito Frankfurt is
+[PR #39](https://github.com/creastrix-svg/creastrix-platform/pull/39) integrated
+the owner-authorized retirement on 2026-10-14 at 14:19:14 Europe/Berlin
+(12:19:14 UTC) as `6d9653c338702cb0530ec31b8d0c04a1ef796ed0`. Its normal merge
+parents are `ced950435af22955b57c545a1c01f14a2ab10e9a` and
+`914c5938c0c0a189973445ae6cd923d26c1bbd2a`; tree
+`b0c953b35febc73a4fc9daf3e6f696499eec209a` matches the reviewed feature.
+Cognito Frankfurt is
 the only supported runtime adapter, with COGNITO/existing-only defaults. Legacy
 AUTH0 selection fails closed; its entry/callback paths are unsupported. Strict
 signed-ID-token validation (`token_use=id`, raw Boolean verified email, numeric
 auth_time), no UserInfo, exact admission and common OIDC/session/Q checks remain.
-Candidate review, verification and integration are separate gates; the historical
-PR #37 and browser results below do not complete them.
+Author checks passed focused 697/697, final Policy/HTTP 393/393, full 1832/1832
+and package; independent review then accepted the exact source/JAR. Retired
+first-login HTTP creation cases map to unchanged service/DB proofs, while HTTP
+cookie/race fixtures use existing owners; retired UserInfo checks are unused-source
+controls, not unchanged Auth0 validation. The exact inventory remains in
+`auth0-retirement-001-author-20261014-CXpLRt/INVARIANT-MAP.md`.
+
+Separate fresh push/main [Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38562911789)
+passed 1832/1832, failures/errors/skipped 0/0/0 and tests/package BUILD SUCCESS,
+PostgreSQL 18.4 / Flyway V1 → V13; [Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38562912006)
+passed 234/234, typecheck, lint and build. These are post-merge results, not the
+earlier PR #37 checks or fresh native/browser/provider execution.
 
 Separately, on 2026-10-14 the owner explicitly approved removal of the external
 Auth0 application **Creastrix Local Pilot**. The dashboard's refreshed application
 list confirmed its deletion; the tenant, Default App, provider users and private
 configuration were retained. Fresh Cognito login before deletion and an account
 recheck afterward showed the same ACTIVE internal User. These are observations
-on the previous live backend, not proof of the new source candidate. Exact
+on the previous live backend. Integration left that older Cognito-configured
+runtime and its 359 target files untouched: no rebuild/restart or new-source
+real-browser proof occurred. Exact
 operator evidence is retained outside Git in
 `auth0-retirement-coordination-20261014-aVOF3v`; no private identity values or
 credentials are copied into this runbook.
@@ -35,14 +53,25 @@ Future provider support requires a separately reviewed adapter and an explicitly
 authorized verified exact-identity operation. V13 provides that bounded offline
 mechanism, not automatic email linking, bulk migration or password export.
 
+### Identity linking boundary
+
+Creastrix maps the exact issuer/subject pair to its internal User; matching email
+does not merge accounts. The completed Auth0-to-Cognito owner operation was an
+authorized identity transfer, not email linking. The planned unified email/password,
+Google and Apple experience needs separately implemented and reviewed secure
+linking; no such feature or new authentication architecture is approved here.
+[AWS documents explicit federated-user linking](https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-identity-federation-consolidate-users.html)
+as a separate operation, not a prerequisite for using Cognito. No provider action
+or automatic account merge is authorized by this explanation.
+
 ## Contract and prerequisites
 
 - Preserve the internal User UUID, exactly one unchanged Profile, ACTIVE status,
   eligibility generation, business references and rights. No new Workspace,
   grant, email match, additional User, simultaneously active alias or password
   export is part of this operation.
-- Keep the current Cognito configuration and exact owner admission. The retirement
-  candidate supports one Cognito registration, default COGNITO/existing-only;
+- Keep the current Cognito configuration and exact owner admission. The integrated
+  source supports one Cognito registration, default COGNITO/existing-only;
   no historical Auth0 binding is an active alias. External resource disposition
   is recorded above; do not infer permission to delete remaining resources.
 - Obtain independent code review and the owner's separate exact-operation
@@ -220,8 +249,8 @@ fields only; no password, URL/query/history payload or persisted account data is
 introduced. Each explicit confirm/resend action uses fresh standard session CSRF
 and an anonymous-only exact Host/Origin backend boundary. Provider-only recovery
 does not require live Q/echo/canStart and does not automatically logout or reset Q.
-Already authenticated requests refuse without identity mutation; the retirement
-candidate supports no alternative provider mode for these routes.
+Already authenticated requests refuse without identity mutation; the integrated
+source supports no alternative provider mode for these routes.
 
 The existing confidential backend client submits only ConfirmSignUp or
 ResendConfirmationCode to the fixed Frankfurt API, preserving exact entered

@@ -12,11 +12,12 @@ real Auth0 owner walkthrough P completed on 2026-10-11; backend tests alone do n
 Historical server, frontend/browser and CI checks do not close
 the follow-up, establish a new APPROVED domain specification or authorize public access.
 
-The owner-authorized 2026-10-14 Auth0 source-retirement candidate changes the
-active provider contract below to Cognito only. Retirement verification and
-integration are separate pending gates; earlier proofs keep their original scopes.
+[PR #39](https://github.com/creastrix-svg/creastrix-platform/pull/39) integrated the
+owner-authorized Auth0 source retirement on 2026-10-14. The current source contract
+is Cognito-only/existing-only; earlier proofs keep their original scopes.
 The [external app retirement](authentication-provider-migration.md#2026-10-14-auth0-retirement-boundary)
-is a separate completed operator action, not verification of this candidate.
+is a separate completed operator action. That section records the new post-merge
+CI and the live backend's still-older Cognito-configured binaries.
 
 ## Identity and persistence boundary
 
@@ -47,8 +48,8 @@ Legacy Users are not backfilled. Privileged raw SQL is not actor-authorized.
 
 ### Integrated controlled Cognito exception and local owner transfer
 
-PR #37 introduced the selected AUTH0/COGNITO registration. The 2026-10-14
-source-retirement candidate supports only COGNITO, also the default, with
+PR #37 introduced the selected AUTH0/COGNITO registration. PR #39 retired Auth0;
+the integrated backend supports only COGNITO, also the default, with
 required existing-only admission. It pins an original Frankfurt regional pool issuer and client,
 requires `token_use=id` and validates only the signed ID token. Cognito UserInfo
 is deliberately not requested: its string verification flags are not coerced
@@ -65,6 +66,10 @@ The offline exact-old/new operation atomically appends history/receipt and chang
 the selector without changing User UUID, Profile, status, eligibility generation,
 rights or business references. Exact replay proves the recorded operation, not
 that no subsequent authorized switch occurred. No email linking is introduced.
+The owner continuity was an authorized transfer, not a matching-email merge.
+A planned unified email/password, Google and Apple sign-in experience requires
+separate secure linking implementation/review; it is not an AWS prerequisite or
+implemented pilot feature. See the [linking boundary](authentication-provider-migration.md#identity-linking-boundary).
 
 The reviewed exception/recovery source is integrated through [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37)
 as `e5b58d43a9dc07c76efc905bc63d8269feaa40fe`, preserving the reviewed tree.
@@ -133,7 +138,7 @@ derives trusted destinations from Host/Forwarded headers. No CORS is enabled.
 | `POST /auth/logout` | Exact Origin + CSRF; revoke presented Q generation and clean caller SID; 204 for Q revocation, cleanup-only 409 for unknown/expired Q |
 | `GET /actuator/health` | Minimal health; other management and unknown routes denied |
 
-In the retirement candidate, `cognito` is the only supported entry/callback
+In the integrated source, `cognito` is the only supported entry/callback
 suffix. Legacy `auth0` and unknown registration routes are denied; the namespaces,
 Host/Origin, decoded-segment matching, fixed destinations and cleanup stay the same.
 
@@ -360,7 +365,7 @@ to `http://localhost:3000/oauth2/authorization/cognito`, callback success to
 `http://localhost:3000/login?auth=failed`. No user redirect parameter is accepted;
 session IDs are never URL-encoded. `/login` and `/account` HTML belong to the
 React client, not backend. Login is a top-level form POST, not fetch-follow to the provider.
-The retirement candidate derives that fixed entry Location from its sole Cognito registration.
+The backend derives that fixed entry Location from its sole Cognito registration.
 
 API errors are opaque JSON: 401 for absent/expired session, 403 for confirmed
 inactive/denied access or invalid security input, 503 for unavailable current
@@ -457,7 +462,7 @@ revive an old session. CSRF/bootstrap and logout cleanup remain available.
 Cookie defaults: host-only, HttpOnly, SameSite=Lax, Path `/`, Secure=true,
 cookie-only tracking. Only explicit `auth-local` permits Secure=false on the
 fixed loopback HTTP setup. This is not a public deployment configuration.
-The retirement candidate defaults to COGNITO and existing-only mode. It requires
+The integrated backend defaults to COGNITO and existing-only mode. It requires
 the exact externally configured original
 `https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_<pool>` issuer;
 external client credentials stay backend-only. Legacy AUTH0 or unknown provider
@@ -478,11 +483,14 @@ page shell or Redux state is never authorization.
 
 ## Verification gates
 
-B requires actual signed test-IdP HTTP code/token/JWKS/UserInfo flows and new
+The original backend B verification required signed test-IdP HTTP code/token/JWKS/UserInfo flows and new
 owned PostgreSQL Testcontainers: fresh V1–V11, populated V10–V11, physical
 atomicity/rollback, concurrent exact-pair resolution, real commit-ack loss and
 measured deadlines. Focused tests, the complete suite and package must pass;
-426 tests describe the historical main baseline, not a fresh result here.
+426 tests describe that historical main baseline, not the current suite.
+Current Cognito HTTP is ID-token-only and existing-only. Retired HTTP creation/
+UserInfo cases are distinguished from preserved service/DB creation proofs in
+the [retirement evidence](authentication-provider-migration.md#2026-10-14-auth0-retirement-boundary).
 Pre-remediation author verification on 2026-09-11 passed PostgreSQL authentication 20/20,
 HTTP/OIDC 76/76 and the complete 611/611 suite (including policy 89/89), with
 zero failures/errors/skipped. Tests and package completed with BUILD SUCCESS.

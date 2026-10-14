@@ -693,7 +693,7 @@ removal, and User-owned as well as Organization-owned creation versus a
 concurrent User `ACTIVE` → non-`ACTIVE` status change), each of which must
 leave the Workspace foundation intact.
 
-The author candidate's all-current history assertions target V1 → V13, with
+The integrated all-current history assertions target V1 → V13, with
 separate populated V12 → V13 and historical V11 → V12 coverage. The historical populated V10 → V11
 identity-binding proof retains target=11; historical target=8/9/10 proofs remain
 pinned. The S/W evidence above is separate from the earlier post-merge CI runs;
@@ -905,11 +905,11 @@ is not global provider logout or immediate revocation after password reset.
 
 ### Integrated controlled provider migration
 
-The owner-authorized 2026-10-14 source-retirement candidate supports only
+Auth0 source retirement is integrated through [PR #39](https://github.com/creastrix-svg/creastrix-platform/pull/39).
+The backend supports only
 `CREASTRIX_AUTH_PROVIDER=COGNITO`, also the default, with
 `CREASTRIX_AUTH_EXISTING_ONLY=true` as the required default admission mode.
-`AUTH0`, unknown provider values and existing-only=false fail closed. This
-candidate is not yet an integrated or browser-verified retirement result.
+`AUTH0`, unknown provider values and existing-only=false fail closed.
 One confidential code-flow registration pins the original Frankfurt regional
 issuer `https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_<pool>` and
 client. Its signed ID token alone supplies the claims:
@@ -936,6 +936,10 @@ target pairs refuse. Unknown commit is reconciled by the same operation/payload,
 not an absent SELECT, a new operation or compensating history deletion.
 This is structural persistence and an offline operator procedure, not raw-SQL
 actor authorization, an HTTP linking API or a new core domain entity.
+Creastrix resolves exact issuer/subject, never merges accounts by email. The
+completed owner transfer was an authorized V13 operation, not linking. A planned
+unified email/password, Google and Apple experience still needs separately
+implemented and reviewed secure linking; it is not a prerequisite for using Cognito.
 
 The [runbook](../docs/authentication-provider-migration.md) retains explicit
 authorization, fresh identity-control proof, backup, review and stopped-single-app
@@ -976,6 +980,14 @@ social/TOTP and OPEN public-readiness obligations remain separate. Historical ca
 tests used isolated copies, synthetic OIDC and owned databases; this alignment
 does not rebuild the running owner's `backend/target` or touch the live database.
 
+PR #39 merged on 2026-10-14 as `6d9653c338702cb0530ec31b8d0c04a1ef796ed0`,
+with the reviewed tree unchanged. Its fresh push/main [Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38562911789)
+passed 1832/1832, zero failures/errors/skipped and tests/package BUILD SUCCESS
+on PostgreSQL 18.4 / Flyway V1 → V13. Those integration checks did not rebuild or
+restart the live Cognito-configured older backend; no new-source owner/browser
+verification is claimed. Historical author, native and browser results above
+retain their original scopes.
+
 <a id="cognito-email-confirmation-recovery-author-wip"></a>
 
 ### Integrated Cognito email-confirmation recovery
@@ -995,7 +1007,7 @@ signup, authentication/admin action, caller endpoint or automatic login is accep
 The entered identifier's case is preserved. Alias/username attributes and pool
 case-sensitivity are not inferred from matching emails. Provider results never
 create or mutate User/Profile, bindings/selectors/receipts, principal/client,
-Workspace or grants. The source-retirement candidate removes the Auth0 adapter
+Workspace or grants. Integrated source retirement removed the Auth0 adapter
 without broadening this Cognito-only recovery boundary.
 
 The request/response byte cap is 16 KiB; identifiers are 1–128 code points and

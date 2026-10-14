@@ -236,7 +236,9 @@ public operation and rollout remain absent.
 The original cookie follow-up is closed only for the accepted local pilot scope;
 `AUTH-PUBLIC-READINESS-001` is retained OPEN in the [local cookie disposition and retained public gate](docs/authentication-pilot.md#open-cookie-follow-up).
 
-### Controlled Cognito Migration Candidate
+<a id="controlled-cognito-migration-candidate"></a>
+
+### Integrated Cognito Migration and Auth0 Retirement
 
 The Cognito migration and email-confirmation recovery source is integrated by
 [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37) as `e5b58d43a9dc07c76efc905bc63d8269feaa40fe`. Its exact reviewed tree was preserved;
@@ -258,15 +260,25 @@ then `/api/me` 401), repeat login and login after the owner-reported password
 change returned the same ACTIVE account. That operation retained the Auth0
 tenant/client/account and private configuration, not a current authentication alias.
 
-The owner authorized an Auth0 source-retirement candidate on 2026-10-14.
-In that candidate, Cognito Frankfurt is the only supported runtime adapter;
-provider/default admission settings are `COGNITO` and existing-only. Legacy
+[PR #39](https://github.com/creastrix-svg/creastrix-platform/pull/39) integrated
+Auth0 source retirement on 2026-10-14 as `6d9653c338702cb0530ec31b8d0c04a1ef796ed0`,
+preserving the reviewed tree. Cognito Frankfurt is the only supported runtime
+adapter; provider/default admission settings are `COGNITO` and existing-only. Legacy
 `AUTH0` configuration fails closed and its entry/callback routes are unsupported.
-This is a new candidate, not an integrated or browser-verified retirement result.
+Its separate post-merge [Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38562911789)
+passed 1832/1832, zero failures/errors/skipped, tests/package BUILD SUCCESS,
+PostgreSQL 18.4 and Flyway V1 → V13; [Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38562912006)
+passed 234/234, typecheck, lint and build. The live owner backend was not rebuilt
+or restarted: it still uses the older Cognito-configured binaries. These CI results
+and the old-runtime owner observations are not a browser proof on the new source.
+
 The internal account and retained identity history need no new transfer. Standard
 OIDC and V13's controlled exact-identity operation remain available as foundations
 for a future separately reviewed provider adapter, not automatic account linking
-or password export. Separately, the owner-approved external Auth0 application
+or password export. Creastrix maps exact issuer/subject, not matching email.
+The planned unified email/password, Google and Apple sign-in experience requires
+separate secure linking implementation and review; it is not implemented here.
+Separately, the owner-approved external Auth0 application
 Creastrix Local Pilot was deleted on 2026-10-14; tenant, Default App, users and
 private configuration remain. See the [separate operator evidence](docs/authentication-provider-migration.md#2026-10-14-auth0-retirement-boundary).
 
