@@ -1,8 +1,8 @@
 # Controlled authentication-provider migration
 
 This is the bounded owner-only runbook for the approved Cognito Frankfurt
-candidate. The code remains unpublished feature WIP against accepted main
-`fda0657246aa00fc259ea286dffd45de91415d9a`; the separately authorized local owner
+slice, integrated by [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37) as
+`e5b58d43a9dc07c76efc905bc63d8269feaa40fe`; the separately authorized local owner
 transfer completed on 2026-10-13, as recorded below. This document
 does not authorize AWS/SES changes, production deployment or database execution.
 The [pilot contract](authentication-pilot.md) and [backend boundary](../backend/README.md#controlled-provider-migration-candidate-author-wip)
@@ -142,7 +142,8 @@ The separately authorized 2026-10-13 local operator evidence records:
 | Owner walkthrough | Callback 303 and private API 200 with the same ACTIVE User; local logout 204 followed by 401; repeat login and login after the owner-reported password change returned private API 200. |
 
 These are external operator/browser results, not new execution by this alignment,
-integration into main or a public deployment. Private identity payload, dump,
+source integration themselves or a public deployment. Later PR #37 integration
+is separate. Private identity payload, dump,
 credentials and password remain outside Git/public evidence. Callback correlation
 uses request IDs; private API observations use ordered bounded phases and fresh
 account UI, not a logged session identifier. The owner performed and reported the
@@ -177,7 +178,7 @@ It is not automatically transferable to a future broader pilot or production.
 
 ### Confirmation after closing the signup page
 
-The recovery source candidate adds `/confirm-email`, linked from `/login` and
+The integrated recovery slice adds `/confirm-email`, linked from `/login` and
 available as a direct empty page. Email/code are transient local form/request
 fields only; no password, URL/query/history payload or persisted account data is
 introduced. Each explicit confirm/resend action uses fresh standard session CSRF
@@ -218,8 +219,9 @@ results are recorded below; source tests are not those proofs or rollout authori
 ### 2026-10-14 scoped recovery evidence
 
 These separately authorized external results used the exact unchanged reviewed
-`retry-03` source/JAR. They do not integrate feature WIP into main, expand the
-one-owner existing-only admission or authorize publication/public operation.
+`retry-03` source/JAR. Those operator/native observations did not themselves
+integrate source or authorize publication/public operation; the later reviewed
+PR #37 merge below is separate and does not expand one-owner existing-only admission.
 
 | Evidence boundary | Bounded observed result |
 | --- | --- |
@@ -239,17 +241,28 @@ No generic delivery rate, arbitrary browser lifecycle/order or public-signup
 behavior is inferred from this one-owner recovery. Overall IDE background/schema
 remains UNKNOWN/INCOMPLETE, not a runtime failure or blanket native PASS.
 
+The exact reviewed source was merged through [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37) on 2026-10-14 as
+`e5b58d43a9dc07c76efc905bc63d8269feaa40fe` (tree `7f2eec7bf492c5d32cffa5d89a161d776df421d7`).
+Fresh push/main [Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38534930693)
+passed 1826/1826, zero failures/errors/skipped and tests/package BUILD SUCCESS;
+[Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38534930663)
+passed 234/234, locked install, typecheck, lint and build. These are separate
+post-merge checks, not new native/browser runs. Integration evidence is retained in
+`cognito-merge-20261014-islXPJ/REPORT.md`.
+
 This factual alignment runs no new tests/provider/browser/database actions;
-new wording has not received a new native preview gate. Final narrow independent
-review of the alignment and publication/applicable CI are separate. Auth0 remains
-retained, source defaults unchanged, and actual admitted signed-false remains
-NOT RUN under the limited EMAIL alternative-2 disposition above.
-AUTH-COOKIE-FOLLOWUP-001 stays OPEN. The prior npm HIGH warning remains untriaged;
-own SES, public access/invitations and rollout remain separate and unauthorized.
+new wording has not received a new native preview gate. Auth0 remains retained,
+source defaults unchanged, and actual admitted signed-false remains NOT RUN under
+the limited EMAIL alternative-2 disposition above. The [local cookie disposition and retained public gate](authentication-pilot.md#open-cookie-follow-up)
+records accepted local-only closure. The historical npm HIGH warning is retained;
+the [lockfile follow-up and installed-environment limits](../frontend/README.md#dependency-follow-up)
+record the accompanying `source-map-js` 1.2.2 update and isolated verification. Own SES, public access/invitations and rollout remain separate and unauthorized.
 
 Historical independent backend focused 417/full 1690/package and frontend 140
 results retain their exact scopes. Native compilation/417 tests and scoped file
 views are preserved; overall IDE schema/background completion remains
 UNKNOWN/INCOMPLETE. Earlier stopped/incomplete reports are not rewritten as PASS.
-Final status review and publication remain separately gated. Own SES, social/TOTP,
-public access and rollout remain separate; AUTH-COOKIE-FOLLOWUP-001 stays OPEN.
+The historical reports keep their original verdicts. PR #37 source publication/
+integration is complete. Documentation review and publication are separate
+from the historical runtime checks. Own SES, social/TOTP,
+public access and rollout remain separate under the OPEN public-readiness gate.

@@ -35,7 +35,9 @@ User uniqueness, a non-cascading User foreign key and immutable retained rows.
 It is not a new core domain entity or a manual-delta command state machine.
 Legacy Users are not backfilled. Privileged raw SQL is not actor-authorized.
 
-### Controlled Cognito exception (feature WIP; local owner transferred)
+<a id="controlled-cognito-exception-feature-wip-local-owner-transferred"></a>
+
+### Integrated controlled Cognito exception and local owner transfer
 
 The owner accepted one selected registration: AUTH0 (default) or COGNITO.
 The Cognito candidate pins an original Frankfurt regional pool issuer and client,
@@ -55,8 +57,9 @@ the selector without changing User UUID, Profile, status, eligibility generation
 rights or business references. Exact replay proves the recorded operation, not
 that no subsequent authorized switch occurred. No email linking is introduced.
 
-The exception remains unpublished feature WIP, separate from accepted main
-`fda0657246aa00fc259ea286dffd45de91415d9a`. A separately authorized local operation
+The reviewed exception/recovery source is integrated through [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37)
+as `e5b58d43a9dc07c76efc905bc63d8269feaa40fe`, preserving the reviewed tree.
+A separately authorized local operation
 on 2026-10-13 verified backup/restore, applied V13 and acknowledged one exact
 owner switch with independent read-back. User UUID/Profile/status/generation,
 rights/business rows, both historical pairs and one receipt were retained.
@@ -75,13 +78,14 @@ owner success remain separate. The owner's 2026-10-13 acceptance of their combin
 is confined to nonproduction owner-pilot source readiness, not public access or
 approval of new recovery code. Historical independent runtime checks and native
 417 tests/scoped views are not fresh runs; overall IDE schema/background completion
-remains UNKNOWN/INCOMPLETE. Final review/publication require separate gates.
+remains UNKNOWN/INCOMPLETE. Later independent review and PR #37 publication/
+integration are separate completed gates, not global IDE or public authorization.
 Any future switch still requires separate authorization, identity proof,
 backup/preflight and a stopped single application. Auth0 remains retained, not a
 current alias; controlled return requires another operation/receipt, restart and
 fresh login, not dump restore or old cookies. External Cognito self-registration
 does not authorize unknown Creastrix identities. Own SES, social/TOTP and public
-rollout remain outside this alignment. AUTH-COOKIE-FOLLOWUP-001 remains OPEN.
+rollout remain outside this alignment. See the [local cookie disposition](#open-cookie-follow-up).
 
 Resolution rejects an ambient transaction. An owned bounded worker leases a
 connection and starts one physical READ COMMITTED transaction; the existing
@@ -151,8 +155,10 @@ attempts and external helper corrections are retained. These source/mock/owned-D
 results are not native/browser or CI proof. Separate scoped native, focused
 independent source/JAR review and owner recovery/fresh OIDC results on 2026-10-14
 are recorded in the [dated recovery evidence](authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
-Overall IDE background/schema remains UNKNOWN/INCOMPLETE; final narrow review,
-publication/CI, cookie-follow-up and public-operation gates remain separate.
+Overall IDE background/schema remains UNKNOWN/INCOMPLETE. PR #37 publication/
+integration and post-merge CI are complete, with details in the
+[dated integration evidence](authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
+The [local cookie disposition](#open-cookie-follow-up) closes only the accepted pilot scope; public-operation gates remain OPEN.
 
 Security boundaries and OAuth/MVC routing use Spring's segment-aware
 `PathPatternRequestMatcher` semantics, including allowed percent-encoded letters
@@ -290,23 +296,51 @@ composed into this exact S003 transfer.
 
 ### Open cookie follow-up
 
-`AUTH-COOKIE-FOLLOWUP-001` remains **OPEN pending explicit final disposition and pre-public-access gates**.
-The owner's temporary local nonpublic acceptance on 2026-09-14 did not accept
-universal invalidation/HTTP-commit atomicity or automatically authorize the later
-observed B-to-A consequence. S003 integration and scoped evidence do not close
-the follow-up, authorize public access or promise revocation of delivered responses.
-Natural frequency, account takeover and the distinct post-commit network-delay
-scenario are not demonstrated. Earlier incomplete browser attempts remain historical.
+**`AUTH-COOKIE-FOLLOWUP-001`: CLOSED FOR THE ACCEPTED LOCAL PILOT SCOPE.**
+The explicit owner/coordinator disposition on 2026-10-14 applies only to the
+existing single-instance, nonpublic, nonproduction finite account-read pilot on
+integrated baseline `e5b58d43a9dc07c76efc905bc63d8269feaa40fe`. It is scoped
+completion of the original action item, not unrestricted authentication safety.
 
-Completed and remaining gates are separate:
+The original silent fresh-current-jar B-to-A selection is prevented under G1/G2.
+The accepted finite React/dev-proxy/browser F includes invalidated-A and still-live
+independent-Q_A late success: a late cookie may instead produce 401, and explicit
+recovery returns the same B. Uninterrupted B availability is not promised.
+Frontend ownership rejects stale account results, complementing server admission.
+The consolidated 2026-10-09 F review and original then-OPEN/INCOMPLETE/helper
+reports retain their historical outcomes; this is a new dated disposition.
 
-1. Finite local React/dev-proxy/browser F completed and passed independent review
-   before PR #35 integration. It covers bounded overlapping responses, current
-   cookie pairing, explicit recovery and stale-response UI handling. Earlier
-   scoped browser proof alone was not that F gate; universal timing is not claimed.
-2. Before public access, invitations or rollout, require separate owner/security
-   disposition and appropriate independent evidence. Local acceptance is not
-   public-operation authorization; a merge or test count alone is not closure.
+L1 remains an accepted local limitation, not a fixed defect: an already-sent
+request under another still-live Q_A may first pass final admission after B/Q_B
+and return A. It is not limited to requests admitted before B. Already-admitted
+responses may finish later. UI ownership does not revoke that request, undo
+server effects or prove future business writes safe.
+
+**`AUTH-PUBLIC-READINESS-001`: OPEN.** Before public access, invitations, rollout,
+real platform owner/staff/admin privilege activation, business-write expansion
+or multi-instance deployment, require a separate owner/security scope decision
+and proportionate independent evidence. Cross-context revocation/write semantics
+and the process-local registry's deployment fit remain to be decided. Local
+acceptance does not carry over automatically.
+
+Global/provider/all-device logout, absolute cross-context latest-login-wins,
+uninterrupted B continuity, the distinct post-commit network-delay experiment,
+natural frequency and future business-write protection are not established.
+No arbitrary-account takeover was proved. These questions are retained at the
+separate OPEN gate, not retroactively added mandatory predicates for completed F.
+
+The 2026-10-14 independent closure assessment found no missing finite local
+predicate and checked current source continuity: the S003 coordinator/registry/
+private-admission core and F authentication/Redux ownership modules match their
+PR #34/PR #35 proof source. Cognito routing/recovery are separate changes with
+narrow regression evidence, not a fresh Cognito browser-race proof. The assessment
+is retained in `auth-cookie-followup-001-closure-assessment-20261014-6idhuw/REVIEW.md`;
+the accepted coordinator decision is
+`cookie-dependency-closeout-20261014-n0qA9B/DISPOSITION.md`.
+PR #37 integration is recorded in the
+[dated recovery evidence](authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
+No new test, browser or runtime execution is claimed by this documentation change;
+closure does not authorize provider/admission/account-right changes or rollout.
 
 ### Callback navigation and opaque errors
 
@@ -399,7 +433,7 @@ even if Spring subsequently reports rollback; neither outcome is guessed from
 the exception alone. A transaction UNKNOWN is not rollback, and a
 committed account transaction is not a successful browser login. This is neither
 a durable audit trail nor an authentication-cookie correction.
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN. Later finite local F is separate evidence;
+The [local cookie disposition](#open-cookie-follow-up) is separate from diagnostics. Later finite local F is separate evidence;
 this diagnostic change itself neither performed it nor authorized real Auth0 P or public rollout.
 
 ## Session, configuration and deferred work
@@ -490,7 +524,7 @@ Fresh logs show PostgreSQL 18.4 (`postgres:18.4-alpine`), Flyway 12.4.0 with
 V1 → V11 and Tomcat 11.0.25. These local synthetic-IdP/Testcontainers results
 support the narrow late-failure author fix, not the superseded universal
 invalidation/HTTP-commit contract, independent approval or a new native IDE gate.
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN under its limited local-pilot acceptance.
+At that 2026-09-14 gate, `AUTH-COOKIE-FOLLOWUP-001` remained OPEN under its limited local-pilot acceptance; see the [current disposition](#open-cookie-follow-up).
 
 F separately requires a real React/dev-proxy/browser test, including actual
 cookie behavior and cache clearing. A Java HTTP cookie jar cannot prove browser
@@ -524,8 +558,8 @@ These are distinct completed checks, not new executions by this documentation ch
 
 Backend B is verified within this local nonpublic contract. The later finite local
 F gate completed separately; bounded Auth0 P later completed separately on 2026-10-11.
-AUTH-COOKIE-FOLLOWUP-001 remains OPEN under the final disposition and
-pre-public-access gates above. No next implementation slice or rollout is selected.
+The [current local disposition and OPEN public gate](#open-cookie-follow-up)
+remain separate from those historical checks. No next implementation slice or rollout is selected.
 
 ### S003 evidence and open gates
 
@@ -567,8 +601,8 @@ integration results, not a new frontend author run or F/P proof. PA observer/HOL
 separate combined foundation/HTTP/CI changes remain separate. These server checks
 do not prove later frontend F, real Auth0 P, public access, rollout or global revocation.
 Subsequent finite local F is recorded below. Integration is not follow-up closure:
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN pending explicit final disposition and
-pre-public-access gates.
+The [current disposition](#open-cookie-follow-up) retains separate
+OPEN public-readiness obligations; integration alone did not close the follow-up.
 
 ### Completed local F and integration
 
@@ -586,10 +620,11 @@ Earlier INCOMPLETE/setup/helper failures retain their original outcomes.
 reviewed client as `6a5859f3d925880cb3f43b38db53d012795524f0`. Its separate
 [post-merge Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37962373086)
 passed 135 tests, typecheck, lint and build. CI is not a browser matrix run.
-The npm installation reported one untriaged HIGH warning; separate triage is
-required before public deployment. Successful CI is not full dependency security.
-Finite local F is complete; AUTH-COOKIE-FOLLOWUP-001 remains OPEN for explicit
-final disposition. Bounded Auth0 P completed separately on 2026-10-11; the local
+The npm installation reported one HIGH warning; that historical result is retained.
+See the [lockfile follow-up and installed-environment limits](../frontend/README.md#dependency-follow-up)
+for the accompanying `source-map-js` 1.2.2 update and isolated verification.
+Finite local F is complete; the [local cookie disposition](#open-cookie-follow-up)
+closes the original follow-up only for the accepted local pilot scope. Bounded Auth0 P completed separately on 2026-10-11; the local
 Cognito owner transfer and ordinary owner walkthrough completed separately on
 2026-10-13 within the bounds above. Real unverified/admitted backend refusal
 remains NOT RUN. Public access, invitations and rollout remain unverified and

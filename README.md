@@ -136,7 +136,7 @@ Constructor-only workflows and synthetic trusted facts are not a staff HTTP API
 or live session/MFA/step-up proof. Grant issuance, invitations,
 CHANGE/SUSPEND/RESUME execution, maintenance and full Audit Log remain deferred;
 no real owner, privilege, rollout or next slice is activated.
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN. Integrated S003 and its distinct
+The [local cookie disposition and retained public gate](docs/authentication-pilot.md#open-cookie-follow-up) records scoped local closure. Integrated S003 and its distinct
 scoped browser evidence are described in the
 [authentication boundary](docs/authentication-pilot.md#s003-evidence-and-open-gates);
 they do not activate Platform Access workflows.
@@ -206,8 +206,7 @@ evidence, not fresh IDE or CI results for this documentation change. The subsequ
 finite local React/dev-proxy/browser F is described below. The later bounded Auth0 P
 and the 2026-10-13 local Cognito owner transfer are separate evidence; neither
 closes the follow-up or constitutes public rollout.
-`AUTH-COOKIE-FOLLOWUP-001` stays OPEN for explicit final disposition and pre-public-access gates;
-source transfer and historical evidence do not close it or authorize public access.
+See the [local cookie disposition and retained public gate](docs/authentication-pilot.md#open-cookie-follow-up). Scoped local closure does not authorize public access.
 
 ## Frontend UI Foundation
 
@@ -228,19 +227,21 @@ This is separate from source/unit/build and native IDE results, not proof of eve
 browser or delivery order. The 2026-10-09
 [post-merge Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37962373086)
 passed 135 tests, typecheck, lint and build; CI does not execute that browser matrix.
-Its npm installation reported one unresolved HIGH warning, requiring separate
-triage before public deployment, not a security-clean dependency graph.
+Its npm installation reported one HIGH warning; that historical result is retained.
+See the [lockfile follow-up and installed-environment limits](frontend/README.md#dependency-follow-up)
+for the accompanying `source-map-js` 1.2.2 update and isolated verification.
 The bounded Auth0 owner P completed separately. The local owner was subsequently
 transferred to Cognito on 2026-10-13; social login, Workspace/RMP API/forms,
 public operation and rollout remain absent.
-`AUTH-COOKIE-FOLLOWUP-001` stays OPEN.
+The original cookie follow-up is closed only for the accepted local pilot scope;
+`AUTH-PUBLIC-READINESS-001` is retained OPEN in the [local cookie disposition and retained public gate](docs/authentication-pilot.md#open-cookie-follow-up).
 
 ### Controlled Cognito Migration Candidate
 
-The accepted integrated `main` baseline is `fda0657246aa00fc259ea286dffd45de91415d9a`.
-The Cognito code remains unpublished feature-branch WIP, separate from that
-baseline and from the separately authorized local operator actions below.
-This candidate adds a selected AUTH0/COGNITO registration,
+The Cognito migration and email-confirmation recovery source is integrated by
+[PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37) as `e5b58d43a9dc07c76efc905bc63d8269feaa40fe`. Its exact reviewed tree was preserved;
+separately authorized local operator actions remain distinct from integration.
+This bounded slice adds a selected AUTH0/COGNITO registration,
 Cognito signed-ID-token-only validation and existing-only owner resolution.
 Auth0 remains the default and retains its original claim checks. V13 adds one
 current pair per User, immutable historical pairs and exact migration receipts;
@@ -266,10 +267,11 @@ pilot source readiness. This is not public signup/admission expansion or new-cod
 approval; see the [limited evidence disposition](docs/authentication-provider-migration.md#limited-email-gate-disposition).
 Historical synthetic/independent runtime checks and native 417 tests retain their
 own scopes; overall IDE schema/background completion remains UNKNOWN/INCOMPLETE.
-Final review and publication require separate gates; own SES, public access and
-rollout are not delivered. `AUTH-COOKIE-FOLLOWUP-001` stays OPEN.
+PR #37 publication/integration and its post-merge CI are complete; own SES,
+public access and rollout are not delivered. Cookie closure remains scoped locally
+as recorded in the [local cookie disposition and retained public gate](docs/authentication-pilot.md#open-cookie-follow-up).
 
-The recovery WIP adds a transient `/confirm-email` page, reachable from `/login`
+The integrated recovery slice adds a transient `/confirm-email` page, reachable from `/login`
 or directly after closing the provider confirmation page. Anonymous selected-Cognito
 confirmation/resend require exact Host/Origin and fresh standard session CSRF,
 not a live Q/echo prerequisite. They use only bounded backend ConfirmSignUp and
@@ -286,8 +288,11 @@ These remain source/mock/owned-PostgreSQL results, not native/browser or CI proo
 Separate scoped native, independent source/JAR review and owner recovery/fresh
 OIDC results on 2026-10-14 are recorded in the
 [dated recovery evidence](docs/authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
-Overall IDE background/schema remains UNKNOWN/INCOMPLETE. Final narrow review,
-publication/CI, main integration and public-operation gates remain separate.
+Overall IDE background/schema remains UNKNOWN/INCOMPLETE. Separate 2026-10-14
+post-merge [Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38534930693)
+passed 1826/1826 and tests/package BUILD SUCCESS; [Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38534930663)
+passed 234/234, locked install, typecheck, lint and build. These are CI results,
+not reruns of browser/native proofs. Public-operation gates remain separate.
 
 Using Node 22.14.0 / npm 10.9.2, run from `frontend`:
 
