@@ -26,6 +26,9 @@ public interface OrganizationRepository {
      * <p>This operation does not own a transaction boundary. It must run inside
      * the existing OrganizationService creation transaction, because the
      * Organization and its initial Membership have to commit atomically.
+     * The service must first admit the creator from current User status under
+     * its transaction-held lock, before either insert or foreign-key reference.
+     * This persistence operation does not independently authorize raw SQL.
      */
     void create(UUID organizationId, UUID creatorUserId);
 

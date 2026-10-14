@@ -67,6 +67,14 @@ The `main` branch currently contains these backend foundations:
 
 This is not a full product implementation and does not mean that all behavior in the approved specifications has been delivered.
 
+The source checkout's bounded CFA-03 correction admits Organization creation
+under a current User status lock before inserts, retained through the surrounding
+READ COMMITTED transaction. It serializes other status writers, not the same
+transaction's later authorized status change: admission is not ACTIVE-at-commit
+or a permanent active-User OWNER invariant. Organization/initial Membership
+remain atomic, all stronger Workspace/RMP guards still apply, and V1–V14 remain
+unchanged. No authenticated Organization API, new ownership rule or rollout follows.
+
 The merged Workspace foundation is partial implementation coverage of the independently APPROVED 1.0 Workspace and Workspace Membership specifications, not complete delivery of every approved rule or workflow. It is not exposed through an authenticated Workspace HTTP API; invitations or invitation acceptance, general Workspace Membership creation or mutation workflows beyond the atomic initial Membership, ownership transfer, Workspace deletion or archival workflows, and recovery remain unimplemented. The Workspace implementation does not approve any downstream DRAFT specification.
 
 Foundation V9 / PROD-002 and V10 / PROD-001 are integrated corrections, separate from the Ready-Made Product IMPLEMENTATION 005A/V6, 005B/V7, and 005C/V8 slices. V9 permits writes to `organizations`, `organization_memberships`, `workspaces`, and `workspace_memberships` only at actual READ COMMITTED isolation; guards reject unsupported isolation with SQLSTATE `0A000`. This is a contract for those four foundation tables, not support for arbitrary operations at other isolation levels.

@@ -9,6 +9,7 @@ import com.creastrix.platform.user.domain.User;
 import com.creastrix.platform.user.domain.UserNotFoundException;
 import com.creastrix.platform.user.domain.UserStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -45,6 +46,16 @@ public class UserService {
     @Transactional(readOnly = true)
     public User findUser(UUID id) {
         return users.findById(id).orElseThrow(() -> new UserNotFoundException(id));
+    }
+
+    /**
+     * Reads current status under a lock retained by the caller's transaction.
+     * The caller must apply its own ACTIVE predicate before dependent writes.
+     * This is neither caller authentication nor a lease for later operations.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public User findUserForStatusAdmission(UUID id) {
+        return users.findByIdForStatusAdmission(id).orElseThrow(() -> new UserNotFoundException(id));
     }
 
     /**

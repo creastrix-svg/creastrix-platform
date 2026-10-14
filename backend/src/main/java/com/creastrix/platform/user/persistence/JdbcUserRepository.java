@@ -48,6 +48,14 @@ public class JdbcUserRepository implements UserRepository {
                 .findFirst();
     }
 
+    @Override
+    public Optional<User> findByIdForStatusAdmission(UUID id) {
+        // Lock before dependent FK inserts; unlike FOR UPDATE, this mode does
+        // not oppose their KEY SHARE references. Status writers still conflict.
+        return jdbcTemplate.query("SELECT id, status FROM users WHERE id = ? FOR NO KEY UPDATE",
+                USER_ROW_MAPPER, id).stream().findFirst();
+    }
+
     /**
      * Loads the User row with a PostgreSQL row lock, so a status transition
      * cannot lose a concurrent update. Must be called inside a transaction.

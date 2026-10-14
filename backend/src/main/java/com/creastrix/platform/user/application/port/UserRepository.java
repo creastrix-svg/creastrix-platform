@@ -30,6 +30,15 @@ public interface UserRepository {
     Optional<User> findById(UUID id);
 
     /**
+     * Loads current status for admission in the caller's active READ COMMITTED
+     * transaction, serializing status writers while remaining compatible with
+     * foreign-key references. The caller holds the lock through transaction
+     * outcome and must check status before dependent inserts. This is not an
+     * independent transaction or a guarantee against its own later writes.
+     */
+    Optional<User> findByIdForStatusAdmission(UUID id);
+
+    /**
      * Loads the User with a row lock held for the duration of the current
      * transaction, so a status transition cannot lose a concurrent update. Must
      * be called inside a transaction.

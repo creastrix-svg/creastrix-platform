@@ -692,6 +692,27 @@ Cookie status is recorded in the [local cookie disposition and retained public g
 `LOCAL_LOGOUT_COMPLETED` only for successful Q revocation (204), not cleanup-only
 409; callback success still observes local selection/publication, not delivery.
 
+## Organization creation admission
+
+Organization creation admits the represented creator from a current User read
+under `FOR NO KEY UPDATE` in the same READ COMMITTED service transaction, before
+either insert or FK reference. Committed inactive status-first denies creation;
+a rolled-back writer or legitimate reactivation can allow it. Admission-first
+holds off other status writers until its transaction ends. This weak lock is
+compatible with FK KEY SHARE, not a new global lock or deadlock-free guarantee.
+The mandatory User read never starts a separate transaction or authenticates
+the caller. Organization plus initial ACTIVE OWNER Membership remain atomic.
+
+Admission is not an ACTIVE-at-commit or permanent owner-User invariant. The same
+transaction can create then perform an authorized suspension/deactivation;
+the Organization and structural Membership may commit with an inactive User.
+Status change before creation denies it and rolls back that atomic batch.
+Other guards still apply: a composed Workspace/RMP creation can reject the batch
+at its existing deferred check. A returned inner object is not a commit.
+No retry, schema change, raw-SQL actor authorization, ownership rewrite,
+authenticated Organization HTTP API or general multi-resource lock policy is
+added. V1–V14, V9 isolation and stronger Workspace/RMP guards are unchanged.
+
 ## Running tests
 
 ```
