@@ -884,7 +884,7 @@ of the external caller. Raw SQL remains outside actor authentication.
 The auth-disabled default serves only minimal `GET /actuator/health`, denying
 other routes without form/basic login or generated-password fallback. OIDC
 properties, discovery and HTTP handlers are conditional on enabled servlet mode;
-non-web migration/domain contexts require no Auth0 configuration or network.
+non-web migration/domain contexts require no provider configuration or network.
 The local profile keeps the backend on `127.0.0.1:8080` and trusts only the fixed
 browser origin `http://localhost:3000`. The integrated frontend supplies the
 separate fixed loopback dev proxy; the backend does not create it.
@@ -905,13 +905,17 @@ is not global provider logout or immediate revocation after password reset.
 
 ### Integrated controlled provider migration
 
-`CREASTRIX_AUTH_PROVIDER` is the closed AUTH0/COGNITO choice (AUTH0 default).
-Only one confidential code-flow registration is configured. Cognito pins the
-original Frankfurt regional issuer and client and requires
-`CREASTRIX_AUTH_EXISTING_ONLY=true`. Its signed ID token alone supplies the claims:
+The owner-authorized 2026-10-14 source-retirement candidate supports only
+`CREASTRIX_AUTH_PROVIDER=COGNITO`, also the default, with
+`CREASTRIX_AUTH_EXISTING_ONLY=true` as the required default admission mode.
+`AUTH0`, unknown provider values and existing-only=false fail closed. This
+candidate is not yet an integrated or browser-verified retirement result.
+One confidential code-flow registration pins the original Frankfurt regional
+issuer `https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_<pool>` and
+client. Its signed ID token alone supplies the claims:
 raw Boolean verified email, nonblank email, numeric auth_time and `token_use=id`.
-UserInfo is not requested; Auth0's prior returned-source checks stay unchanged.
-Entry/callback paths derive from the selected registration; fixed destinations,
+UserInfo is not requested or accepted as another claim source. Entry/callback
+paths end in `cognito`; the old Auth0 paths are unsupported. Fixed destinations,
 PKCE, state/nonce, Q/SID, CSRF, freshness and deadline checks remain.
 
 V13 retains immutable V11 history and adds `user_identity_current` and
@@ -941,7 +945,7 @@ this is source integration, not public rollout. Separately, the authorized 2026-
 operation applied V13 after backup/restore proof and acknowledged one switch
 with independent read-back. UUID/Profile/status/generation/rights/business rows
 and both history pairs were preserved. The private local runtime selects Cognito,
-existing-only and one exact owner subject; committed defaults remain AUTH0.
+existing-only and one exact owner subject; PR #37 still had AUTH0 source defaults.
 Owner login, local logout/private 401, repeat login and new-password login/private
 200 with the same ACTIVE User are recorded external results, not new runs here.
 
@@ -957,8 +961,17 @@ success and UNCONFIRMED/unadmitted hosted refusal; it applies only to nonproduct
 owner-pilot source readiness, not public access or approval of new recovery code.
 See the [exact disposition](../docs/authentication-provider-migration.md#limited-email-gate-disposition).
 PR #37 final review, source publication and post-merge CI are complete; public-operation gates remain separate.
-Auth0 tenant/client/account/private configuration remain retained, not a
-current alias. Local logout does not revoke provider/all-device sessions. Own SES,
+The 2026-10-13 operation retained Auth0 tenant/client/account/private configuration,
+not a current alias. Source retirement changes no User, Profile, rights, selector,
+historical binding or migration receipt, and requires no second owner transfer.
+Future provider support needs a separately reviewed adapter and explicitly
+authorized verified exact-identity operation using the preserved V13 mechanism.
+Changing an issuer or matching an email is not sufficient; bulk migration and
+password export are not implemented. The separately confirmed external deletion
+of Creastrix Local Pilot and retained Auth0 resources are recorded in the
+[operator evidence](../docs/authentication-provider-migration.md#2026-10-14-auth0-retirement-boundary),
+not attributed to this source patch. Local logout does not
+revoke provider/all-device sessions. Own SES,
 social/TOTP and OPEN public-readiness obligations remain separate. Historical candidate
 tests used isolated copies, synthetic OIDC and owned databases; this alignment
 does not rebuild the running owner's `backend/target` or touch the live database.
@@ -982,7 +995,8 @@ signup, authentication/admin action, caller endpoint or automatic login is accep
 The entered identifier's case is preserved. Alias/username attributes and pool
 case-sensitivity are not inferred from matching emails. Provider results never
 create or mutate User/Profile, bindings/selectors/receipts, principal/client,
-Workspace or grants. Auth0 default/validation remain unchanged.
+Workspace or grants. The source-retirement candidate removes the Auth0 adapter
+without broadening this Cognito-only recovery boundary.
 
 The request/response byte cap is 16 KiB; identifiers are 1–128 code points and
 confirmation codes 1–2048, without whitespace/control characters. A 5-second

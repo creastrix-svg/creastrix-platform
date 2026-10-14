@@ -198,15 +198,17 @@ class CognitoEmailConfirmationTest {
         assertThat(service.execute(RESEND, input("second@b"))).isEqualTo(resend);
     }
 
-    @Test void auth0ServiceNeverSubmitsAProviderOperation() {
+    @Test void legacyProviderIsRejectedBeforeAnyRecoveryServiceOrOperation() {
         var calls = new AtomicInteger();
-        var service = new CognitoEmailConfirmationService(properties(AuthenticationProperties.Provider.AUTH0),
-                (op, body, deadline) -> { calls.incrementAndGet(); return response(200, "{}"); },
-                System::nanoTime, CognitoEmailConfirmationService.Limits.standard());
-        services.add(service);
-        assertThat(service.execute(CONFIRM, input("a@b"))).isEqualTo(UNAVAILABLE);
+        assertThatThrownBy(() -> {
+            var rejected = properties(AuthenticationProperties.Provider.configured("AUTH0"));
+            try (var service = new CognitoEmailConfirmationService(rejected,
+                    (op, body, deadline) -> { calls.incrementAndGet(); return response(200, "{}"); },
+                    System::nanoTime, CognitoEmailConfirmationService.Limits.standard())) {
+                service.execute(CONFIRM, input("a@b"));
+            }
+        }).isInstanceOf(IllegalArgumentException.class).hasMessage("creastrix.auth.provider must be COGNITO");
         assertThat(calls).hasValue(0);
-        assertThat(service.counts().targets()).isZero();
     }
 
     @Test void transportFailureIsUnknownAndHasNoApplicationRetry() {

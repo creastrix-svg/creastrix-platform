@@ -60,8 +60,9 @@ class DiagnosticsTest {
     void malformedConfigurationHasOnlySafeFieldNameAndNoRawUriCause(boolean issuer) {
         String malformed = "https://" + PRIVATE_VALUE + " invalid/";
         Throwable failure = catchThrowable(() -> {
-            var properties = new AuthenticationProperties(issuer ? malformed : "https://pilot.eu.auth0.com/",
-                    "client", PRIVATE_VALUE, issuer ? "http://localhost:3000" : malformed, java.util.Set.of(), false);
+            var properties = new AuthenticationProperties(issuer ? malformed : "https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_Test",
+                    "client", PRIVATE_VALUE, issuer ? "http://localhost:3000" : malformed, java.util.Set.of(), false,
+                    AuthenticationProperties.Provider.COGNITO, true);
             properties.validateRuntime(true);
         });
         assertThat(failure instanceof IllegalArgumentException).as("Malformed configuration has the expected exception category").isTrue();
@@ -184,6 +185,16 @@ class DiagnosticsTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"/oauth2/authorization/auth0", "/login/oauth2/code/auth0"})
+    void retiredProviderRoutesAreNotClassifiedAsSupportedAuthentication(String path) throws Exception {
+        filter.doFilter(new MockHttpServletRequest("GET", path), new MockHttpServletResponse(),
+                (input, output) -> { });
+        assertEventCount(1);
+        assertMessageContains(appender.list.getFirst(), "route=OTHER method=GET", "outcome=RETURNED");
+        assertNoThrowableProxy();
+    }
+
+    @ParameterizedTest
     @EnumSource(value = Diagnostics.Reason.class, names = { "LOCAL_SUCCESS_SELECTED", "ADMISSION_DENIED" })
     void anEarlierOutcomeCannotHideAnUnexpectedEscapingFailure(Diagnostics.Reason priorReason) {
         Diagnostics.Event priorEvent = priorReason == Diagnostics.Reason.LOCAL_SUCCESS_SELECTED
@@ -191,7 +202,7 @@ class DiagnosticsTest {
         var response = new MockHttpServletResponse();
         var failure = new IllegalStateException(PRIVATE_VALUE, new IllegalArgumentException(PRIVATE_VALUE));
         Throwable observed = catchThrowable(() -> filter.doFilter(
-                new MockHttpServletRequest("GET", "/login/oauth2/code/auth0"), response, (request, output) -> {
+                new MockHttpServletRequest("GET", "/login/oauth2/code/cognito"), response, (request, output) -> {
                     response.setStatus(priorReason == Diagnostics.Reason.LOCAL_SUCCESS_SELECTED ? 303 : 403);
                     Diagnostics.mark(priorEvent, priorReason);
                     throw failure;
@@ -226,7 +237,7 @@ class DiagnosticsTest {
     @Test
     void handledTechnicalFailureSupersedesConflictAndCannotBeDowngradedByProtocolRejection() throws Exception {
         var response = new MockHttpServletResponse();
-        filter.doFilter(new MockHttpServletRequest("GET", "/login/oauth2/code/auth0"), response, (request, output) -> {
+        filter.doFilter(new MockHttpServletRequest("GET", "/login/oauth2/code/cognito"), response, (request, output) -> {
             Diagnostics.mark(Diagnostics.Event.LOGIN_RESULT, Diagnostics.Reason.CALLBACK_CONFLICT);
             Diagnostics.mark(Diagnostics.Event.REQUEST_FAILURE, Diagnostics.Reason.SESSION_COORDINATION_UNAVAILABLE);
             Diagnostics.mark(Diagnostics.Event.LOGIN_RESULT, Diagnostics.Reason.PROTOCOL_REJECTED);
@@ -461,7 +472,7 @@ class DiagnosticsTest {
             assertThat(lock.isLocked()).isFalse();
             writes.incrementAndGet();
         };
-        filter.doFilter(new MockHttpServletRequest("GET", "/login/oauth2/code/auth0"),
+        filter.doFilter(new MockHttpServletRequest("GET", "/login/oauth2/code/cognito"),
                 new MockHttpServletResponse(), (request, response) -> {
                     lock.lock();
                     try {

@@ -76,15 +76,8 @@ public final class CreastrixOidcUserService implements OAuth2UserService<OidcUse
             throw rejected();
         }
         requireVerifiedEmail(claims);
-        if (properties.provider() == AuthenticationProperties.Provider.COGNITO
-                && (!"id".equals(claims.get("token_use")) || provider.getUserInfo() != null)) {
+        if (!"id".equals(claims.get("token_use")) || provider.getUserInfo() != null) {
             throw rejected();
-        }
-        if (provider.getUserInfo() != null) {
-            requireVerifiedEmail(provider.getUserInfo().getClaims());
-            if (!value.equals(provider.getUserInfo().getSubject())) {
-                throw rejected();
-            }
         }
         Object authenticated = claims.get("auth_time");
         if (!(authenticated instanceof Instant authenticationTime)
@@ -109,18 +102,16 @@ public final class CreastrixOidcUserService implements OAuth2UserService<OidcUse
 
     /** Must wrap the framework converter, never inspect only its already-coerced output. */
     static Converter<Map<String, Object>, Map<String, Object>> strictClaims(
-            Converter<Map<String, Object>, Map<String, Object>> converter, boolean idToken) {
+            Converter<Map<String, Object>, Map<String, Object>> converter) {
         return raw -> {
             if (raw.containsKey("email_verified") && !(raw.get("email_verified") instanceof Boolean)) {
                 throw rejected();
             }
-            if (idToken || raw.containsKey("auth_time")) {
-                Object time = raw.get("auth_time");
-                if (!(time instanceof Number number) || !Double.isFinite(number.doubleValue())
-                        || number.doubleValue() < 0 || number.doubleValue() >= Long.MAX_VALUE
-                        || number.doubleValue() != Math.rint(number.doubleValue())) {
-                    throw rejected();
-                }
+            Object time = raw.get("auth_time");
+            if (!(time instanceof Number number) || !Double.isFinite(number.doubleValue())
+                    || number.doubleValue() < 0 || number.doubleValue() >= Long.MAX_VALUE
+                    || number.doubleValue() != Math.rint(number.doubleValue())) {
+                throw rejected();
             }
             if (raw.containsKey("sub") && !(raw.get("sub") instanceof String)) {
                 throw rejected();

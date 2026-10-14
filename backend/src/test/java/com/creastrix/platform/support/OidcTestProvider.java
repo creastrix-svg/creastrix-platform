@@ -61,7 +61,7 @@ public final class OidcTestProvider implements AutoCloseable {
         }
 
         public static Scenario verified(String subject) {
-            return new Scenario(subject, Map.of(), Set.of(), Map.of(), Set.of(),
+            return new Scenario(subject, Map.of("token_use", "id"), Set.of(), Map.of(), Set.of(),
                     false, false, false, false, JWSAlgorithm.RS256);
         }
 
@@ -139,7 +139,7 @@ public final class OidcTestProvider implements AutoCloseable {
     private final AtomicInteger userInfoRequests = new AtomicInteger();
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
     private final Map<String, TokenResponseGate> tokenGates = new ConcurrentHashMap<>();
-    private volatile Scenario scenario = Scenario.verified("auth0|pilot");
+    private volatile Scenario scenario = Scenario.verified("synthetic|pilot");
 
     public OidcTestProvider(String clientId, String clientSecret, String callback, Clock clock) {
         this.clientId = clientId;
@@ -211,7 +211,7 @@ public final class OidcTestProvider implements AutoCloseable {
         issuedTokenValues.clear();
         userInfoRequests.set(0);
         failure.set(null);
-        scenario = Scenario.verified("auth0|pilot");
+        scenario = Scenario.verified("synthetic|pilot");
     }
 
     private void handle(HttpExchange exchange) throws IOException {

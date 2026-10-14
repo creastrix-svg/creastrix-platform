@@ -71,7 +71,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Timeout;
@@ -117,7 +116,7 @@ import static org.awaitility.Awaitility.await;
 /**
  * Real local backend HTTP + signed test-IdP protocol + PostgreSQL proofs (B).
  * The driver stops at frontend Location; it does not implement React, a proxy,
- * browser SameSite/HttpOnly enforcement, or an actual Auth0 walkthrough (F/P).
+ * browser SameSite/HttpOnly enforcement, or an actual provider walkthrough (F/P).
  */
 @Testcontainers
 @Execution(ExecutionMode.SAME_THREAD)
@@ -134,14 +133,16 @@ class AuthenticationHttpIntegrationTest {
     private static final ConfirmationStub CONFIRMATION = new ConfirmationStub();
     private static final AtomicLong CONFIRMATION_TIME = new AtomicLong();
     private static final AtomicInteger NEXT_SUBJECT = new AtomicInteger();
-    private static final Set<String> PILOT_SUBJECTS = IntStream.range(0, 500)
-            .mapToObj(number -> "auth0|pilot-" + number).collect(Collectors.toUnmodifiableSet());
+    private static final String MISSING_OWNER = "synthetic|admitted-without-current-binding";
+    private static final Set<String> PILOT_SUBJECTS = Stream.concat(IntStream.range(0, 500)
+            .mapToObj(number -> "synthetic|pilot-" + number), Stream.of(MISSING_OWNER)).collect(Collectors.toUnmodifiableSet());
+    private static final Map<String, UUID> FIXTURE_OWNERS = new ConcurrentHashMap<>();
     private static int port;
     private static String origin;
     private static OidcTestProvider provider;
     private static ConfigurableApplicationContext application;
     private static Set<String> admitted = PILOT_SUBJECTS;
-    private static AuthenticationProperties.Provider providerMode = AuthenticationProperties.Provider.AUTH0;
+    private static final AuthenticationProperties.Provider providerMode = AuthenticationProperties.Provider.COGNITO;
 
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.4-alpine")
@@ -165,9 +166,10 @@ class AuthenticationHttpIntegrationTest {
         // A bind race fails startup rather than selecting another origin silently.
         origin = "http://localhost:" + port;
         provider = new OidcTestProvider(CLIENT_ID, CLIENT_SECRET,
-                origin + "/login/oauth2/code/auth0", Clock.systemUTC());
+                origin + "/login/oauth2/code/cognito", Clock.systemUTC());
         try {
             startBackend();
+            provisionExistingOwnerFixtures();
             verifyOwnedListenerBindings();
             System.out.println("COOKIE_CONTEXT_RUNTIME postgres_version=" + application.getBean(JdbcTemplate.class)
                     .queryForObject("SHOW server_version", String.class));
@@ -194,6 +196,31 @@ class AuthenticationHttpIntegrationTest {
                         "--spring.main.banner-mode=off");
     }
 
+    private static void provisionExistingOwnerFixtures() {
+        var users = application.getBean(AuthenticatedUserService.class);
+        JdbcTemplate setup = application.getBean(JdbcTemplate.class);
+        var transaction = new org.springframework.transaction.support.TransactionTemplate(
+                new org.springframework.jdbc.support.JdbcTransactionManager(application.getBean(DataSource.class)));
+        transaction.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_READ_COMMITTED);
+        transaction.setTimeout(15);
+        for (int number = 0; number < 500; number++) {
+            String fixtureSubject = "synthetic|pilot-" + number;
+            Identity old = new Identity("https://retained.synthetic.example/", UUID.randomUUID().toString());
+            // Setup uses the unchanged service/DB creation contract, not a permissive HTTP adapter.
+            var owner = users.resolve(old, identity -> true);
+            transaction.executeWithoutResult(status -> {
+                setup.execute("SET LOCAL lock_timeout='5s'");
+                setup.execute("SET LOCAL statement_timeout='10s'");
+                setup.execute("SET LOCAL transaction_timeout='15s'");
+                assertThat(setup.queryForObject("SELECT public.migrate_owner_identity(?,?,?,?,?,?,?)", String.class,
+                        UUID.randomUUID(), owner.id(), 1L, old.issuer(), old.subject(),
+                        provider.issuer().toString(), fixtureSubject)).isEqualTo("APPLIED");
+            });
+            FIXTURE_OWNERS.put(fixtureSubject, owner.id());
+        }
+        assertThat(FIXTURE_OWNERS).hasSize(500).doesNotContainKey(MISSING_OWNER);
+    }
+
     @AfterAll
     static void stopOwnedServers() {
         try {
@@ -209,26 +236,15 @@ class AuthenticationHttpIntegrationTest {
     }
 
     @BeforeEach
-    void freshFlow(TestInfo test) throws Exception {
+    void freshFlow() throws Exception {
         CLOCK.reset();
         FAULTS.reset();
         CONFIRMATION.reset();
         // Advance only the provider-recovery test ticker. No limiter reset or live record eviction.
         CONFIRMATION_TIME.addAndGet(CognitoEmailConfirmationService.TARGET_TTL.toNanos() + 1);
-        // Reuse one owned context per provider block; all cases still get fresh cookies/claims/clock.
-        AuthenticationProperties.Provider selected = test.getTestMethod().orElseThrow().getName().startsWith("cognito")
-                ? AuthenticationProperties.Provider.COGNITO : AuthenticationProperties.Provider.AUTH0;
-        if (providerMode != selected) {
-            application.close();
-            provider.close();
-            providerMode = selected;
-            admitted = PILOT_SUBJECTS;
-            provider = new OidcTestProvider(CLIENT_ID, CLIENT_SECRET,
-                    origin + "/login/oauth2/code/" + selected.registrationId(), Clock.systemUTC());
-            startBackend();
-        }
+        // One Cognito-only context: fresh cookies/claims, but pre-existing immutable owner identities.
         provider.reset();
-        subject = "auth0|pilot-" + NEXT_SUBJECT.getAndIncrement();
+        subject = "synthetic|pilot-" + NEXT_SUBJECT.getAndIncrement();
         provider.scenario(Scenario.verified(subject));
         jdbc = application.getBean(JdbcTemplate.class);
         before = counts();
@@ -386,9 +402,9 @@ class AuthenticationHttpIntegrationTest {
             assertThat(registry().capture(session).equals(stamp)).isTrue();
             assertThat(registry().echo(jar.contextId(), stamp)).isTrue();
             HttpResponse<String> intent = loginPost(jar, (String) json(echo).get("token"), Map.of());
-            assertRedirect(intent, origin + "/oauth2/authorization/auth0");
+            assertRedirect(intent, origin + "/oauth2/authorization/cognito");
             assertNoContextCookie(intent);
-            HttpResponse<String> entry = jar.get("/oauth2/authorization/auth0");
+            HttpResponse<String> entry = jar.get("/oauth2/authorization/cognito");
             assertThat(entry.statusCode()).isEqualTo(302);
             assertThat(URI.create(location(entry)).getPath()).isEqualTo("/authorize");
             assertNoContextCookie(entry);
@@ -414,16 +430,16 @@ class AuthenticationHttpIntegrationTest {
         HttpSession session = probe().sessions.get(jar.sessionId());
         var stamp = registry().capture(session);
         assertThat(stamp).isNotNull();
-        assertJsonError(jar.get("/oauth2/authorization/auth0"), 403);
-        assertRedirect(loginPost(jar, csrf, Map.of()), origin + "/oauth2/authorization/auth0");
+        assertJsonError(jar.get("/oauth2/authorization/cognito"), 403);
+        assertRedirect(loginPost(jar, csrf, Map.of()), origin + "/oauth2/authorization/cognito");
         CLOCK.advance(AuthenticationProperties.FLOW_LIFETIME);
         try {
-            assertJsonError(jar.get("/oauth2/authorization/auth0"), 403);
+            assertJsonError(jar.get("/oauth2/authorization/cognito"), 403);
         }
         finally {
             CLOCK.reset();
         }
-        assertRedirect(loginPost(jar, csrf(jar), Map.of()), origin + "/oauth2/authorization/auth0");
+        assertRedirect(loginPost(jar, csrf(jar), Map.of()), origin + "/oauth2/authorization/cognito");
         assertThat(session.getAttribute(AuthenticationConfiguration.LOGIN_INTENT) instanceof Instant).isTrue();
         Set<String> attributeNames = Set.copyOf(Collections.list(session.getAttributeNames()).stream()
                 .filter(name -> !name.equals(AuthenticationConfiguration.LOGIN_INTENT)).toList());
@@ -454,7 +470,7 @@ class AuthenticationHttpIntegrationTest {
             assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue();
             assertThat(memory.isLocked() && !memory.isHeldByCurrentThread()).isTrue();
             long started = System.nanoTime();
-            response = jar.get("/oauth2/authorization/auth0");
+            response = jar.get("/oauth2/authorization/cognito");
             elapsed = System.nanoTime() - started;
             assertThat(release.getCount()).isEqualTo(1);
         }
@@ -490,25 +506,25 @@ class AuthenticationHttpIntegrationTest {
         assertThat(provider.tokenRequests().size()).isEqualTo(tokensBefore);
         assertThat(provider.authorizationRequests()).isEmpty();
         assertJsonError(jar.get("/api/me"), 401);
-        assertJsonError(jar.get("/oauth2/authorization/auth0"), 403);
+        assertJsonError(jar.get("/oauth2/authorization/cognito"), 403);
 
         Browser other = browser();
         csrf(other);
-        assertRedirect(loginPost(jar, csrf(jar), Map.of()), origin + "/oauth2/authorization/auth0");
-        HttpResponse<String> contextConflict = jar.exactRequest("GET", "/oauth2/authorization/auth0", "", Map.of(),
+        assertRedirect(loginPost(jar, csrf(jar), Map.of()), origin + "/oauth2/authorization/cognito");
+        HttpResponse<String> contextConflict = jar.exactRequest("GET", "/oauth2/authorization/cognito", "", Map.of(),
                 "JSESSIONID=" + jar.sessionId() + "; " + BrowserSessionContextRegistry.COOKIE_NAME + "=" + other.contextId());
         assertJsonError(contextConflict, 409);
         assertNoContextCookie(contextConflict);
         assertThat(session.getAttribute(AuthenticationConfiguration.LOGIN_INTENT)).isNull();
-        assertJsonError(jar.get("/oauth2/authorization/auth0"), 403);
+        assertJsonError(jar.get("/oauth2/authorization/cognito"), 403);
         assertThat(counts()).isEqualTo(durableBefore);
         assertThat(provider.tokenRequests().size()).isEqualTo(tokensBefore);
         complete(jar);
         assertAccount(jar.get("/api/me"), bindingId());
-        HttpResponse<String> authenticatedConflict = jar.get("/oauth2/authorization/auth0");
+        HttpResponse<String> authenticatedConflict = jar.get("/oauth2/authorization/cognito");
         assertJsonError(authenticatedConflict, 409);
         assertNoContextCookie(authenticatedConflict);
-        assertThat(counts()).isEqualTo(durableBefore.plusAccount());
+        assertThat(counts()).isEqualTo(durableBefore);
         assertThat(provider.tokenRequests().size()).isEqualTo(tokensBefore + 1);
         System.out.println("COOKIE_CONTEXT_CAPACITY_HTTP intent_not_restored=true unsolicited403=true"
                 + " expired403=true context409=true authenticated409=true full_login_after_new_intent=true");
@@ -517,14 +533,14 @@ class AuthenticationHttpIntegrationTest {
     }
 
     @Test
-    void fullCodeTokenJwksUserInfoFlowRotatesSessionAndReturnsOnlyOwnAccount(CapturedOutput logs)
+    void fullCodeTokenJwksIdTokenOnlyFlowRotatesSessionAndReturnsOnlyExistingOwnAccount(CapturedOutput logs)
             throws Exception {
         Browser browser = browser();
         String csrf = csrf(browser);
         String anonymousId = browser.sessionId();
         HttpResponse<String> initiation = loginPost(browser, csrf, Map.of(
                 "Forwarded", "host=attacker.test;proto=https", "X-Forwarded-Host", "attacker.test"));
-        assertRedirect(initiation, origin + "/oauth2/authorization/" + providerMode.registrationId());
+        assertRedirect(initiation, origin + "/oauth2/authorization/" + AuthenticationProperties.REGISTRATION_ID);
         URI callback = authorize(browser, initiation);
         assertRedirect(browser.request("GET", callback, "", Map.of(
                 "Forwarded", "host=attacker.test;proto=https", "X-Forwarded-Host", "attacker.test")),
@@ -543,18 +559,18 @@ class AuthenticationHttpIntegrationTest {
         assertThat(account.headers().firstValue("Cache-Control").orElseThrow()).contains("no-store");
         String rotatedCsrf = csrf(browser);
         assertThat(rotatedCsrf).isNotEqualTo(csrf);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
 
         Map<String, String> authorization = provider.authorizationRequests().getFirst();
         Map<String, String> token = provider.tokenRequests().getFirst();
-        assertThat(authorization).containsEntry("redirect_uri", origin + "/login/oauth2/code/auth0")
+        assertThat(authorization).containsEntry("redirect_uri", origin + "/login/oauth2/code/cognito")
                 .containsEntry("client_id", CLIENT_ID).containsEntry("code_challenge_method", "S256")
                 .containsEntry("prompt", "login").containsEntry("max_age", "0");
-        assertThat(token).containsEntry("redirect_uri", origin + "/login/oauth2/code/auth0");
+        assertThat(token).containsEntry("redirect_uri", origin + "/login/oauth2/code/cognito");
         assertThat(token.get("code_verifier")).isNotBlank();
         assertThat(authorization).doesNotContainKeys("client_secret", "code_verifier", "access_token");
         assertThat(provider.jwksRequests()).isPositive();
-        assertThat(provider.userInfoRequests()).isEqualTo(1);
+        assertThat(provider.userInfoRequests()).isZero();
         assertThat(provider.issuedTokenValues().size()).isEqualTo(2);
         var privateValues = new ArrayList<>(provider.issuedTokenValues());
         privateValues.addAll(List.of(CLIENT_SECRET, subject, csrf, rotatedCsrf, anonymousId, authenticatedId,
@@ -589,7 +605,7 @@ class AuthenticationHttpIntegrationTest {
 
     @ParameterizedTest(name = "raw {0} {1}={2}, missing={3}")
     @MethodSource("rawClaimFailures")
-    void rawClaimsAreRejectedBeforeAnyAccountSideEffects(String surface, String claim,
+    void rawIdClaimsAreRejectedAndPoisonedUnrequestedUserInfoHasNoEffect(String surface, String claim,
             Object value, boolean missing) throws Exception {
         Scenario scenario = Scenario.verified(subject);
         if (surface.equals("id")) {
@@ -598,11 +614,18 @@ class AuthenticationHttpIntegrationTest {
         else {
             scenario = missing ? scenario.withoutUserInfoClaim(claim) : scenario.userInfoClaim(claim, value);
         }
-        assertRejectedWithoutAccount(scenario);
-        assertThat(provider.tokenRequests()).hasSize(1);
         if (surface.equals("userinfo")) {
-            assertThat(provider.userInfoRequests()).isEqualTo(1);
+            // This retired source is never fetched; poison cannot replace the verified ID-token identity.
+            provider.scenario(scenario);
+            Browser control = browser();
+            complete(control);
+            assertAccount(control.get("/api/me"), bindingId());
+            assertThat(counts()).isEqualTo(before);
+        } else {
+            assertRejectedWithoutAccount(scenario);
         }
+        assertThat(provider.tokenRequests()).hasSize(1);
+        assertThat(provider.userInfoRequests()).isZero();
     }
 
     static Stream<String> protocolFailures() {
@@ -614,7 +637,7 @@ class AuthenticationHttpIntegrationTest {
 
     @ParameterizedTest
     @MethodSource("protocolFailures")
-    void protocolAndFreshnessFailuresNeverReachBinding(String fault) throws Exception {
+    void protocolAndFreshnessRefusalAndUnrequestedUserInfoControlPreserveExistingBindings(String fault) throws Exception {
         long now = Instant.now().getEpochSecond();
         Scenario valid = Scenario.verified(subject);
         Scenario invalid = switch (fault) {
@@ -636,16 +659,25 @@ class AuthenticationHttpIntegrationTest {
             case "nonce-missing" -> valid.withoutIdClaim("nonce");
             case "state" -> valid.badState();
             case "token" -> valid.tokenFailure();
-            case "userinfo-subject" -> valid.userInfoClaim("sub", "auth0|another-person");
+            case "userinfo-subject" -> valid.userInfoClaim("sub", "synthetic|another-person");
             case "subject-blank" -> valid.idClaim("sub", " ");
             case "subject-number" -> valid.idClaim("sub", 123);
             case "subject-missing" -> valid.withoutIdClaim("sub");
             case "auth-time-stale" -> valid.idClaim("auth_time", now - 120);
             case "auth-time-future" -> valid.idClaim("auth_time", now + 120);
-            case "admission" -> Scenario.verified("auth0|not-admitted");
+            case "admission" -> Scenario.verified("synthetic|not-admitted");
             default -> throw new AssertionError(fault);
         };
-        assertRejectedWithoutAccount(invalid);
+        if (fault.equals("userinfo-subject")) {
+            provider.scenario(invalid);
+            Browser control = browser();
+            complete(control);
+            assertAccount(control.get("/api/me"), bindingId());
+            assertThat(provider.userInfoRequests()).isZero();
+            assertThat(counts()).isEqualTo(before);
+        } else {
+            assertRejectedWithoutAccount(invalid);
+        }
     }
 
     @Test
@@ -667,13 +699,13 @@ class AuthenticationHttpIntegrationTest {
         logout(browser);
         complete(browser);
         assertThat(bindingId()).isEqualTo(id);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
 
-        provider.scenario(Scenario.verified("auth0|pilot-499"));
+        provider.scenario(Scenario.verified("synthetic|pilot-499"));
         Browser other = browser();
         complete(other);
         assertThat(json(other.get("/api/me")).get("id")).isNotEqualTo(id.toString());
-        assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+        assertThat(counts()).isEqualTo(before);
     }
 
     @Test
@@ -701,14 +733,14 @@ class AuthenticationHttpIntegrationTest {
         assertThat(provider.tokenRequests()).hasSize(exchanges);
         assertThat(json(browser.get("/api/me")).get("id")).isEqualTo(id.toString());
         assertThat(bindingId()).isEqualTo(id);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
     }
 
     @Test
     void directEntryAndUnsolicitedCallbackCannotCreateAnAccount() throws Exception {
         Browser browser = browser();
-        assertJsonError(browser.get("/oauth2/authorization/auth0"), 403);
-        assertRedirect(browser.get("/login/oauth2/code/auth0?code=not-issued&state=not-saved"),
+        assertJsonError(browser.get("/oauth2/authorization/cognito"), 403);
+        assertRedirect(browser.get("/login/oauth2/code/cognito?code=not-issued&state=not-saved"),
                 origin + "/login?auth=failed");
         assertNoAccountOrAuthentication(browser);
         assertThat(provider.tokenRequests()).isEmpty();
@@ -729,7 +761,7 @@ class AuthenticationHttpIntegrationTest {
                 .doesNotContain("Domain=", "Secure");
         assertThat(hasAuthentication(probe().sessions.get(browser.sessionId()))).isFalse();
         assertRedirect(loginPost(browser, (String) json(bootstrap).get("token"), Map.of()),
-                origin + "/oauth2/authorization/auth0");
+                origin + "/oauth2/authorization/cognito");
         assertThat(counts()).isEqualTo(before);
     }
 
@@ -767,7 +799,7 @@ class AuthenticationHttpIntegrationTest {
                 Map.of("Origin", origin, "X-CSRF-TOKEN", oldCsrf)), 403);
         assertJsonError(loginPost(browser, csrf(browser), Map.of()), 409);
         assertThat(browser.get("/api/me").statusCode()).isEqualTo(200);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
     }
 
     @Test
@@ -812,7 +844,7 @@ class AuthenticationHttpIntegrationTest {
         logout(browser);
         complete(browser);
         assertThat(bindingId()).isEqualTo(id);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
     }
 
     @Test
@@ -825,7 +857,7 @@ class AuthenticationHttpIntegrationTest {
         logout(browser);
         assertThat(probe().sessions).doesNotContainKey(oldSession);
         assertJsonError(browser.get("/api/me"), 401);
-        assertRejectedWithoutAccount(Scenario.verified(subject), before.plusAccount());
+        assertRejectedWithoutAccount(Scenario.verified(subject), before);
         assertThat(application.getBean(UserService.class).findUser(id).status()).isEqualTo(UserStatus.DEACTIVATED);
     }
 
@@ -898,7 +930,7 @@ class AuthenticationHttpIntegrationTest {
         FAULTS.loseNextCommitAcknowledgement.set(true);
         assertRedirect(browser.get(callback), origin + "/login?auth=failed");
         assertThat(FAULTS.committedThenFailed.get()).isEqualTo(1);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
         UUID committedId = bindingId();
         assertJsonError(browser.get("/api/me"), 401);
         int oldTokenCalls = provider.tokenRequests().size();
@@ -906,96 +938,14 @@ class AuthenticationHttpIntegrationTest {
         assertThat(provider.tokenRequests()).hasSize(oldTokenCalls + 1);
         assertThat(bindingId()).isEqualTo(committedId);
         assertThat(json(browser.get("/api/me")).get("id")).isEqualTo(committedId.toString());
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
         assertThat(provider.tokenRequests().get(0).get("code"))
                 .isNotEqualTo(provider.tokenRequests().get(1).get("code"));
     }
 
-    @ParameterizedTest(name = "new full login while first transaction commits={0}")
-    @ValueSource(booleans = {true, false})
-    void newFullLoginWaitsForExactInFlightIdentityAndResolvesCommitOrRollback(boolean commitFirst)
-            throws Exception {
-        Browser firstBrowser = browser();
-        Browser secondBrowser = browser();
-        URI firstCallback = begin(firstBrowser);
-        BindingRace race = new BindingRace(commitFirst);
-        FAULTS.bindingRace = race;
-        var executor = Executors.newFixedThreadPool(2);
-        Future<HttpResponse<String>> first = null;
-        Future<HttpResponse<String>> second = null;
-        try {
-            first = executor.submit(() -> firstBrowser.get(firstCallback));
-            assertThat(race.firstInserted.await(5, TimeUnit.SECONDS)).isTrue();
-            assertThat(first.isDone()).isFalse();
-            assertThat(race.firstPid.get()).isNotNull();
-            // The first real INSERT is still uncommitted; this is not evidence of rollback.
-            assertThat(counts()).isEqualTo(before);
-            URI secondCallback = begin(secondBrowser);
-            second = executor.submit(() -> secondBrowser.get(secondCallback));
-            assertThat(race.secondAttempted.await(3, TimeUnit.SECONDS)).isTrue();
-            assertThat(race.secondPid.get()).isNotNull().isNotEqualTo(race.firstPid.get());
-            Future<HttpResponse<String>> firstPending = first;
-            Future<HttpResponse<String>> secondPending = second;
-            JdbcTemplate observer = new JdbcTemplate(jdbc.getDataSource());
-            observer.setQueryTimeout(1);
-            await().atMost(Duration.ofSeconds(2)).untilAsserted(() -> {
-                assertThat(firstPending.isDone()).isFalse();
-                assertThat(secondPending.isDone()).isFalse();
-                assertThat(observer.queryForObject("""
-                        SELECT EXISTS (
-                            SELECT 1 FROM pg_stat_activity waiter
-                            JOIN pg_stat_activity blocker ON blocker.pid = ?
-                            WHERE waiter.pid = ? AND waiter.datname = current_database()
-                              AND blocker.datname = current_database()
-                              AND waiter.wait_event_type = 'Lock'
-                              AND ? = ANY(pg_blocking_pids(waiter.pid)))
-                        """, Boolean.class, race.firstPid.get(), race.secondPid.get(), race.firstPid.get()))
-                        .isTrue();
-            });
-            race.releaseFirst.countDown();
-            assertRedirect(first.get(10, TimeUnit.SECONDS),
-                    origin + (commitFirst ? "/account" : "/login?auth=failed"));
-            assertRedirect(second.get(10, TimeUnit.SECONDS), origin + "/account");
-            assertThat(race.attempts.get()).isEqualTo(2);
-            assertThat(race.firstCommits.get()).isEqualTo(commitFirst ? 1 : 0);
-            assertThat(race.firstRollbacks.get()).isEqualTo(commitFirst ? 0 : 1);
-            assertThat(provider.tokenRequests()).hasSize(2);
-            assertThat(provider.tokenRequests().get(0).get("code"))
-                    .isNotEqualTo(provider.tokenRequests().get(1).get("code"));
-            UUID winner = commitFirst ? race.firstUser.get() : race.secondUser.get();
-            UUID rolledBack = commitFirst ? race.secondUser.get() : race.firstUser.get();
-            assertThat(winner).isNotNull().isNotEqualTo(rolledBack);
-            assertThat(bindingId()).isEqualTo(winner);
-            assertThat(json(secondBrowser.get("/api/me")).get("id")).isEqualTo(winner.toString());
-            if (commitFirst) {
-                assertThat(json(firstBrowser.get("/api/me")).get("id")).isEqualTo(winner.toString());
-            }
-            else {
-                assertJsonError(firstBrowser.get("/api/me"), 401);
-            }
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE id = ?", Long.class, rolledBack))
-                    .isZero();
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM user_profiles WHERE user_id = ?",
-                    Long.class, rolledBack)).isZero();
-            assertThat(counts()).isEqualTo(before.plusAccount());
-        }
-        finally {
-            race.releaseFirst.countDown();
-            if (first != null && !first.isDone()) {
-                first.cancel(true);
-            }
-            if (second != null && !second.isDone()) {
-                second.cancel(true);
-            }
-            executor.shutdownNow();
-            try {
-                assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
-            }
-            finally {
-                FAULTS.bindingRace = null;
-            }
-        }
-    }
+    // First-login INSERT contention and commit-unknown creation remain explicit
+    // UserAuthenticationIntegrationTest service/DB proofs. The supported HTTP
+    // adapter is existing-only; its callback races use real current-identity reads.
 
     @Test
     void realBackendRestartClearsSessionsAndRestartedAdmissionRejectsOldIdentity() throws Exception {
@@ -1012,7 +962,7 @@ class AuthenticationHttpIntegrationTest {
             jdbc = application.getBean(JdbcTemplate.class);
             assertThat(probe().sessions).doesNotContainKey(oldSession);
             assertJsonError(browser.get("/api/me"), 401);
-            assertRejectedWithoutAccount(Scenario.verified(subject), before.plusAccount());
+            assertRejectedWithoutAccount(Scenario.verified(subject), before);
             assertThat(bindingId()).isEqualTo(original);
         }
         finally {
@@ -1073,7 +1023,7 @@ class AuthenticationHttpIntegrationTest {
         assertThat(preflight.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
         HttpResponse<String> response = loginPost(browser, csrf(browser),
                 Map.of("Forwarded", "host=attacker.test;proto=https", "X-Forwarded-Proto", "https"));
-        assertRedirect(response, origin + "/oauth2/authorization/auth0");
+        assertRedirect(response, origin + "/oauth2/authorization/cognito");
         assertThat(counts()).isEqualTo(before);
     }
 
@@ -1088,7 +1038,7 @@ class AuthenticationHttpIntegrationTest {
         assertJsonError(browser.get(path), 403);
         assertThat(probe().sessions).doesNotContainKey(session);
         assertJsonError(browser.get("/api/me"), 401);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
         assertThat(provider.tokenRequests()).hasSize(1);
     }
 
@@ -1102,13 +1052,13 @@ class AuthenticationHttpIntegrationTest {
         assertJsonError(browser.get(path), 401);
         assertThat(probe().sessions).doesNotContainKey(session);
         assertJsonError(browser.get("/api/me"), 401);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
         assertThat(provider.tokenRequests()).hasSize(1);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/%6fauth2/authorization/auth0", "/oauth2/%61uthorization/auth0",
-            "/oauth2/authorization/%61uth0"})
+    @ValueSource(strings = {"/%6fauth2/authorization/cognito", "/oauth2/%61uthorization/cognito",
+            "/oauth2/authorization/%63ognito"})
     void routeEntryRequiresExplicitIntentBeforeProviderNavigation(String path) throws Exception {
         Browser browser = browser();
         csrf(browser);
@@ -1117,32 +1067,32 @@ class AuthenticationHttpIntegrationTest {
         assertThat(provider.tokenRequests()).isEmpty();
         assertNoAccountOrAuthentication(browser);
         complete(browser);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
         logout(browser);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/%6fauth2/authorization/auth0", "/oauth2/%61uthorization/auth0",
-            "/oauth2/authorization/%61uth0"})
+    @ValueSource(strings = {"/%6fauth2/authorization/cognito", "/oauth2/%61uthorization/cognito",
+            "/oauth2/authorization/%63ognito"})
     void routeAuthenticatedEntryCannotReplacePrincipalWithoutLogout(String path) throws Exception {
         Browser browser = browser();
         complete(browser);
         UUID original = bindingId();
         String session = browser.sessionId();
-        String otherSubject = "auth0|pilot-" + NEXT_SUBJECT.getAndIncrement();
+        String otherSubject = "synthetic|pilot-" + NEXT_SUBJECT.getAndIncrement();
         assertThat(PILOT_SUBJECTS).contains(otherSubject);
         provider.scenario(Scenario.verified(otherSubject));
         assertJsonError(browser.get(path), 409);
         assertThat(browser.sessionId()).isEqualTo(session);
         assertThat(hasAuthentication(probe().sessions.get(session))).isTrue();
         assertThat(json(browser.get("/api/me")).get("id")).isEqualTo(original.toString());
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
         assertThat(provider.authorizationRequests()).hasSize(1);
         assertThat(provider.tokenRequests()).hasSize(1);
         logout(browser);
         complete(browser);
         assertThat(json(browser.get("/api/me")).get("id")).isNotEqualTo(original.toString());
-        assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+        assertThat(counts()).isEqualTo(before);
     }
 
     @ParameterizedTest
@@ -1170,18 +1120,18 @@ class AuthenticationHttpIntegrationTest {
         String token = csrf(browser);
         assertJsonError(browser.post(URI.create(origin + path), "_csrf=" + encode(token),
                 Map.of("Origin", "https://attacker.test")), 403);
-        assertJsonError(browser.get("/oauth2/authorization/auth0"), 403);
+        assertJsonError(browser.get("/oauth2/authorization/cognito"), 403);
         assertThat(provider.authorizationRequests()).isEmpty();
         assertThat(provider.tokenRequests()).isEmpty();
         assertNoAccountOrAuthentication(browser);
         // The same token succeeds with the correct Origin: bad CSRF is not the negative's cause.
         assertRedirect(browser.get(authorize(browser, loginPost(browser, token, Map.of()))), origin + "/account");
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/%6cogin/oauth2/code/auth0", "/login/%6fauth2/code/auth0",
-            "/login/oauth2/%63ode/auth0"})
+    @ValueSource(strings = {"/%6cogin/oauth2/code/cognito", "/login/%6fauth2/code/cognito",
+            "/login/oauth2/%63ode/cognito"})
     void routePostCallbackIsRejectedBeforeTokenExchangeWithValidFlowAndCsrf(String path) throws Exception {
         Browser browser = browser();
         URI callback = begin(browser);
@@ -1194,28 +1144,28 @@ class AuthenticationHttpIntegrationTest {
         // The exact saved state/code remain usable with the allowed method.
         assertRedirect(browser.get(callback), origin + "/account");
         assertThat(provider.tokenRequests()).hasSize(1);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/login/oauth2/code/auth0", "/%6cogin/oauth2/code/auth0",
-            "/login/oauth2/code/%61uth0"})
+    @ValueSource(strings = {"/login/oauth2/code/cognito", "/%6cogin/oauth2/code/cognito",
+            "/login/oauth2/code/%63ognito"})
     void routeAlreadyPendingSecondCallbackCannotReplaceAuthenticatedPrincipal(String path) throws Exception {
         Browser browser = browser();
         URI firstCallback = begin(browser);
-        BindingRace race = new BindingRace(true);
-        FAULTS.bindingRace = race;
+        ResolutionReadPause race = new ResolutionReadPause(true);
+        FAULTS.resolutionReadPause = race;
         var executor = Executors.newSingleThreadExecutor();
         Future<HttpResponse<String>> first = null;
         URI secondCallback;
         String anonymousSession = browser.sessionId();
-        String otherSubject = "auth0|pilot-" + NEXT_SUBJECT.getAndIncrement();
+        String otherSubject = "synthetic|pilot-" + NEXT_SUBJECT.getAndIncrement();
         assertThat(PILOT_SUBJECTS).contains(otherSubject);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM user_identity_bindings WHERE issuer = ? AND subject = ?",
-                Long.class, provider.issuer().toString(), otherSubject)).isZero();
+                Long.class, provider.issuer().toString(), otherSubject)).isEqualTo(1);
         try {
             first = executor.submit(() -> browser.get(firstCallback));
-            assertThat(race.firstInserted.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(race.firstReadReturned.await(5, TimeUnit.SECONDS)).isTrue();
             assertThat(first.isDone()).isFalse();
             assertThat(counts()).isEqualTo(before);
             assertThat(race.attempts.get()).isEqualTo(1);
@@ -1240,13 +1190,13 @@ class AuthenticationHttpIntegrationTest {
                 assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
             }
             finally {
-                FAULTS.bindingRace = null;
+                FAULTS.resolutionReadPause = null;
             }
         }
         UUID original = bindingId();
         String session = browser.sessionId();
         assertThat(session).isNotEqualTo(anonymousSession);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
         assertSavedFlow(browser, secondCallback);
         OAuth2AuthorizedClient client = authorizedClient(probe().sessions.get(session));
         HttpResponse<String> conflict = browser.get(URI.create(origin + path + "?" + secondCallback.getRawQuery()));
@@ -1257,15 +1207,15 @@ class AuthenticationHttpIntegrationTest {
         assertThat(provider.tokenRequests()).hasSize(1);
         assertThat(race.attempts.get()).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM user_identity_bindings WHERE issuer = ? AND subject = ?",
-                Long.class, provider.issuer().toString(), otherSubject)).isZero();
+                Long.class, provider.issuer().toString(), otherSubject)).isEqualTo(1);
         assertThat(browser.sessionId()).isEqualTo(session);
         assertThat(hasAuthentication(probe().sessions.get(session))).isTrue();
         assertThat(json(browser.get("/api/me")).get("id")).isEqualTo(original.toString());
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
         logout(browser);
         complete(browser);
         assertThat(json(browser.get("/api/me")).get("id")).isNotEqualTo(original.toString());
-        assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+        assertThat(counts()).isEqualTo(before);
     }
 
     private static void assertSavedFlow(Browser browser, URI callback) {
@@ -1288,12 +1238,12 @@ class AuthenticationHttpIntegrationTest {
 
     static Stream<Arguments> routeAliases() {
         return Stream.of(
-                Arguments.of("/%61uth/csrf", "/%61uth/login", "/%6fauth2/authorization/auth0",
-                        "/%6cogin/oauth2/code/auth0", "/%61pi/me", "/%61uth/logout"),
-                Arguments.of("/a%75th/csrf", "/a%75th/login", "/oauth2/%61uthorization/auth0",
-                        "/login/%6fauth2/code/auth0", "/a%70i/me", "/a%75th/logout"),
-                Arguments.of("/auth/%63srf", "/auth/%6cogin", "/oauth2/authorization/%61uth0",
-                        "/login/oauth2/code/%61uth0", "/api/%6de", "/auth/%6cogout"));
+                Arguments.of("/%61uth/csrf", "/%61uth/login", "/%6fauth2/authorization/cognito",
+                        "/%6cogin/oauth2/code/cognito", "/%61pi/me", "/%61uth/logout"),
+                Arguments.of("/a%75th/csrf", "/a%75th/login", "/oauth2/%61uthorization/cognito",
+                        "/login/%6fauth2/code/cognito", "/a%70i/me", "/a%75th/logout"),
+                Arguments.of("/auth/%63srf", "/auth/%6cogin", "/oauth2/authorization/%63ognito",
+                        "/login/oauth2/code/%63ognito", "/api/%6de", "/auth/%6cogout"));
     }
 
     @ParameterizedTest
@@ -1304,7 +1254,7 @@ class AuthenticationHttpIntegrationTest {
         String token = (String) json(browser.get(csrfPath)).get("token");
         String anonymousSession = browser.sessionId();
         assertRedirect(browser.post(URI.create(origin + loginPath), "_csrf=" + encode(token),
-                Map.of("Origin", origin)), origin + "/oauth2/authorization/auth0");
+                Map.of("Origin", origin)), origin + "/oauth2/authorization/cognito");
         HttpResponse<String> entry = browser.get(entryPath);
         assertThat(entry.statusCode()).isEqualTo(302);
         URI callback = URI.create(location(browser.get(URI.create(location(entry)))));
@@ -1317,7 +1267,7 @@ class AuthenticationHttpIntegrationTest {
         assertThat(provider.tokenRequests()).hasSize(1);
         assertThat(provider.tokenRequests().getFirst().get("code"))
                 .isEqualTo(OidcTestProvider.parameters(callback.getRawQuery()).get("code"));
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
         String session = browser.sessionId();
         HttpResponse<String> loggedOut = browser.post(URI.create(origin + logoutPath), "",
                 Map.of("Origin", origin, "X-CSRF-TOKEN", csrf(browser)));
@@ -1331,25 +1281,25 @@ class AuthenticationHttpIntegrationTest {
     @ValueSource(booleans = {false, true})
     void concurrentCallbackFirstAdmissionExcludesOtherIdentity(boolean reverseIdentityOrder) throws Exception {
         Browser browser = browser();
-        String otherSubject = "auth0|pilot-" + NEXT_SUBJECT.getAndIncrement();
+        String otherSubject = "synthetic|pilot-" + NEXT_SUBJECT.getAndIncrement();
         assertThat(PILOT_SUBJECTS).contains(otherSubject);
         String winnerSubject = reverseIdentityOrder ? otherSubject : subject;
         String loserSubject = reverseIdentityOrder ? subject : otherSubject;
         provider.scenario(Scenario.verified(winnerSubject));
         URI winnerCallback = begin(browser);
-        BindingRace race = new BindingRace(true);
-        FAULTS.bindingRace = race;
+        ResolutionReadPause race = new ResolutionReadPause(true);
+        FAULTS.resolutionReadPause = race;
         var executor = Executors.newSingleThreadExecutor();
         Future<HttpResponse<String>> winner = null;
         try {
             winner = executor.submit(() -> browser.get(winnerCallback));
-            assertThat(race.firstInserted.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(race.firstReadReturned.await(5, TimeUnit.SECONDS)).isTrue();
             assertThat(winner.isDone()).isFalse();
             assertThat(counts()).isEqualTo(before);
             provider.scenario(Scenario.verified(loserSubject));
             URI loserCallback = begin(browser);
             HttpResponse<String> rejected = browser.get(loserCallback);
-            // A real callback has already passed anonymous admission and inserted its binding.
+            // A real callback has passed anonymous admission and read its existing current binding.
             // The other identity must finish rejection BEFORE that transaction is released.
             assertRedirect(rejected, origin + "/login?auth=failed");
             assertThat(rejected.headers().allValues("Set-Cookie")).isEmpty();
@@ -1364,16 +1314,16 @@ class AuthenticationHttpIntegrationTest {
                     UUID.class, provider.issuer().toString(), winnerSubject);
             assertThat(json(browser.get("/api/me")).get("id")).isEqualTo(winnerId.toString());
             assertSessionIdentity(browser, winnerId, authorizedClient(probe().sessions.get(browser.sessionId())));
-            assertThat(bindingCount(loserSubject)).isZero();
+            assertThat(bindingCount(loserSubject)).as("Rejected callback preserves its pre-existing binding").isEqualTo(1);
             assertFlowNotSaved(browser, loserCallback);
-            assertThat(counts()).isEqualTo(before.plusAccount());
+            assertThat(counts()).isEqualTo(before);
             assertThat(race.firstCommits.get()).isEqualTo(1);
             assertThat(provider.tokenRequests()).hasSize(1);
         }
         finally {
             race.releaseFirst.countDown();
             try { finishWorkers(executor, winner); }
-            finally { FAULTS.bindingRace = null; }
+            finally { FAULTS.resolutionReadPause = null; }
         }
     }
 
@@ -1382,18 +1332,18 @@ class AuthenticationHttpIntegrationTest {
         Browser heldBrowser = browser();
         Browser independent = browser();
         URI heldCallback = begin(heldBrowser);
-        BindingRace race = new BindingRace(true);
-        FAULTS.bindingRace = race;
+        ResolutionReadPause race = new ResolutionReadPause(true);
+        FAULTS.resolutionReadPause = race;
         var executor = Executors.newSingleThreadExecutor();
         Future<HttpResponse<String>> held = null;
         try {
             held = executor.submit(() -> heldBrowser.get(heldCallback));
-            assertThat(race.firstInserted.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(race.firstReadReturned.await(5, TimeUnit.SECONDS)).isTrue();
             String independentSubject = nextSubject();
             provider.scenario(Scenario.verified(independentSubject));
             complete(independent);
             assertThat(held.isDone()).isFalse();
-            assertThat(counts()).isEqualTo(before.plusAccount());
+            assertThat(counts()).isEqualTo(before);
             UUID independentId = bindingId(independentSubject);
             OAuth2AuthorizedClient client = authorizedClient(probe().sessions.get(independent.sessionId()));
             assertSessionIdentity(independent, independentId, client);
@@ -1402,12 +1352,12 @@ class AuthenticationHttpIntegrationTest {
             assertSessionIdentity(heldBrowser, bindingId(), authorizedClient(probe().sessions.get(heldBrowser.sessionId())));
             assertSessionIdentity(independent, independentId, client);
             assertThat(provider.tokenRequests()).hasSize(2);
-            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+            assertThat(counts()).isEqualTo(before);
         }
         finally {
             race.releaseFirst.countDown();
             try { finishWorkers(executor, held); }
-            finally { FAULTS.bindingRace = null; }
+            finally { FAULTS.resolutionReadPause = null; }
         }
     }
 
@@ -1418,13 +1368,13 @@ class AuthenticationHttpIntegrationTest {
         provider.scenario(databaseFailure ? Scenario.verified(subject) : Scenario.verified(subject).tokenFailure());
         URI failedCallback = begin(browser);
         var tokenGate = databaseFailure ? null : provider.holdTokenResponse(subject);
-        BindingRace race = databaseFailure ? new BindingRace(false) : null;
-        FAULTS.bindingRace = race;
+        ResolutionReadPause race = databaseFailure ? new ResolutionReadPause(false) : null;
+        FAULTS.resolutionReadPause = race;
         var executor = Executors.newSingleThreadExecutor();
         Future<HttpResponse<String>> failed = null;
         try {
             failed = executor.submit(() -> browser.get(failedCallback));
-            assertThat(databaseFailure ? race.firstInserted.await(5, TimeUnit.SECONDS)
+            assertThat(databaseFailure ? race.firstReadReturned.await(5, TimeUnit.SECONDS)
                     : tokenGate.awaitEntered(5, TimeUnit.SECONDS)).isTrue();
             String session = browser.sessionId();
             String nextSubject = nextSubject();
@@ -1446,15 +1396,15 @@ class AuthenticationHttpIntegrationTest {
             }
             assertRedirect(browser.get(nextCallback), origin + "/account");
             assertSessionIdentity(browser, bindingId(nextSubject), authorizedClient(probe().sessions.get(browser.sessionId())));
-            assertThat(bindingCount(subject)).isZero();
+            assertThat(bindingCount(subject)).as("Failed read/token request cannot mutate an existing binding").isEqualTo(1);
             assertThat(provider.tokenRequests()).hasSize(2);
-            assertThat(counts()).isEqualTo(before.plusAccount());
+            assertThat(counts()).isEqualTo(before);
         }
         finally {
             if (tokenGate != null) tokenGate.close();
             if (race != null) race.releaseFirst.countDown();
             try { finishWorkers(executor, failed); }
-            finally { FAULTS.bindingRace = null; }
+            finally { FAULTS.resolutionReadPause = null; }
         }
     }
 
@@ -1478,7 +1428,7 @@ class AuthenticationHttpIntegrationTest {
             assertThat(committed ? commitPause.committed.await(5, TimeUnit.SECONDS)
                     : tokenGate.awaitEntered(5, TimeUnit.SECONDS)).isTrue();
             assertThat(old.isDone()).isFalse();
-            assertThat(counts()).isEqualTo(committed ? before.plusAccount() : before);
+            assertThat(counts()).isEqualTo(before);
             UUID committedId = committed ? bindingId() : null;
             // Termination must finish while the callback is held, not after fixture release.
             if (directInvalidation) {
@@ -1505,8 +1455,8 @@ class AuthenticationHttpIntegrationTest {
             assertThat(browser.sessionId()).isEqualTo(newSession);
             assertThat(probe().sessions).doesNotContainKey(oldSession);
             assertSessionIdentity(browser, newId, client);
-            assertThat(bindingCount(subject)).isEqualTo(tokenFailure ? 0 : 1);
-            assertThat(counts()).isEqualTo(tokenFailure ? before.plusAccount() : before.plusAccount().plusAccount());
+            assertThat(bindingCount(subject)).isEqualTo(1);
+            assertThat(counts()).isEqualTo(before);
             assertThat(provider.tokenRequests()).hasSize(2);
             if (committed) {
                 assertThat(bindingId()).isEqualTo(committedId);
@@ -1515,7 +1465,7 @@ class AuthenticationHttpIntegrationTest {
                 provider.scenario(Scenario.verified(subject));
                 complete(browser);
                 assertSessionIdentity(browser, committedId, authorizedClient(probe().sessions.get(browser.sessionId())));
-                assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+                assertThat(counts()).isEqualTo(before);
             }
         }
         finally {
@@ -1548,7 +1498,7 @@ class AuthenticationHttpIntegrationTest {
             assertThat(probe().sessions.get(pause.rotatedId.get()) == original).isTrue();
             assertThat(hasAuthorizedClient(original)).isTrue();
             assertThat(hasAuthentication(original)).isFalse();
-            assertThat(counts()).isEqualTo(before.plusAccount());
+            assertThat(counts()).isEqualTo(before);
             UUID durableOldUser = bindingId();
             assertThat(old.isDone()).isFalse();
 
@@ -1593,7 +1543,7 @@ class AuthenticationHttpIntegrationTest {
             assertThat(probe().sessions).doesNotContainKeys(anonymousId, pause.rotatedId.get());
             assertSessionIdentity(browser, newUser, newClient);
             assertThat(bindingId()).isEqualTo(durableOldUser);
-            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+            assertThat(counts()).isEqualTo(before);
             assertThat(provider.tokenRequests()).hasSize(2);
         }
         finally {
@@ -1644,7 +1594,7 @@ class AuthenticationHttpIntegrationTest {
             assertThat(gate.decisions.get("O1-A").order()).isGreaterThan(gate.decisions.get("O1-B").order());
             assertAccount(browser.get("/api/me"), bindingId(next));
             assertThat(bindingId()).isEqualTo(oldUser);
-            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+            assertThat(counts()).isEqualTo(before);
         }
         finally {
             gate.release.countDown();
@@ -1701,7 +1651,7 @@ class AuthenticationHttpIntegrationTest {
             assertThat(jar.contextId().equals(contextB)).isTrue();
             assertAccount(jar.get("/api/me"), userB);
             assertThat(probe().sessions.get(sessionA) == original).as("Independent live A is not globally revoked").isTrue();
-            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+            assertThat(counts()).isEqualTo(before);
             System.out.println("COOKIE_CONTEXT_ORACLE O2=L1_CHARACTERIZATION NOT_DEFECT_FIXED_GREEN");
         }
         finally {
@@ -1739,7 +1689,7 @@ class AuthenticationHttpIntegrationTest {
             gate.release.countDown();
             assertAccount(old.get(30, TimeUnit.SECONDS), userA);
             assertAccount(browser.get("/api/me"), bindingId(next));
-            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+            assertThat(counts()).isEqualTo(before);
         }
         finally {
             gate.release.countDown();
@@ -1783,7 +1733,7 @@ class AuthenticationHttpIntegrationTest {
             var stampA = registry().capture(pause.session.get());
             assertThat(registry().finalAdmit(contextA, stampA)).isTrue();
             assertThat(hasAuthentication(pause.session.get())).isTrue();
-            assertThat(counts()).isEqualTo(before.plusAccount());
+            assertThat(counts()).isEqualTo(before);
             if (invalidateA) {
                 pause.session.get().invalidate();
                 assertThat(probe().sessions).doesNotContainKey(rotatedA);
@@ -1812,7 +1762,7 @@ class AuthenticationHttpIntegrationTest {
             assertNoContextCookie(logout(jar));
             complete(jar);
             assertAccount(jar.get("/api/me"), bindingId(next));
-            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+            assertThat(counts()).isEqualTo(before);
             System.out.println("COOKIE_CONTEXT_ORACLE late_success=JAVA_HTTP_CONTROL invalidated_A=" + invalidateA
                     + " browser_proof=NOT_RUN");
         }
@@ -1874,7 +1824,7 @@ class AuthenticationHttpIntegrationTest {
             assertAccount(jar.get("/api/me"), bindingId(next));
             assertThat(bindingCount(subject)).isEqualTo(1);
             assertThat(bindingCount(next)).isEqualTo(1);
-            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+            assertThat(counts()).isEqualTo(before);
             System.out.println("COOKIE_CONTEXT_ORACLE same_Q_old_SID_logout=JAVA_HTTP_CONTROL browser_proof=NOT_RUN");
         }
         finally {
@@ -1894,7 +1844,7 @@ class AuthenticationHttpIntegrationTest {
     @RepeatedTest(3)
     @Timeout(60)
     void cookieContextIndependentQProgressWhileOtherRealDatabaseCallbackIsHeld() throws Exception {
-        // Preserve the existing real INSERT barrier and every durable/principal assertion.
+        // Preserve the real existing-owner read barrier and every durable/principal assertion.
         independentBrowserSessionCompletesWhileOtherCallbackIsHeld();
     }
 
@@ -1936,7 +1886,7 @@ class AuthenticationHttpIntegrationTest {
         assertThat(registry().capture(probe().sessions.get(session)).equals(stamp)).isTrue();
         assertAccount(browser.get("/api/me"), bindingId());
         assertNoContextCookie(logout(browser));
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
     }
 
     @Test
@@ -1978,7 +1928,7 @@ class AuthenticationHttpIntegrationTest {
         assertAccount(b.get("/api/me"), bindingId(next));
         assertNoContextCookie(logout(b));
         assertJsonError(b.get("/api/me"), 401);
-        assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+        assertThat(counts()).isEqualTo(before);
     }
 
     @Test
@@ -2002,7 +1952,7 @@ class AuthenticationHttpIntegrationTest {
                 Map.of("Origin", origin, "X-CSRF-TOKEN", (String) json(bootstrap).get("token")));
         assertJsonError(cleanup, 409);
         assertNoContextCookie(cleanup);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
         assertThat(browser.sessionId()).as("Real cleanup removes the incoming SID from this same jar").isEmpty();
         System.out.println("COOKIE_CONTEXT_RECOVERY_SETUP kind=expired private401=true cleanup409=true same_jar=true");
         String newCsrf = assertNewRecoveryBootstrapAndEcho(browser, context, authenticatedSession);
@@ -2038,7 +1988,7 @@ class AuthenticationHttpIntegrationTest {
                 Map.of("Origin", origin, "X-CSRF-TOKEN", (String) json(bootstrap).get("token")));
         assertJsonError(cleanup, 409);
         assertNoContextCookie(cleanup);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
         assertThat(browser.sessionId()).as("Real cleanup removes the incoming SID from this same jar").isEmpty();
         System.out.println("COOKIE_CONTEXT_RECOVERY_SETUP kind=actual_restart private401=true cleanup409=true same_jar=true");
         String newCsrf = assertNewRecoveryBootstrapAndEcho(browser, context, authenticatedSession);
@@ -2086,7 +2036,7 @@ class AuthenticationHttpIntegrationTest {
         assertAccount(browser.get("/api/me"), durable);
         assertThat(bindingId()).isEqualTo(durable);
         assertThat(bindingCount(subject)).isEqualTo(1);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
         System.out.println("COOKIE_CONTEXT_RECOVERY_RESULT full_oidc=true same_jar=true same_durable_identity=true");
     }
 
@@ -2146,7 +2096,7 @@ class AuthenticationHttpIntegrationTest {
             assertThat(registry().capture(write.session.get()).equals(write.stamp.get())).isTrue();
             assertThat(write.writes.get()).isEqualTo(1);
             assertThat(bindingId()).isEqualTo(old.durable());
-            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+            assertThat(counts()).isEqualTo(before);
 
             assertNoContextCookie(logout(jar));
             HttpResponse<String> recovery = jar.get(begin(jar));
@@ -2156,7 +2106,7 @@ class AuthenticationHttpIntegrationTest {
             assertThat(bindingId(next)).isEqualTo(userB);
             assertThat(bindingCount(subject)).isEqualTo(1);
             assertThat(bindingCount(next)).isEqualTo(1);
-            assertThat(counts()).isEqualTo(before.plusAccount().plusAccount());
+            assertThat(counts()).isEqualTo(before);
             System.out.println("COOKIE_CONTEXT_RECOVERY_CONCURRENCY independent_anonymous_contexts=2"
                     + " late_response_after_B=401 same_jar_recovery=true browser_proof=NOT_RUN");
         }
@@ -2207,7 +2157,7 @@ class AuthenticationHttpIntegrationTest {
             assertJsonError(denied, 409);
             assertNoContextCookie(denied);
             assertJsonError(jar.get("/api/me"), 401);
-            assertThat(counts()).isEqualTo(before.plusAccount());
+            assertThat(counts()).isEqualTo(before);
 
             HttpResponse<String> cleanup = jar.post(URI.create(origin + "/auth/logout"), "", Map.of(
                     "Origin", origin, "X-CSRF-TOKEN", token));
@@ -2244,7 +2194,7 @@ class AuthenticationHttpIntegrationTest {
         assertJsonError(cleanup, 409);
         assertNoContextCookie(cleanup);
         assertThat(jar.sessionId()).isEmpty();
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(counts()).isEqualTo(before);
         return old;
     }
 
@@ -2363,9 +2313,9 @@ class AuthenticationHttpIntegrationTest {
             newGate.close();
             assertRedirect(current.get(10, TimeUnit.SECONDS), origin + "/account");
             assertSessionIdentity(browser, bindingId(newSubject), authorizedClient(probe().sessions.get(browser.sessionId())));
-            assertThat(bindingCount(subject)).isZero();
-            assertThat(bindingCount(thirdSubject)).isZero();
-            assertThat(counts()).isEqualTo(before.plusAccount());
+            assertThat(bindingCount(subject)).isEqualTo(1);
+            assertThat(bindingCount(thirdSubject)).isEqualTo(1);
+            assertThat(counts()).isEqualTo(before);
         }
         finally {
             oldGate.close();
@@ -2388,7 +2338,7 @@ class AuthenticationHttpIntegrationTest {
     }
 
     private static String nextSubject() {
-        String next = "auth0|pilot-" + NEXT_SUBJECT.getAndIncrement();
+        String next = "synthetic|pilot-" + NEXT_SUBJECT.getAndIncrement();
         assertThat(PILOT_SUBJECTS.contains(next)).isTrue();
         return next;
     }
@@ -2430,7 +2380,7 @@ class AuthenticationHttpIntegrationTest {
     @ValueSource(booleans = {false, true})
     void cognitoUnknownOrUnadmittedPairCannotCreateAnInternalAccount(boolean unadmitted) throws Exception {
         withCognito(() -> {
-            Scenario attempt = cognitoScenario();
+            Scenario attempt = Scenario.verified(MISSING_OWNER);
             if (unadmitted) attempt = Scenario.verified("opaque-unadmitted-owner").idClaim("token_use", "id");
             assertRejectedWithoutAccount(attempt);
             assertThat(provider.tokenRequests()).hasSize(1);
@@ -2726,20 +2676,21 @@ class AuthenticationHttpIntegrationTest {
     }
 
     @Test
-    void emailConfirmationAuth0DefaultIsClosedAndOrdinaryAuth0LoginRemainsUnchanged() throws Exception {
+    void legacyRoutesNeverStartAuthenticationOrConfirmationAndCognitoStillWorks() throws Exception {
         Browser browser = browser();
         String token = csrf(browser);
         var durable = confirmationDurableSnapshot();
-        for (String path : List.of("/auth/confirm-email", "/auth/resend-confirmation-code")) {
-            assertJsonError(browser.jsonPost(path, "{}", Map.of("Origin", origin, "X-CSRF-TOKEN", token)), 403);
+        for (String path : List.of("/oauth2/authorization/auth0", "/login/oauth2/code/auth0",
+                "/oauth2/authorization/%61uth0", "/login/oauth2/code/%61uth0")) {
+            assertJsonError(browser.post(URI.create(origin + path), "", Map.of("Origin", origin, "X-CSRF-TOKEN", token)), 403);
             assertJsonError(browser.get(path), 403);
         }
         assertThat(CONFIRMATION.calls).hasValue(0);
         assertThat(confirmationDurableSnapshot().equals(durable)).isTrue();
         complete(browser);
         assertAccount(browser.get("/api/me"), bindingId());
-        assertThat(provider.userInfoRequests()).isEqualTo(1);
-        assertThat(counts()).isEqualTo(before.plusAccount());
+        assertThat(provider.userInfoRequests()).isZero();
+        assertThat(counts()).isEqualTo(before);
         logout(browser);
     }
 
@@ -2849,22 +2800,10 @@ class AuthenticationHttpIntegrationTest {
     }
 
     private UUID prepareCognitoOwner() {
-        var users = application.getBean(AuthenticatedUserService.class);
-        Identity old = new Identity("https://retained.synthetic.example/", UUID.randomUUID().toString());
-        var owner = users.resolve(old, identity -> true); // fixture only: controlled original-account creation
-        var transaction = new org.springframework.transaction.support.TransactionTemplate(
-                new org.springframework.jdbc.support.JdbcTransactionManager(application.getBean(DataSource.class)));
-        transaction.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_READ_COMMITTED);
-        transaction.setTimeout(15);
-        transaction.executeWithoutResult(status -> {
-            jdbc.execute("SET LOCAL lock_timeout='5s'");
-            jdbc.execute("SET LOCAL statement_timeout='10s'");
-            jdbc.execute("SET LOCAL transaction_timeout='15s'");
-            assertThat(jdbc.queryForObject("SELECT public.migrate_owner_identity(?,?,?,?,?,?,?)", String.class,
-                    UUID.randomUUID(), owner.id(), 1L, old.issuer(), old.subject(), provider.issuer().toString(), subject)).isEqualTo("APPLIED");
-        });
-        before = counts();
-        return owner.id();
+        UUID owner = FIXTURE_OWNERS.get(subject);
+        assertThat(owner).isNotNull().isEqualTo(bindingId());
+        assertThat(counts()).isEqualTo(before);
+        return owner;
     }
 
     @FunctionalInterface
@@ -2923,7 +2862,7 @@ class AuthenticationHttpIntegrationTest {
     }
 
     private static URI authorize(Browser browser, HttpResponse<String> initiation) throws Exception {
-        assertRedirect(initiation, origin + "/oauth2/authorization/" + providerMode.registrationId());
+        assertRedirect(initiation, origin + "/oauth2/authorization/" + AuthenticationProperties.REGISTRATION_ID);
         HttpResponse<String> authorization = browser.get(URI.create(location(initiation)));
         assertThat(authorization.statusCode()).isIn(302, 303);
         URI providerLocation = URI.create(location(authorization));
@@ -2933,7 +2872,7 @@ class AuthenticationHttpIntegrationTest {
         HttpResponse<String> issuedCode = browser.get(providerLocation);
         assertThat(issuedCode.statusCode()).isEqualTo(302);
         URI callback = URI.create(location(issuedCode));
-        assertThat(callback.toString()).startsWith(origin + "/login/oauth2/code/" + providerMode.registrationId() + "?");
+        assertThat(callback.toString()).startsWith(origin + "/login/oauth2/code/" + AuthenticationProperties.REGISTRATION_ID + "?");
         return callback;
     }
 
@@ -2975,7 +2914,7 @@ class AuthenticationHttpIntegrationTest {
 
     private static void assertNoPrivateProtocolData(HttpResponse<String> response) {
         assertThat(response.body()).doesNotContain(CLIENT_SECRET, "access_token", "id_token", "refresh_token",
-                "JSESSIONID", "auth0|", "SQLSTATE", "SQLException", "org.springframework", "<html", "<form");
+                "JSESSIONID", "synthetic|", "SQLSTATE", "SQLException", "org.springframework", "<html", "<form");
     }
 
     private UUID bindingId() {
@@ -3001,7 +2940,6 @@ class AuthenticationHttpIntegrationTest {
     }
 
     private record Counts(long users, long profiles, long bindings, long workspaces) {
-        Counts plusAccount() { return new Counts(users + 1, profiles + 1, bindings + 1, workspaces); }
     }
 
     private static SessionProbe probe() { return application.getBean(SessionProbe.class); }
@@ -3325,7 +3263,7 @@ class AuthenticationHttpIntegrationTest {
         final AtomicBoolean failAcquisition = new AtomicBoolean();
         final AtomicBoolean loseNextCommitAcknowledgement = new AtomicBoolean();
         final AtomicInteger committedThenFailed = new AtomicInteger();
-        volatile BindingRace bindingRace;
+        volatile ResolutionReadPause resolutionReadPause;
         volatile CommitPause commitPause;
         volatile RotationPause rotationPause;
         volatile SuccessPause successPause;
@@ -3339,13 +3277,13 @@ class AuthenticationHttpIntegrationTest {
     }
 
     static final class CommitPause {
-        final AtomicReference<Connection> bindingConnection = new AtomicReference<>();
+        final AtomicReference<Connection> readConnection = new AtomicReference<>();
         final AtomicInteger observedCommits = new AtomicInteger();
         final CountDownLatch committed = new CountDownLatch(1);
         final CountDownLatch release = new CountDownLatch(1);
 
         void afterCommit(Connection connection) throws SQLException {
-            if (connection != bindingConnection.get()) return;
+            if (connection != readConnection.get()) return;
             observedCommits.incrementAndGet();
             committed.countDown();
             try {
@@ -3360,23 +3298,24 @@ class AuthenticationHttpIntegrationTest {
         }
     }
 
-    static final class BindingRace {
+    static final class ResolutionReadPause {
         final boolean commitFirst;
         final AtomicInteger attempts = new AtomicInteger();
         final AtomicReference<Integer> firstPid = new AtomicReference<>();
         final AtomicReference<Integer> secondPid = new AtomicReference<>();
-        final AtomicReference<UUID> firstUser = new AtomicReference<>();
-        final AtomicReference<UUID> secondUser = new AtomicReference<>();
         final AtomicInteger firstCommits = new AtomicInteger();
         final AtomicInteger firstRollbacks = new AtomicInteger();
-        final CountDownLatch firstInserted = new CountDownLatch(1);
+        final CountDownLatch firstReadReturned = new CountDownLatch(1);
         final CountDownLatch secondAttempted = new CountDownLatch(1);
         final CountDownLatch releaseFirst = new CountDownLatch(1);
         volatile Connection firstConnection;
 
-        BindingRace(boolean commitFirst) { this.commitFirst = commitFirst; }
+        ResolutionReadPause(boolean commitFirst) { this.commitFirst = commitFirst; }
 
-        int beforeInsert(Connection connection, UUID user) throws SQLException {
+        synchronized int beforeRead(Connection connection) throws SQLException {
+            // Observe only two in-flight identity resolutions; private follow-up reads
+            // and already-released operations do not become artificial competitors.
+            if (releaseFirst.getCount() == 0 || attempts.get() >= 2) return 0;
             int attempt = attempts.incrementAndGet();
             int pid;
             try (var statement = connection.createStatement()) {
@@ -3391,36 +3330,31 @@ class AuthenticationHttpIntegrationTest {
             if (attempt == 1) {
                 firstConnection = connection;
                 firstPid.set(pid);
-                firstUser.set(user);
             }
             else if (attempt == 2) {
                 secondPid.set(pid);
-                secondUser.set(user);
                 secondAttempted.countDown();
-            }
-            else {
-                throw new SQLException("Unexpected extra binding INSERT in two-flow proof");
             }
             return attempt;
         }
 
-        void afterInsert(int attempt) throws SQLException {
+        void afterRead(int attempt) throws SQLException {
             if (attempt != 1) {
                 return;
             }
-            // The delegate statement has inserted the binding; application commit has not run.
-            firstInserted.countDown();
+            // The real SELECT returned its ResultSet; the owned read transaction has not committed.
+            firstReadReturned.countDown();
             try {
                 if (!releaseFirst.await(10, TimeUnit.SECONDS)) {
-                    throw new SQLException("Test binding barrier expired");
+                    throw new SQLException("Test identity-read barrier expired");
                 }
             }
             catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
-                throw new SQLException("Test binding barrier interrupted", interrupted);
+                throw new SQLException("Test identity-read barrier interrupted", interrupted);
             }
             if (!commitFirst) {
-                throw new SQLException("Test-only failure after real binding INSERT", "XX000");
+                throw new SQLException("Test-only failure after real identity SELECT", "XX000");
             }
         }
 
@@ -3455,7 +3389,7 @@ class AuthenticationHttpIntegrationTest {
                     new Class<?>[] {Connection.class}, (proxy, method, args) -> {
                         try {
                             Object result = method.invoke(connection, args);
-                            BindingRace race = FAULTS.bindingRace;
+                            ResolutionReadPause race = FAULTS.resolutionReadPause;
                             CommitPause commitPause = FAULTS.commitPause;
                             if (race != null) {
                                 race.completed(connection, method.getName());
@@ -3466,8 +3400,8 @@ class AuthenticationHttpIntegrationTest {
                             }
                             if ((race != null || commitPause != null) && method.getName().equals("prepareStatement")
                                     && args != null && args[0] instanceof String sql
-                                    && sql.startsWith("INSERT INTO user_identity_bindings ")) {
-                                return observeBindingInsert(connection, (PreparedStatement) result, race, commitPause);
+                                    && sql.startsWith("SELECT u.id, u.status FROM user_identity_bindings b")) {
+                                return observeIdentityRead(connection, (PreparedStatement) result, race, commitPause);
                             }
                             if (method.getName().equals("commit")
                                     && FAULTS.loseNextCommitAcknowledgement.compareAndSet(true, false)) {
@@ -3483,25 +3417,26 @@ class AuthenticationHttpIntegrationTest {
                     });
         }
 
-        private PreparedStatement observeBindingInsert(Connection connection, PreparedStatement statement,
-                BindingRace race, CommitPause commitPause) {
-            AtomicReference<UUID> user = new AtomicReference<>();
+        private PreparedStatement observeIdentityRead(Connection connection, PreparedStatement statement,
+                ResolutionReadPause race, CommitPause commitPause) {
             return (PreparedStatement) Proxy.newProxyInstance(PreparedStatement.class.getClassLoader(),
                     new Class<?>[] {PreparedStatement.class}, (proxy, method, args) -> {
                         try {
-                            if (method.getName().equals("setObject") && args != null
-                                    && Integer.valueOf(3).equals(args[0]) && args[1] instanceof UUID id) {
-                                user.set(id);
-                            }
-                            boolean executing = method.getName().equals("executeUpdate");
+                            boolean executing = method.getName().equals("executeQuery");
                             if (executing && commitPause != null) {
-                                commitPause.bindingConnection.compareAndSet(null, connection);
+                                commitPause.readConnection.compareAndSet(null, connection);
                             }
                             int attempt = executing && race != null
-                                    ? race.beforeInsert(connection, user.get()) : 0;
+                                    ? race.beforeRead(connection) : 0;
                             Object result = method.invoke(statement, args);
                             if (attempt != 0) {
-                                race.afterInsert(attempt);
+                                try {
+                                    race.afterRead(attempt);
+                                }
+                                catch (SQLException failure) {
+                                    ((java.sql.ResultSet) result).close();
+                                    throw failure;
+                                }
                             }
                             return result;
                         }
@@ -3526,15 +3461,15 @@ class AuthenticationHttpIntegrationTest {
         }
         @Bean @Primary AuthenticationProperties testAuthenticationProperties() {
             return new AuthenticationProperties(provider.issuer().toString(), CLIENT_ID, CLIENT_SECRET,
-                    origin, admitted, false, providerMode, providerMode == AuthenticationProperties.Provider.COGNITO);
+                    origin, admitted, false, providerMode, true);
         }
         @Bean @Primary Clock testClock() { return CLOCK; }
         @Bean @Primary ClientRegistrationRepository testClientRegistrations() {
-            ClientRegistration registration = ClientRegistration.withRegistrationId(providerMode.registrationId())
+            ClientRegistration registration = ClientRegistration.withRegistrationId(AuthenticationProperties.REGISTRATION_ID)
                     .clientId(CLIENT_ID).clientSecret(CLIENT_SECRET)
                     .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                     .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
-                    .redirectUri(origin + "/login/oauth2/code/" + providerMode.registrationId())
+                    .redirectUri(origin + "/login/oauth2/code/" + AuthenticationProperties.REGISTRATION_ID)
                     .scope("openid", "profile", "email")
                     .authorizationUri(provider.endpoint("authorize")).tokenUri(provider.endpoint("token"))
                     .jwkSetUri(provider.endpoint("jwks")).userInfoUri(provider.endpoint("userinfo"))
@@ -3551,7 +3486,7 @@ class AuthenticationHttpIntegrationTest {
                 RotationPause pause = FAULTS.rotationPause;
                 if (pause == null || !(request instanceof HttpServletRequest http)
                         || !(response instanceof HttpServletResponse output)
-                        || !("/login/oauth2/code/" + providerMode.registrationId()).equals(http.getRequestURI())
+                        || !("/login/oauth2/code/" + AuthenticationProperties.REGISTRATION_ID).equals(http.getRequestURI())
                         || http.getSession(false) != pause.original) {
                     chain.doFilter(request, response);
                     return;

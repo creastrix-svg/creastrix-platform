@@ -12,14 +12,22 @@ real Auth0 owner walkthrough P completed on 2026-10-11; backend tests alone do n
 Historical server, frontend/browser and CI checks do not close
 the follow-up, establish a new APPROVED domain specification or authorize public access.
 
+The owner-authorized 2026-10-14 Auth0 source-retirement candidate changes the
+active provider contract below to Cognito only. Retirement verification and
+integration are separate pending gates; earlier proofs keep their original scopes.
+The [external app retirement](authentication-provider-migration.md#2026-10-14-auth0-retirement-boundary)
+is a separate completed operator action, not verification of this candidate.
+
 ## Identity and persistence boundary
 
 The confidential backend uses the standard authorization-code OIDC flow with
 S256 PKCE, `openid profile email`, `prompt=login` and `max_age=0`. It preserves
-Spring signature, issuer, audience/azp, timestamps, state, nonce and, for Auth0, UserInfo
-subject validation. Raw `email_verified` must be JSON boolean; raw `auth_time`
+Spring signature, issuer, audience/azp, timestamps, state and nonce validation.
+The supported Cognito adapter accepts only its signed ID token with `token_use=id`
+and does not request or accept UserInfo as a claim source.
+Raw `email_verified` must be JSON boolean; raw `auth_time`
 must be a finite, nonnegative integral numeric date, before claim conversion.
-Every required claim source must provide a nonblank email and verified=true;
+The signed ID token must provide a nonblank email and verified=true;
 the ID-token authentication time must fall between the saved request start
 minus 60 seconds and now plus 60 seconds. The complete flow expires at 5 minutes.
 Protocol, freshness and identity-allowlist checks precede binding access or creation.
@@ -39,12 +47,13 @@ Legacy Users are not backfilled. Privileged raw SQL is not actor-authorized.
 
 ### Integrated controlled Cognito exception and local owner transfer
 
-The owner accepted one selected registration: AUTH0 (default) or COGNITO.
-The Cognito candidate pins an original Frankfurt regional pool issuer and client,
+PR #37 introduced the selected AUTH0/COGNITO registration. The 2026-10-14
+source-retirement candidate supports only COGNITO, also the default, with
+required existing-only admission. It pins an original Frankfurt regional pool issuer and client,
 requires `token_use=id` and validates only the signed ID token. Cognito UserInfo
 is deliberately not requested: its string verification flags are not coerced
-into trusted booleans. Auth0 keeps the prior raw checks of returned ID/UserInfo
-sources. Subject is opaque, not a UUID. Protocol/state/nonce, verified email,
+into trusted booleans. Legacy AUTH0 selection fails closed and its entry/callback
+paths are unsupported. Subject is opaque, not a UUID. Protocol/state/nonce, verified email,
 auth_time/five-minute freshness and exact admission still precede resolution.
 
 V13 replaces only the historical-per-User cardinality with one current selector,
@@ -64,7 +73,7 @@ on 2026-10-13 verified backup/restore, applied V13 and acknowledged one exact
 owner switch with independent read-back. User UUID/Profile/status/generation,
 rights/business rows, both historical pairs and one receipt were retained.
 The private local runtime now selects Cognito existing-only for one exact owner
-identity; source defaults remain AUTH0. Real owner login, local logout (204 and
+identity; that operation left PR #37's AUTH0 source default unchanged. Real owner login, local logout (204 and
 private 401), repeat login and login after the owner-reported password change
 (private 200, same ACTIVE User) are bounded external operator evidence, not tests
 performed by this alignment or public rollout.
@@ -81,9 +90,10 @@ approval of new recovery code. Historical independent runtime checks and native
 remains UNKNOWN/INCOMPLETE. Later independent review and PR #37 publication/
 integration are separate completed gates, not global IDE or public authorization.
 Any future switch still requires separate authorization, identity proof,
-backup/preflight and a stopped single application. Auth0 remains retained, not a
-current alias; controlled return requires another operation/receipt, restart and
-fresh login, not dump restore or old cookies. External Cognito self-registration
+backup/preflight and a stopped single application. A future provider also needs
+a separately reviewed runtime adapter and valid private configuration; a selector
+switch or restart alone cannot restore the retired Auth0 adapter or deleted client.
+Historical bindings and receipts remain immutable. External Cognito self-registration
 does not authorize unknown Creastrix identities. Own SES, social/TOTP and public
 rollout remain outside this alignment. See the [local cookie disposition](#open-cookie-follow-up).
 
@@ -117,21 +127,21 @@ derives trusted destinations from Host/Forwarded headers. No CORS is enabled.
 | `POST /auth/login` | Exact Origin + form `_csrf`, explicit intent and admissible Q/session stamp; authenticated or inadmissible pair gets 409; valid initiation gets fixed 303 |
 | `POST /auth/confirm-email` | Anonymous selected-Cognito JSON `email/code`, exact Host/Origin and fresh standard session CSRF; known provider confirmation alone selects 200 `confirmed`, not local login |
 | `POST /auth/resend-confirmation-code` | Anonymous selected-Cognito JSON `email`, same security boundary; generic conditional 202 `code_request_accepted`, not existence or delivery proof |
-| `GET /oauth2/authorization/auth0` | One live session intent required before the standard OIDC redirect |
-| `GET /login/oauth2/code/auth0` | Protocol-gated callback; no local Origin required on this GET; busy/already-authenticated conflict uses fixed failure 303 |
+| `GET /oauth2/authorization/cognito` | One live session intent required before the standard OIDC redirect |
+| `GET /login/oauth2/code/cognito` | Protocol-gated callback; no local Origin required on this GET; busy/already-authenticated conflict uses fixed failure 303 |
 | `GET /api/me` | Current session/admission/ACTIVE plus final captured-stamp admission after DB lookup; only own `id/status`, no identity-provider claims or tokens |
 | `POST /auth/logout` | Exact Origin + CSRF; revoke presented Q generation and clean caller SID; 204 for Q revocation, cleanup-only 409 for unknown/expired Q |
 | `GET /actuator/health` | Minimal health; other management and unknown routes denied |
 
-In the selected Cognito candidate only, the entry/callback suffix is `cognito`
-instead of `auth0`. The unselected registration routes are denied; the namespaces,
+In the retirement candidate, `cognito` is the only supported entry/callback
+suffix. Legacy `auth0` and unknown registration routes are denied; the namespaces,
 Host/Origin, decoded-segment matching, fixed destinations and cleanup stay the same.
 
 The provider-only confirmation routes do not require live Q, echo or `canStart`;
 unknown/expired Q is not a reason to automatically logout/reset or deny recovery
 when ordinary CSRF is valid. Authenticated callers are rejected before provider
-work and without changing their principal/session. AUTH0/unselected mode remains
-closed. Confirmation does not create User/Profile/binding/selector/receipt,
+work and without changing their principal/session. No alternative provider mode
+opens these routes. Confirmation does not create User/Profile/binding/selector/receipt,
 LOGIN_INTENT, an authenticated session, Workspace or grants. It only leads back
 to a fresh ordinary OIDC login under unchanged exact admission.
 
@@ -345,12 +355,12 @@ closure does not authorize provider/admission/account-right changes or rollout.
 ### Callback navigation and opaque errors
 
 Own navigation redirects are literal absolute 303 Locations: login initiation
-to `http://localhost:3000/oauth2/authorization/auth0`, callback success to
+to `http://localhost:3000/oauth2/authorization/cognito`, callback success to
 `http://localhost:3000/account`, failure to
 `http://localhost:3000/login?auth=failed`. No user redirect parameter is accepted;
 session IDs are never URL-encoded. `/login` and `/account` HTML belong to the
 React client, not backend. Login is a top-level form POST, not fetch-follow to the provider.
-The Cognito candidate derives the fixed entry Location from the single selected registration.
+The retirement candidate derives that fixed entry Location from its sole Cognito registration.
 
 API errors are opaque JSON: 401 for absent/expired session, 403 for confirmed
 inactive/denied access or invalid security input, 503 for unavailable current
@@ -447,15 +457,17 @@ revive an old session. CSRF/bootstrap and logout cleanup remain available.
 Cookie defaults: host-only, HttpOnly, SameSite=Lax, Path `/`, Secure=true,
 cookie-only tracking. Only explicit `auth-local` permits Secure=false on the
 fixed loopback HTTP setup. This is not a public deployment configuration.
-The profile defaults to the exact standard EU Auth0 HTTPS issuer. The selected
-Cognito candidate requires the original `https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_<pool>`
-issuer and existing-only mode; external client credentials stay backend-only.
+The retirement candidate defaults to COGNITO and existing-only mode. It requires
+the exact externally configured original
+`https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_<pool>` issuer;
+external client credentials stay backend-only. Legacy AUTH0 or unknown provider
+selection, a different issuer shape or disabling existing-only fails closed.
 Admission subjects are immutable for the process lifetime; empty
 admission denies all. Changes use controlled restart. Auth-disabled/non-web
 contexts require no provider credentials or discovery and offer no generated
 password, form login or basic-auth alternative.
 
-Local logout does not log out the selected Auth0 or Cognito provider globally.
+Local logout does not log out Cognito globally.
 Password reset/provider block does not guarantee immediate revocation of an
 existing local session. Already sent
 responses cannot be recalled. The integrated React client handles stale responses
@@ -528,9 +540,10 @@ At that 2026-09-14 gate, `AUTH-COOKIE-FOLLOWUP-001` remained OPEN under its limi
 
 F separately requires a real React/dev-proxy/browser test, including actual
 cookie behavior and cache clearing. A Java HTTP cookie jar cannot prove browser
-SameSite/HttpOnly or proxy behavior. P separately requires authorized real Auth0
-Free EU setup, hosted DB signup, verification/reset delivery and relogin. No
-real Auth0/Google/Apple interaction, tenant/client setup, paid resource,
+SameSite/HttpOnly or proxy behavior. The original P gate separately required
+authorized real Auth0 Free EU setup, hosted DB signup, verification/reset delivery
+and relogin; its 2026-10-11 completion remains historical after retirement. No
+new Auth0/Google/Apple interaction, tenant/client setup, paid resource,
 rollout, Workspace/RMP API, receipt protocol or commerce work is included in the B/P boundary.
 The separate integrated local frontend F evidence is recorded below.
 

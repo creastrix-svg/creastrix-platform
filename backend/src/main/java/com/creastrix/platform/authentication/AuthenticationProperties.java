@@ -13,23 +13,16 @@ public record AuthenticationProperties(
         Set<String> allowedSubjects, boolean secureCookie, Provider provider, boolean existingOnly) {
 
     public enum Provider {
-        AUTH0("auth0"), COGNITO("cognito");
-        private final String registrationId;
-        Provider(String registrationId) { this.registrationId = registrationId; }
-        public String registrationId() { return registrationId; }
+        COGNITO;
         public static Provider configured(String value) {
             for (Provider candidate : values()) {
                 if (candidate.name().equals(value)) return candidate;
             }
-            throw new IllegalArgumentException("creastrix.auth.provider must be AUTH0 or COGNITO");
+            throw new IllegalArgumentException("creastrix.auth.provider must be COGNITO");
         }
     }
 
-    /** Preserves the original Auth0 registration policy until an explicit restart/switch. */
-    public AuthenticationProperties(String issuer, String clientId, String clientSecret, String browserOrigin,
-                                    Set<String> allowedSubjects, boolean secureCookie) {
-        this(issuer, clientId, clientSecret, browserOrigin, allowedSubjects, secureCookie, Provider.AUTH0, false);
-    }
+    public static final String REGISTRATION_ID = "cognito";
 
     public static final Duration FLOW_LIFETIME = Duration.ofMinutes(5);
     public static final Duration CLOCK_SKEW = Duration.ofSeconds(60);
@@ -58,17 +51,15 @@ public record AuthenticationProperties(
 
     /** Called only by runtime wiring. HTTP issuers are possible only in test-owned bean wiring. */
     public void validateRuntime(boolean localProfile) {
-        if (provider == Provider.COGNITO && !existingOnly) {
+        if (!existingOnly) {
             throw new IllegalArgumentException("Cognito owner mode requires creastrix.auth.existing-only=true");
         }
         URI uri = configurationUri(issuer, "creastrix.auth.issuer");
-        boolean shape = provider == Provider.AUTH0
-                ? uri.getHost() != null && uri.getHost().endsWith(".eu.auth0.com") && "/".equals(uri.getRawPath())
-                : "cognito-idp.eu-central-1.amazonaws.com".equals(uri.getHost())
-                    && uri.getRawPath().matches("/eu-central-1_[A-Za-z0-9]+");
+        boolean shape = "cognito-idp.eu-central-1.amazonaws.com".equals(uri.getHost())
+                && uri.getRawPath().matches("/eu-central-1_[A-Za-z0-9]+");
         if (!"https".equals(uri.getScheme()) || !shape || uri.getPort() != -1
                 || uri.getUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null) {
-            throw new IllegalArgumentException("creastrix.auth.issuer must be an exact standard EU HTTPS issuer");
+            throw new IllegalArgumentException("creastrix.auth.issuer must be an exact Frankfurt Cognito HTTPS issuer");
         }
         if (localProfile) {
             if (!"http://localhost:3000".equals(browserOrigin) || secureCookie) {
@@ -100,7 +91,7 @@ public record AuthenticationProperties(
     }
 
     public String browserAuthority() { return URI.create(browserOrigin).getRawAuthority(); }
-    public String registrationId() { return provider.registrationId(); }
+    public String registrationId() { return REGISTRATION_ID; }
     public String callbackPath() { return "/login/oauth2/code/" + registrationId(); }
     public String entryPath() { return "/oauth2/authorization/" + registrationId(); }
     public String callbackUri() { return browserOrigin + callbackPath(); }
