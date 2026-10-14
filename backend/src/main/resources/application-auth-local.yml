@@ -10,6 +10,8 @@ server:
 creastrix:
   auth:
     enabled: true
+    provider: ${CREASTRIX_AUTH_PROVIDER:AUTH0}
+    existing-only: ${CREASTRIX_AUTH_EXISTING_ONLY:false}
     issuer: ${CREASTRIX_AUTH_ISSUER}
     client-id: ${CREASTRIX_AUTH_CLIENT_ID}
     client-secret: ${CREASTRIX_AUTH_CLIENT_SECRET}

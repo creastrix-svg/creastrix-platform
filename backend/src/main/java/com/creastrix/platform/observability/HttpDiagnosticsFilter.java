@@ -19,10 +19,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public final class HttpDiagnosticsFilter extends OncePerRequestFilter {
     private static final String[] PATHS = {"/actuator/health", "/auth/csrf", "/auth/login",
-            "/oauth2/authorization/auth0", "/login/oauth2/code/auth0", "/auth/logout", "/api/**"};
+            "/oauth2/authorization/auth0", "/login/oauth2/code/auth0", "/auth/logout", "/api/**",
+            "/oauth2/authorization/cognito", "/login/oauth2/code/cognito",
+            "/auth/confirm-email", "/auth/resend-confirmation-code"};
     private static final Diagnostics.Route[] ROUTES = {Diagnostics.Route.HEALTH, Diagnostics.Route.CSRF,
             Diagnostics.Route.LOGIN, Diagnostics.Route.OAUTH_ENTRY, Diagnostics.Route.CALLBACK,
-            Diagnostics.Route.LOGOUT, Diagnostics.Route.PRIVATE_API};
+            Diagnostics.Route.LOGOUT, Diagnostics.Route.PRIVATE_API,
+            Diagnostics.Route.OAUTH_ENTRY, Diagnostics.Route.CALLBACK,
+            Diagnostics.Route.CONFIRM_EMAIL, Diagnostics.Route.RESEND_CONFIRMATION_CODE};
     private static final PathPatternRequestMatcher[] MATCHERS = java.util.Arrays.stream(PATHS)
             .map(path -> PathPatternRequestMatcher.withDefaults().matcher(path)).toArray(PathPatternRequestMatcher[]::new);
 

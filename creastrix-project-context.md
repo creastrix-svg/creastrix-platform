@@ -159,7 +159,7 @@ PostgreSQL 18.4 and Flyway V1 → V11. See the exact merge and distinct verifica
 evidence in the [authentication boundary](docs/authentication-pilot.md#verification-gates).
 No tests were rerun by this documentation change; none of these results closes
 the separate cookie follow-up below. Subsequent finite local React/browser F is
-recorded below; real Auth0 walkthrough P has not been performed. No Workspace is created by
+recorded below; a separate bounded real Auth0 owner walkthrough P completed on 2026-10-11. No Workspace is created by
 login; no Workspace/RMP API, account linking or new commerce decision is added.
 
 ### S003 cookie pairing
@@ -194,7 +194,7 @@ combined foundation/HTTP/CI candidates are not composed into this change.
 `AUTH-COOKIE-FOLLOWUP-001` remains OPEN for explicit final disposition and pre-public-access gates.
 The 2026-09-14 temporary local-pilot acceptance did not automatically accept the
 later B-to-A consequence or public operation. Finite local React/dev-proxy/browser F
-subsequently completed; real Auth0 P, natural frequency, account takeover and the separate post-commit
+subsequently completed; bounded Auth0 P later completed separately. Natural frequency, account takeover and the separate post-commit
 network-delay scenario are not proved. Revisit the follow-up at browser verification
 and before public access/invitations/rollout. No next implementation slice is selected.
 
@@ -220,7 +220,8 @@ The 2026-10-09
 passed 135 tests, typecheck, lint and build; it did not run the browser matrix.
 The npm installation's one HIGH warning remains untriaged/open and requires
 separate triage before public deployment; successful CI is not full security.
-Real Auth0 P and rollout remain unverified. G1/G2 and L1
+Bounded Auth0 P completed separately on 2026-10-11; the local Cognito owner transfer
+completed separately on 2026-10-13, without public rollout. G1/G2 and L1
 remain distinct; stale UI response rejection does not close the old cross-Q server
 limitation or cover future business writes. Storage unavailability fails closed;
 completion/lifecycle events never republish the shared intent marker. Early native
@@ -229,6 +230,71 @@ Workspace/RMP API/forms, signup/social login or business decision changes are in
 The connected origin is fixed `http://localhost:3000`, with loopback strict port;
 build preview is disconnected. See the [frontend guide](frontend/README.md).
 `AUTH-COOKIE-FOLLOWUP-001` remains OPEN pending explicit final disposition and pre-public-access gates.
+
+### Controlled Cognito owner migration: accepted decision, author WIP
+
+The owner accepted ordinary external Cognito self-registration in Frankfurt with
+closed exact-pair Creastrix admission, not public Creastrix signup or access.
+The bounded code candidate uses one selected AUTH0/COGNITO registration; Cognito
+requires a verified signed ID token with raw Boolean email verification, numeric
+auth_time and token_use=id and does not call UserInfo. Auth0 retains its checks.
+V13/current selector and immutable receipts permit an explicitly authorized
+offline switch while retaining all historical pairs and the same internal
+User/Profile/status/eligibility generation and rights. No email auto-linking or
+simultaneously active aliases are accepted. Owner existing-only resolution denies
+unknown and superseded pairs before account creation.
+
+The code is unpublished feature-branch WIP, not coverage integrated into the
+accepted main baseline `fda0657246aa00fc259ea286dffd45de91415d9a`. Separately,
+the authorized 2026-10-13 local operator action verified backup/restore, applied
+V13 and acknowledged one owner switch with independent read-back. The same
+User UUID/Profile/status/generation/rights/business rows, both historical pairs
+and one receipt were retained. The local runtime selects Cognito existing-only
+with one exact owner subject through private environment; AUTH0 defaults are
+unchanged. Owner login, local logout/private 401, repeat login and login after
+the owner-reported password change/private 200 returned the same ACTIVE User.
+Auth0 tenant/client/account/private configuration remain, not a current alias.
+
+The historical Auth0 P, synthetic author tests, independent backend 1690/package
+and frontend 140 checks, native compilation/417 tests/scoped views and the local
+operator results have distinct scopes. Overall IDE schema/background completion
+remains UNKNOWN/INCOMPLETE. Real unverified/admitted backend refusal is NOT RUN;
+hosted UNCONFIRMED refusal and synthetic raw-Boolean rejection remain different
+proofs. On 2026-10-13 the owner explicitly accepted their combination with verified
+owner login for limited owner-only nonproduction source readiness, not reproduction
+of the missing real signed-false case, public access or approval of new recovery
+code. The exact disposition is retained in the runbook. Final review and publication
+are separate gates. The previous status-only alignment did not rerun backend
+tests or perform another provider/database action.
+The [runbook](docs/authentication-provider-migration.md) retains authorization,
+identity proof, backup and stopped-app prerequisites for future switches.
+Own SES à la carte remains a separate selected setup, not an already connected
+sender or SES Essentials. Social/TOTP, public access/rollout and
+AUTH-COOKIE-FOLLOWUP-001 closure remain outside this candidate.
+
+The separate recovery WIP adds explicit transient `/confirm-email` confirmation
+and resend for anonymous selected-Cognito requests, with exact Host/Origin and
+fresh standard session CSRF but no live-Q/echo prerequisite. Bounded backend-only
+ConfirmSignUp/ResendConfirmationCode preserve the entered email case and never
+link identities, create internal accounts/Workspace/grants or log in automatically.
+Provider email confirmation still needs a fresh ordinary OIDC flow and exact
+Creastrix admission. Author tests, native IDE and actual provider/browser recovery
+remain separate gates; no rollout or public self-admission is implied. Auth0 is
+retained and defaults unchanged; cookie/native/publication gates are not closed
+by the limited EMAIL disposition.
+
+Fresh isolated recovery author verification passed focused 528/528, the narrow
+diagnostic-catalog check 163/163, full 1826/1826 in 33 suites and package;
+PostgreSQL 18.4 / Flyway V1 → V13 were observed. Frontend 234/234, typecheck,
+lint and build passed. All prior backend 1690/frontend 140 testcase identities
+remain; failed attempts are retained separately. This is author source/mock/
+owned-Testcontainers evidence, not native/browser or CI proof. Original target/live
+resources were preserved. Separate scoped native, focused independent source/JAR
+review and real owner recovery/fresh OIDC results on 2026-10-14 are recorded in the
+[dated recovery evidence](docs/authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
+Overall IDE background/schema remains UNKNOWN/INCOMPLETE. Final narrow review,
+publication/CI, main integration and rollout are separate; source WIP and local
+operator results are not accepted-main coverage.
 
 ## Domain Principles
 

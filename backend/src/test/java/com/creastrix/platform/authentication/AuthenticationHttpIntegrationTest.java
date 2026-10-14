@@ -38,6 +38,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
@@ -50,6 +51,8 @@ import com.creastrix.platform.CreastrixApplication;
 import com.creastrix.platform.support.OidcTestProvider;
 import com.creastrix.platform.support.OidcTestProvider.Scenario;
 import com.creastrix.platform.user.application.UserService;
+import com.creastrix.platform.user.application.AuthenticatedUserService;
+import com.creastrix.platform.user.application.port.UserIdentityBindingRepository.Identity;
 import com.creastrix.platform.user.domain.UserStatus;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.Ports;
@@ -68,6 +71,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.TestMethodOrder;
+import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.parallel.Execution;
@@ -116,6 +122,7 @@ import static org.awaitility.Awaitility.await;
 @Testcontainers
 @Execution(ExecutionMode.SAME_THREAD)
 @ExtendWith(OutputCaptureExtension.class)
+@TestMethodOrder(MethodOrderer.MethodName.class)
 class AuthenticationHttpIntegrationTest {
 
     private static final String CLIENT_ID = "backend-test-client";
@@ -124,6 +131,8 @@ class AuthenticationHttpIntegrationTest {
     private static final String OWNED_CONTAINER_VALUE = "auth-cookie-forward-port-s003";
     private static final MutableClock CLOCK = new MutableClock();
     private static final Faults FAULTS = new Faults();
+    private static final ConfirmationStub CONFIRMATION = new ConfirmationStub();
+    private static final AtomicLong CONFIRMATION_TIME = new AtomicLong();
     private static final AtomicInteger NEXT_SUBJECT = new AtomicInteger();
     private static final Set<String> PILOT_SUBJECTS = IntStream.range(0, 500)
             .mapToObj(number -> "auth0|pilot-" + number).collect(Collectors.toUnmodifiableSet());
@@ -132,6 +141,7 @@ class AuthenticationHttpIntegrationTest {
     private static OidcTestProvider provider;
     private static ConfigurableApplicationContext application;
     private static Set<String> admitted = PILOT_SUBJECTS;
+    private static AuthenticationProperties.Provider providerMode = AuthenticationProperties.Provider.AUTH0;
 
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.4-alpine")
@@ -199,9 +209,24 @@ class AuthenticationHttpIntegrationTest {
     }
 
     @BeforeEach
-    void freshFlow() {
+    void freshFlow(TestInfo test) throws Exception {
         CLOCK.reset();
         FAULTS.reset();
+        CONFIRMATION.reset();
+        // Advance only the provider-recovery test ticker. No limiter reset or live record eviction.
+        CONFIRMATION_TIME.addAndGet(CognitoEmailConfirmationService.TARGET_TTL.toNanos() + 1);
+        // Reuse one owned context per provider block; all cases still get fresh cookies/claims/clock.
+        AuthenticationProperties.Provider selected = test.getTestMethod().orElseThrow().getName().startsWith("cognito")
+                ? AuthenticationProperties.Provider.COGNITO : AuthenticationProperties.Provider.AUTH0;
+        if (providerMode != selected) {
+            application.close();
+            provider.close();
+            providerMode = selected;
+            admitted = PILOT_SUBJECTS;
+            provider = new OidcTestProvider(CLIENT_ID, CLIENT_SECRET,
+                    origin + "/login/oauth2/code/" + selected.registrationId(), Clock.systemUTC());
+            startBackend();
+        }
         provider.reset();
         subject = "auth0|pilot-" + NEXT_SUBJECT.getAndIncrement();
         provider.scenario(Scenario.verified(subject));
@@ -499,7 +524,7 @@ class AuthenticationHttpIntegrationTest {
         String anonymousId = browser.sessionId();
         HttpResponse<String> initiation = loginPost(browser, csrf, Map.of(
                 "Forwarded", "host=attacker.test;proto=https", "X-Forwarded-Host", "attacker.test"));
-        assertRedirect(initiation, origin + "/oauth2/authorization/auth0");
+        assertRedirect(initiation, origin + "/oauth2/authorization/" + providerMode.registrationId());
         URI callback = authorize(browser, initiation);
         assertRedirect(browser.request("GET", callback, "", Map.of(
                 "Forwarded", "host=attacker.test;proto=https", "X-Forwarded-Host", "attacker.test")),
@@ -2368,6 +2393,490 @@ class AuthenticationHttpIntegrationTest {
         return next;
     }
 
+    @Test
+    void cognitoIdTokenOnlyPreservesOwnerAndRejectsTheUnselectedRegistration() throws Exception {
+        withCognito(() -> {
+            UUID owner = prepareCognitoOwner();
+            provider.scenario(cognitoScenario().userInfoClaim("email_verified", "true")
+                    .userInfoClaim("sub", "must-not-be-read"));
+            Browser browser = browser();
+            String priorCsrf = csrf(browser);
+            String priorSid = browser.sessionId();
+            complete(browser);
+            assertThat(json(browser.get("/api/me"))).containsEntry("id", owner.toString()).containsEntry("status", "ACTIVE");
+            assertThat(browser.sessionId()).isNotEqualTo(priorSid);
+            assertThat(csrf(browser)).isNotEqualTo(priorCsrf);
+            assertThat(provider.userInfoRequests()).isZero();
+            assertThat(provider.tokenRequests()).hasSize(1);
+            assertThat(provider.authorizationRequests().getFirst()).containsEntry("prompt", "login")
+                    .containsEntry("max_age", "0").containsEntry("code_challenge_method", "S256")
+                    .containsEntry("redirect_uri", origin + "/login/oauth2/code/cognito");
+            assertThat(provider.tokenRequests().getFirst()).containsEntry("redirect_uri", origin + "/login/oauth2/code/cognito");
+            assertJsonError(browser.get("/oauth2/authorization/auth0"), 403);
+            assertJsonError(browser.get("/login/oauth2/code/auth0?code=unused&state=unused"), 403);
+            assertThat(json(browser.get("/api/me"))).containsEntry("id", owner.toString());
+            assertThat(provider.tokenRequests()).hasSize(1);
+            assertThat(counts()).isEqualTo(before);
+            logout(browser);
+            assertJsonError(browser.get("/api/me"), 401);
+            complete(browser);
+            assertThat(json(browser.get("/api/me"))).containsEntry("id", owner.toString());
+            assertThat(counts()).isEqualTo(before);
+            assertThat(provider.userInfoRequests()).isZero();
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void cognitoUnknownOrUnadmittedPairCannotCreateAnInternalAccount(boolean unadmitted) throws Exception {
+        withCognito(() -> {
+            Scenario attempt = cognitoScenario();
+            if (unadmitted) attempt = Scenario.verified("opaque-unadmitted-owner").idClaim("token_use", "id");
+            assertRejectedWithoutAccount(attempt);
+            assertThat(provider.tokenRequests()).hasSize(1);
+            assertThat(provider.userInfoRequests()).isZero();
+            assertThat(counts()).isEqualTo(before);
+        });
+    }
+
+    static Stream<String> cognitoFailures() {
+        return Stream.of("token-use-missing", "token-use-access", "token-use-number", "verified-string",
+                "verified-false", "verified-missing", "email-blank", "email-number", "email-missing",
+                "time-string", "time-fraction", "time-missing", "time-stale", "time-future",
+                "signature", "key", "issuer", "audience", "nonce", "state", "token");
+    }
+
+    @ParameterizedTest
+    @MethodSource("cognitoFailures")
+    void cognitoSignedClaimAndProtocolRefusalHasNoSideEffectsWithAValidOwnerControl(String fault) throws Exception {
+        withCognito(() -> {
+            UUID owner = prepareCognitoOwner();
+            long now = Instant.now().getEpochSecond();
+            Scenario valid = cognitoScenario();
+            Scenario invalid = switch (fault) {
+                case "token-use-missing" -> valid.withoutIdClaim("token_use");
+                case "token-use-access" -> valid.idClaim("token_use", "access");
+                case "token-use-number" -> valid.idClaim("token_use", 1);
+                case "verified-string" -> valid.idClaim("email_verified", "true");
+                case "verified-false" -> valid.idClaim("email_verified", false);
+                case "verified-missing" -> valid.withoutIdClaim("email_verified");
+                case "email-blank" -> valid.idClaim("email", " ");
+                case "email-number" -> valid.idClaim("email", 1);
+                case "email-missing" -> valid.withoutIdClaim("email");
+                case "time-string" -> valid.idClaim("auth_time", Long.toString(now));
+                case "time-fraction" -> valid.idClaim("auth_time", now + 0.5);
+                case "time-missing" -> valid.withoutIdClaim("auth_time");
+                case "time-stale" -> valid.idClaim("auth_time", now - 120);
+                case "time-future" -> valid.idClaim("auth_time", now + 120);
+                case "signature" -> valid.badSignature();
+                case "key" -> valid.unknownKey();
+                case "issuer" -> valid.idClaim("iss", "https://wrong.example.test/");
+                case "audience" -> valid.idClaim("aud", "other-client");
+                case "nonce" -> valid.idClaim("nonce", "other-nonce");
+                case "state" -> valid.badState();
+                case "token" -> valid.tokenFailure();
+                default -> throw new AssertionError(fault);
+            };
+            assertRejectedWithoutAccount(invalid);
+            assertThat(provider.userInfoRequests()).isZero();
+            provider.scenario(valid);
+            Browser control = browser();
+            complete(control);
+            assertThat(json(control.get("/api/me"))).containsEntry("id", owner.toString());
+            assertThat(counts()).isEqualTo(before);
+            assertThat(provider.userInfoRequests()).isZero();
+        });
+    }
+
+    @Test
+    void cognitoDecodedRoutesCallbackReplayAndCsrfKeepTheOriginalSessionBoundary() throws Exception {
+        withCognito(() -> {
+            UUID owner = prepareCognitoOwner();
+            provider.scenario(cognitoScenario());
+            Browser browser = browser();
+            assertJsonError(browser.post(URI.create(origin + "/auth/login"), "", Map.of("Origin", origin)), 403);
+            assertRedirect(loginPost(browser, csrf(browser), Map.of()), origin + "/oauth2/authorization/cognito");
+            HttpResponse<String> entry = browser.get("/%6fauth2/authorization/%63ognito");
+            assertThat(entry.statusCode()).isIn(302, 303);
+            URI callback = URI.create(location(browser.get(URI.create(location(entry)))));
+            URI encoded = URI.create(callback.toString().replace("/login/oauth2/code/cognito?", "/login/%6fauth2/code/%63ognito?"));
+            assertRedirect(browser.get(encoded), origin + "/account");
+            assertThat(json(browser.get("/api/me"))).containsEntry("id", owner.toString());
+            assertRedirect(browser.get(callback), origin + "/login?auth=failed");
+            assertThat(json(browser.get("/api/me"))).containsEntry("id", owner.toString());
+            assertJsonError(browser.get("/oauth2/authorization/cognito"), 409);
+            assertThat(provider.tokenRequests()).hasSize(1);
+            assertThat(provider.userInfoRequests()).isZero();
+        });
+    }
+
+    @Test
+    void cognitoLogoutDuringTokenWaitRejectsOnlyThePendingAttemptAndPreservesDurableOwner() throws Exception {
+        withCognito(() -> {
+            UUID owner = prepareCognitoOwner();
+            provider.scenario(cognitoScenario());
+            Browser browser = browser();
+            URI callback = begin(browser);
+            var executor = Executors.newSingleThreadExecutor();
+            Future<HttpResponse<String>> pending = null;
+            try (var gate = provider.holdTokenResponse(subject)) {
+                pending = executor.submit(() -> browser.get(callback));
+                assertThat(gate.awaitEntered(5, TimeUnit.SECONDS)).isTrue();
+                logout(browser);
+                assertThat(pending.isDone()).isFalse();
+                gate.close();
+                HttpResponse<String> late = pending.get(10, TimeUnit.SECONDS);
+                assertRedirect(late, origin + "/login?auth=failed");
+                assertThat(late.headers().allValues("Set-Cookie")).isEmpty();
+                assertJsonError(browser.get("/api/me"), 401);
+                assertThat(bindingId()).isEqualTo(owner);
+                assertThat(counts()).isEqualTo(before);
+                complete(browser);
+                assertThat(json(browser.get("/api/me"))).containsEntry("id", owner.toString());
+                assertThat(provider.userInfoRequests()).isZero();
+            } finally {
+                finishWorkers(executor, pending);
+            }
+        });
+    }
+
+    @Test
+    void cognitoCancelledNativeRotationKeepsLateFailureCookieCorrection() throws Exception {
+        withCognito(() -> {
+            UUID owner = prepareCognitoOwner();
+            provider.scenario(cognitoScenario());
+            Browser browser = browser();
+            URI callback = begin(browser);
+            HttpSession original = probe().sessions.get(browser.sessionId());
+            RotationPause pause = new RotationPause(original, true);
+            FAULTS.rotationPause = pause;
+            var executor = Executors.newSingleThreadExecutor();
+            Future<HttpResponse<String>> pending = null;
+            try {
+                pending = executor.submit(() -> browser.get(callback));
+                assertThat(pause.rotated.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(pause.fixtureFailure.get()).isNull();
+                assertThat(hasAuthorizedClient(original)).isTrue();
+                original.invalidate();
+                assertThat(pending.isDone()).isFalse();
+                pause.release.countDown();
+                HttpResponse<String> late = pending.get(10, TimeUnit.SECONDS);
+                assertRedirect(late, origin + "/login?auth=failed");
+                assertThat(pause.actualPendingRotationCookie.get()).isTrue();
+                assertThat(pause.uncommittedAfterRotation.get()).isTrue();
+                assertThat(late.headers().allValues("Set-Cookie")).containsExactlyInAnyOrderElementsOf(RotationPause.UNRELATED_COOKIES);
+                assertThat(late.headers().allValues("Set-Cookie").stream().noneMatch(AuthenticationHttpIntegrationTest::isHostOnlyRootSessionCookie)).isTrue();
+                assertThat(bindingId()).isEqualTo(owner);
+                assertThat(counts()).isEqualTo(before);
+                assertThat(provider.userInfoRequests()).isZero();
+            } finally {
+                pause.release.countDown();
+                try { finishWorkers(executor, pending); }
+                finally { FAULTS.rotationPause = null; }
+            }
+        });
+    }
+
+    private Scenario cognitoScenario() { return Scenario.verified(subject).idClaim("token_use", "id"); }
+
+    @Test
+    void cognitoEmailConfirmationIsProviderOnlyAndFreshOidcStillControlsOwnerAdmission(CapturedOutput logs) throws Exception {
+        withCognito(() -> {
+            UUID owner = prepareCognitoOwner();
+            Browser browser = browser();
+            String token = csrf(browser);
+            String sid = browser.sessionId();
+            HttpSession session = probe().sessions.get(sid);
+            var attributes = sessionAttributes(session);
+            var stamp = registry().capture(session);
+            var durable = confirmationDurableSnapshot();
+            String email = "Recovery.Mixed@example.test";
+            String code = "private-confirmation-code";
+            HttpResponse<String> confirmed = browser.jsonPost("/auth/confirm-email",
+                    "{\"email\":\"" + email + "\",\"code\":\"" + code + "\"}",
+                    Map.of("Origin", origin, "X-CSRF-TOKEN", token));
+            assertThat(confirmed.statusCode()).isEqualTo(200);
+            assertThat(json(confirmed)).containsExactlyEntriesOf(Map.of("result", "confirmed"));
+            assertThat(confirmed.headers().allValues("Set-Cookie")).isEmpty();
+            HttpResponse<String> resent = browser.jsonPost("/auth/resend-confirmation-code",
+                    "{\"email\":\"" + email + "\"}", Map.of("Origin", origin, "X-CSRF-TOKEN", token));
+            assertThat(resent.statusCode()).isEqualTo(202);
+            assertThat(json(resent)).containsExactlyEntriesOf(Map.of("result", "code_request_accepted"));
+            assertThat(resent.headers().allValues("Set-Cookie")).isEmpty();
+            assertThat(browser.sessionId().equals(sid)).isTrue();
+            assertThat(sessionAttributes(session).equals(attributes)).isTrue();
+            assertThat(registry().capture(session).equals(stamp)).isTrue();
+            assertThat(hasAuthentication(session) || hasAuthorizedClient(session)).isFalse();
+            assertThat(session.getAttribute(AuthenticationConfiguration.LOGIN_INTENT)).isNull();
+            assertThat(confirmationDurableSnapshot().equals(durable)).isTrue();
+            assertThat(CONFIRMATION.calls).hasValue(2);
+            assertThat(provider.tokenRequests()).isEmpty();
+            assertJsonError(browser.get("/api/me"), 401);
+            assertJsonError(browser.get("/oauth2/authorization/cognito"), 403);
+
+            // Confirmation is not signed-token verification, login intent, admission, or a principal.
+            provider.scenario(cognitoScenario().idClaim("email_verified", false));
+            assertRedirect(browser.get(begin(browser)), origin + "/login?auth=failed");
+            assertJsonError(browser.get("/api/me"), 401);
+            assertThat(confirmationDurableSnapshot().equals(durable)).isTrue();
+            provider.scenario(cognitoScenario());
+            complete(browser);
+            assertAccount(browser.get("/api/me"), owner);
+            assertThat(counts()).isEqualTo(before);
+            assertThat(provider.tokenRequests()).hasSize(2);
+            assertThat(provider.userInfoRequests()).isZero();
+            assertThat(Stream.of(email, code, CLIENT_SECRET, token, sid).noneMatch(logs.getAll()::contains)).isTrue();
+            assertThat(logs.getAll().contains("event=EMAIL_CONFIRMATION_RESULT reason=EMAIL_CONFIRMED")).isTrue();
+            assertThat(logs.getAll().contains("event=EMAIL_CONFIRMATION_RESULT reason=CONFIRMATION_CODE_REQUESTED")).isTrue();
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void cognitoEmailConfirmationUnknownOrExpiredQWorksWithValidCsrfButCannotStartLogin(boolean expired) throws Exception {
+        withCognito(() -> {
+            Browser browser = browser();
+            String token = csrf(browser);
+            String sid = browser.sessionId();
+            HttpSession session = probe().sessions.get(sid);
+            var attributes = sessionAttributes(session);
+            var durable = confirmationDurableSnapshot();
+            String q = expired ? browser.contextId() : "unknown-context";
+            if (expired) CLOCK.advance(Duration.ofHours(9));
+            String cookies = "JSESSIONID=" + sid + "; " + BrowserSessionContextRegistry.COOKIE_NAME + "=" + q;
+            HttpResponse<String> response = browser.jsonExactPost("/auth/confirm-email",
+                    "{\"email\":\"Unknown.Q@example.test\",\"code\":\"123456\"}",
+                    Map.of("Origin", origin, "X-CSRF-TOKEN", token), cookies);
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(json(response)).containsExactlyEntriesOf(Map.of("result", "confirmed"));
+            assertThat(response.headers().allValues("Set-Cookie")).isEmpty();
+            assertThat(sessionAttributes(session).equals(attributes)).isTrue();
+            assertThat(hasAuthentication(session) || hasAuthorizedClient(session)).isFalse();
+            assertThat(confirmationDurableSnapshot().equals(durable)).isTrue();
+            assertJsonError(browser.exactRequest("GET", "/api/me", "", Map.of(), cookies), 401);
+            assertJsonError(browser.exactRequest("POST", "/auth/login", "_csrf=" + encode(token),
+                    Map.of("Origin", origin), cookies), 409);
+            assertJsonError(browser.exactRequest("GET", "/oauth2/authorization/cognito", "", Map.of(), cookies), 403);
+            assertThat(CONFIRMATION.calls).hasValue(1);
+            assertThat(provider.tokenRequests()).isEmpty();
+            assertThat(confirmationDurableSnapshot().equals(durable)).isTrue();
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/auth/confirm-email", "/auth/resend-confirmation-code", "/%61uth/%63onfirm-email", "/auth/%72esend-confirmation-code"})
+    void cognitoEmailConfirmationWrongHostOriginCsrfAndMethodNeverReachProvider(String path) throws Exception {
+        withCognito(() -> {
+            Browser browser = browser();
+            String token = csrf(browser);
+            var durable = confirmationDurableSnapshot();
+            String body = path.contains("confirm-email") || path.contains("%63onfirm-email")
+                    ? "{\"email\":\"a@b\",\"code\":\"123456\"}" : "{\"email\":\"a@b\"}";
+            for (Map<String, String> headers : List.of(Map.of("X-CSRF-TOKEN", token),
+                    Map.of("Origin", "https://attacker.test", "X-CSRF-TOKEN", token),
+                    Map.of("Origin", "null", "X-CSRF-TOKEN", token), Map.of("Origin", origin),
+                    Map.of("Origin", origin, "X-CSRF-TOKEN", "wrong-token"))) {
+                assertJsonError(browser.jsonPost(path, body, headers), 403);
+            }
+            assertJsonError(browser.get(path), 403);
+            String raw = rawRequest("POST " + path + " HTTP/1.1\r\nHost: attacker.test\r\nOrigin: " + origin
+                    + "\r\nContent-Type: application/json\r\nContent-Length: " + body.length()
+                    + "\r\nConnection: close\r\n\r\n" + body);
+            assertThat(raw).startsWith("HTTP/1.1 403");
+            assertThat(CONFIRMATION.calls).hasValue(0);
+            assertThat(confirmationDurableSnapshot().equals(durable)).isTrue();
+            // Correct Host/Origin/CSRF on the same exact or decoded path is the positive control.
+            HttpResponse<String> allowed = browser.jsonPost(path, body, Map.of("Origin", origin, "X-CSRF-TOKEN", token));
+            assertThat(allowed.statusCode()).isEqualTo(body.contains("code") ? 200 : 202);
+            assertThat(CONFIRMATION.calls).hasValue(1);
+            assertThat(confirmationDurableSnapshot().equals(durable)).isTrue();
+        });
+    }
+
+    @Test
+    void cognitoEmailConfirmationAuthenticatedRefusalPrecedesCsrfAndRetainsExactPrincipalClientAndSession() throws Exception {
+        withCognito(() -> {
+            UUID owner = prepareCognitoOwner();
+            Browser browser = browser();
+            complete(browser);
+            String token = csrf(browser);
+            String sid = browser.sessionId();
+            HttpSession session = probe().sessions.get(sid);
+            OAuth2AuthorizedClient client = authorizedClient(session);
+            var attributes = sessionAttributes(session);
+            var durable = confirmationDurableSnapshot();
+            for (String path : List.of("/auth/confirm-email", "/auth/resend-confirmation-code")) {
+                for (Map<String, String> headers : List.of(Map.of("Origin", origin),
+                        Map.of("Origin", origin, "X-CSRF-TOKEN", "wrong"),
+                        Map.of("Origin", origin, "X-CSRF-TOKEN", token))) {
+                    HttpResponse<String> denied = browser.jsonPost(path, "{}", headers);
+                    assertJsonError(denied, 403);
+                    assertThat(denied.headers().allValues("Set-Cookie")).isEmpty();
+                    assertThat(browser.sessionId().equals(sid)).isTrue();
+                    assertThat(sessionAttributes(session).equals(attributes)).isTrue();
+                    assertSessionIdentity(browser, owner, client);
+                }
+            }
+            assertThat(CONFIRMATION.calls).hasValue(0);
+            assertThat(provider.tokenRequests()).hasSize(1);
+            assertThat(confirmationDurableSnapshot().equals(durable)).isTrue();
+            logout(browser);
+            assertJsonError(browser.get("/api/me"), 401);
+        });
+    }
+
+    @Test
+    void emailConfirmationAuth0DefaultIsClosedAndOrdinaryAuth0LoginRemainsUnchanged() throws Exception {
+        Browser browser = browser();
+        String token = csrf(browser);
+        var durable = confirmationDurableSnapshot();
+        for (String path : List.of("/auth/confirm-email", "/auth/resend-confirmation-code")) {
+            assertJsonError(browser.jsonPost(path, "{}", Map.of("Origin", origin, "X-CSRF-TOKEN", token)), 403);
+            assertJsonError(browser.get(path), 403);
+        }
+        assertThat(CONFIRMATION.calls).hasValue(0);
+        assertThat(confirmationDurableSnapshot().equals(durable)).isTrue();
+        complete(browser);
+        assertAccount(browser.get("/api/me"), bindingId());
+        assertThat(provider.userInfoRequests()).isEqualTo(1);
+        assertThat(counts()).isEqualTo(before.plusAccount());
+        logout(browser);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "[]", "{\"email\":\"a@b\",\"code\":1}", "{\"email\":\"a@b\",\"code\":\"1\",\"clientId\":\"caller\"}",
+            "{\"email\":\"a@b\",\"code\":\"1\",\"email\":\"other@b\"}", "{\"email\":\"a@b\",\"code\":\"1\"} {}"})
+    void cognitoEmailConfirmationMalformedJsonIsOpaqueAndNeverSubmits(String body) throws Exception {
+        withCognito(() -> {
+            Browser browser = browser();
+            String token = csrf(browser);
+            var durable = confirmationDurableSnapshot();
+            HttpResponse<String> denied = browser.jsonPost("/auth/confirm-email", body, Map.of("Origin", origin, "X-CSRF-TOKEN", token));
+            assertJsonError(denied, 400);
+            assertThat(denied.body()).isEqualTo("{\"error\":\"request_not_completed\"}");
+            assertThat(CONFIRMATION.calls).hasValue(0);
+            assertThat(confirmationDurableSnapshot().equals(durable)).isTrue();
+        });
+    }
+
+    @Test
+    void cognitoEmailConfirmationActualBodyBytesAreCappedForDeclaredAndChunkedRequests() throws Exception {
+        withCognito(() -> {
+            Browser browser = browser();
+            String token = csrf(browser);
+            var durable = confirmationDurableSnapshot();
+            String oversized = "{\"email\":\"a@b\",\"code\":\"1\"}" + " ".repeat(CognitoEmailConfirmationService.MAX_BYTES);
+            Map<String, String> headers = Map.of("Origin", origin, "X-CSRF-TOKEN", token);
+            assertJsonError(browser.jsonPost("/auth/confirm-email", oversized, headers), 400);
+            assertJsonError(browser.jsonChunkedPost("/auth/confirm-email", oversized, headers), 400);
+            assertJsonError(browser.post(URI.create(origin + "/auth/confirm-email"), "email=a%40b&code=1", headers), 400);
+            assertThat(CONFIRMATION.calls).hasValue(0);
+            assertThat(confirmationDurableSnapshot().equals(durable)).isTrue();
+        });
+    }
+
+    @Test
+    void cognitoEmailConfirmationResendHidesRecipientStateAndTechnicalOutcomeRemainsUnknown(CapturedOutput logs) throws Exception {
+        withCognito(() -> {
+            Browser browser = browser();
+            String token = csrf(browser);
+            var durable = confirmationDurableSnapshot();
+            int index = 0;
+            for (String error : List.of("UserNotFoundException", "NotAuthorizedException", "CodeMismatchException",
+                    "ExpiredCodeException", "AliasExistsException", "InvalidParameterException", "TooManyFailedAttemptsException",
+                    "TooManyRequestsException", "LimitExceededException")) {
+                String email = "state" + index++ + "@example.test";
+                CONFIRMATION.next = new CognitoEmailConfirmationService.ProviderResponse(400,
+                        ("{\"__type\":\"" + error + "\",\"message\":\"private-provider-recipient-detail\"}").getBytes(StandardCharsets.UTF_8));
+                HttpResponse<String> confirm = browser.jsonPost("/auth/confirm-email", "{\"email\":\"" + email + "\",\"code\":\"123456\"}",
+                        Map.of("Origin", origin, "X-CSRF-TOKEN", token));
+                assertJsonError(confirm, 400);
+                assertThat(confirm.body()).isEqualTo("{\"error\":\"request_not_completed\"}");
+                HttpResponse<String> resend = browser.jsonPost("/auth/resend-confirmation-code", "{\"email\":\"" + email + "\"}",
+                        Map.of("Origin", origin, "X-CSRF-TOKEN", token));
+                assertThat(resend.statusCode()).isEqualTo(202);
+                assertThat(json(resend)).containsExactlyEntriesOf(Map.of("result", "code_request_accepted"));
+            }
+            CONFIRMATION.fail = true;
+            HttpResponse<String> unknown = browser.jsonPost("/auth/resend-confirmation-code", "{\"email\":\"technical@example.test\"}",
+                    Map.of("Origin", origin, "X-CSRF-TOKEN", token));
+            assertJsonError(unknown, 503);
+            assertThat(unknown.body()).isEqualTo("{\"error\":\"request_not_completed\"}");
+            assertThat(confirmationDurableSnapshot().equals(durable)).isTrue();
+            assertThat(logs.getAll().contains("private-provider-recipient-detail") || logs.getAll().contains("private-provider-transport-detail")).isFalse();
+            assertThat(logs.getAll().contains("event=EMAIL_CONFIRMATION_RESULT reason=PROVIDER_REQUEST_UNAVAILABLE")).isTrue();
+        });
+    }
+
+    @Test
+    void cognitoEmailConfirmationCookieResetCannotResetTargetThrottle(CapturedOutput logs) throws Exception {
+        withCognito(() -> {
+            Browser first = browser();
+            String token = csrf(first);
+            String body = "{\"email\":\"throttled@example.test\",\"code\":\"123456\"}";
+            var durable = confirmationDurableSnapshot();
+            for (int index = 0; index < CognitoEmailConfirmationService.TARGET_LIMIT; index++) {
+                assertThat(first.jsonPost("/auth/confirm-email", body, Map.of("Origin", origin, "X-CSRF-TOKEN", token)).statusCode()).isEqualTo(200);
+            }
+            assertJsonError(first.jsonPost("/auth/confirm-email", body, Map.of("Origin", origin, "X-CSRF-TOKEN", token)), 429);
+            Browser replacement = browser();
+            assertJsonError(replacement.jsonPost("/auth/confirm-email", body,
+                    Map.of("Origin", origin, "X-CSRF-TOKEN", csrf(replacement))), 429);
+            assertJsonError(replacement.jsonPost("/auth/confirm-email", body.replace("throttled@", "THROTTLED@"),
+                    Map.of("Origin", origin, "X-CSRF-TOKEN", csrf(replacement))), 429);
+            assertThat(CONFIRMATION.calls).hasValue(3);
+            assertThat(confirmationDurableSnapshot().equals(durable)).isTrue();
+            assertThat(logs.getAll().contains("event=EMAIL_CONFIRMATION_RESULT reason=CONFIRMATION_RATE_LIMITED")).isTrue();
+        });
+    }
+
+    private static Map<String, Object> sessionAttributes(HttpSession session) {
+        var attributes = new LinkedHashMap<String, Object>();
+        Collections.list(session.getAttributeNames()).forEach(name -> attributes.put(name, session.getAttribute(name)));
+        return attributes;
+    }
+
+    private Map<String, String> confirmationDurableSnapshot() {
+        var snapshot = new LinkedHashMap<String, String>();
+        for (String table : List.of("users", "user_profiles", "user_identity_bindings", "user_identity_current",
+                "user_identity_migration_receipts", "workspaces", "workspace_memberships", "platform_access_grants",
+                "platform_access_grant_targets", "platform_access_operation_intents", "platform_access_audit_events",
+                "platform_access_operation_outcomes")) {
+            String hash = jdbc.queryForObject("SELECT md5(string_agg(to_jsonb(t)::text, ',' ORDER BY to_jsonb(t)::text)) FROM " + table + " t", String.class);
+            snapshot.put(table, hash == null ? "EMPTY" : hash);
+        }
+        return snapshot;
+    }
+
+    private UUID prepareCognitoOwner() {
+        var users = application.getBean(AuthenticatedUserService.class);
+        Identity old = new Identity("https://retained.synthetic.example/", UUID.randomUUID().toString());
+        var owner = users.resolve(old, identity -> true); // fixture only: controlled original-account creation
+        var transaction = new org.springframework.transaction.support.TransactionTemplate(
+                new org.springframework.jdbc.support.JdbcTransactionManager(application.getBean(DataSource.class)));
+        transaction.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_READ_COMMITTED);
+        transaction.setTimeout(15);
+        transaction.executeWithoutResult(status -> {
+            jdbc.execute("SET LOCAL lock_timeout='5s'");
+            jdbc.execute("SET LOCAL statement_timeout='10s'");
+            jdbc.execute("SET LOCAL transaction_timeout='15s'");
+            assertThat(jdbc.queryForObject("SELECT public.migrate_owner_identity(?,?,?,?,?,?,?)", String.class,
+                    UUID.randomUUID(), owner.id(), 1L, old.issuer(), old.subject(), provider.issuer().toString(), subject)).isEqualTo("APPLIED");
+        });
+        before = counts();
+        return owner.id();
+    }
+
+    @FunctionalInterface
+    private interface CognitoWork { void run() throws Exception; }
+
+    private void withCognito(CognitoWork work) throws Exception {
+        assertThat(providerMode).isEqualTo(AuthenticationProperties.Provider.COGNITO);
+        provider.scenario(cognitoScenario());
+        work.run();
+        assertThat(provider.failure()).isNull();
+    }
+
     private void assertRejectedWithoutAccount(Scenario scenario) throws Exception {
         assertRejectedWithoutAccount(scenario, before);
     }
@@ -2414,7 +2923,7 @@ class AuthenticationHttpIntegrationTest {
     }
 
     private static URI authorize(Browser browser, HttpResponse<String> initiation) throws Exception {
-        assertRedirect(initiation, origin + "/oauth2/authorization/auth0");
+        assertRedirect(initiation, origin + "/oauth2/authorization/" + providerMode.registrationId());
         HttpResponse<String> authorization = browser.get(URI.create(location(initiation)));
         assertThat(authorization.statusCode()).isIn(302, 303);
         URI providerLocation = URI.create(location(authorization));
@@ -2424,7 +2933,7 @@ class AuthenticationHttpIntegrationTest {
         HttpResponse<String> issuedCode = browser.get(providerLocation);
         assertThat(issuedCode.statusCode()).isEqualTo(302);
         URI callback = URI.create(location(issuedCode));
-        assertThat(callback.toString()).startsWith(origin + "/login/oauth2/code/auth0?");
+        assertThat(callback.toString()).startsWith(origin + "/login/oauth2/code/" + providerMode.registrationId() + "?");
         return callback;
     }
 
@@ -2555,6 +3064,25 @@ class AuthenticationHttpIntegrationTest {
         HttpResponse<String> get(URI uri) throws Exception { return request("GET", uri, "", Map.of()); }
         HttpResponse<String> post(URI uri, String body, Map<String, String> headers) throws Exception {
             return request("POST", uri, body, headers);
+        }
+        HttpResponse<String> jsonPost(String path, String body, Map<String, String> headers) throws Exception {
+            var request = HttpRequest.newBuilder(URI.create(origin + path)).timeout(Duration.ofSeconds(25))
+                    .header("Content-Type", "application/json");
+            headers.forEach(request::header);
+            return client.send(request.POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+        }
+        HttpResponse<String> jsonExactPost(String path, String body, Map<String, String> headers, String cookie) throws Exception {
+            var request = HttpRequest.newBuilder(URI.create(origin + path)).timeout(Duration.ofSeconds(25))
+                    .header("Content-Type", "application/json").header("Cookie", cookie);
+            headers.forEach(request::header);
+            return exactClient.send(request.POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+        }
+        HttpResponse<String> jsonChunkedPost(String path, String body, Map<String, String> headers) throws Exception {
+            var request = HttpRequest.newBuilder(URI.create(origin + path)).timeout(Duration.ofSeconds(25))
+                    .header("Content-Type", "application/json");
+            headers.forEach(request::header);
+            return client.send(request.POST(HttpRequest.BodyPublishers.fromPublisher(HttpRequest.BodyPublishers.ofString(body))).build(),
+                    HttpResponse.BodyHandlers.ofString());
         }
         HttpResponse<String> request(String method, URI uri, String body, Map<String, String> headers) throws Exception {
             var request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(25));
@@ -2991,17 +3519,22 @@ class AuthenticationHttpIntegrationTest {
 
     @TestConfiguration(proxyBeanMethods = false)
     static class TestWiring {
+        @Bean @Primary CognitoEmailConfirmationService testConfirmationService(AuthenticationProperties properties) {
+            // Always replace the production API transport, including every selected-Cognito context.
+            return new CognitoEmailConfirmationService(properties, CONFIRMATION, CONFIRMATION_TIME::get,
+                    CognitoEmailConfirmationService.Limits.standard());
+        }
         @Bean @Primary AuthenticationProperties testAuthenticationProperties() {
             return new AuthenticationProperties(provider.issuer().toString(), CLIENT_ID, CLIENT_SECRET,
-                    origin, admitted, false);
+                    origin, admitted, false, providerMode, providerMode == AuthenticationProperties.Provider.COGNITO);
         }
         @Bean @Primary Clock testClock() { return CLOCK; }
         @Bean @Primary ClientRegistrationRepository testClientRegistrations() {
-            ClientRegistration registration = ClientRegistration.withRegistrationId("auth0")
+            ClientRegistration registration = ClientRegistration.withRegistrationId(providerMode.registrationId())
                     .clientId(CLIENT_ID).clientSecret(CLIENT_SECRET)
                     .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                     .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
-                    .redirectUri(origin + "/login/oauth2/code/auth0")
+                    .redirectUri(origin + "/login/oauth2/code/" + providerMode.registrationId())
                     .scope("openid", "profile", "email")
                     .authorizationUri(provider.endpoint("authorize")).tokenUri(provider.endpoint("token"))
                     .jwkSetUri(provider.endpoint("jwks")).userInfoUri(provider.endpoint("userinfo"))
@@ -3018,7 +3551,7 @@ class AuthenticationHttpIntegrationTest {
                 RotationPause pause = FAULTS.rotationPause;
                 if (pause == null || !(request instanceof HttpServletRequest http)
                         || !(response instanceof HttpServletResponse output)
-                        || !"/login/oauth2/code/auth0".equals(http.getRequestURI())
+                        || !("/login/oauth2/code/" + providerMode.registrationId()).equals(http.getRequestURI())
                         || http.getSession(false) != pause.original) {
                     chain.doFilter(request, response);
                     return;
@@ -3091,6 +3624,24 @@ class AuthenticationHttpIntegrationTest {
                             ? new FaultDataSource(source) : bean;
                 }
             };
+        }
+    }
+
+    private static final class ConfirmationStub implements CognitoEmailConfirmationService.Transport {
+        final AtomicInteger calls = new AtomicInteger();
+        volatile CognitoEmailConfirmationService.ProviderResponse next;
+        volatile boolean fail;
+        void reset() {
+            calls.set(0);
+            fail = false;
+            next = new CognitoEmailConfirmationService.ProviderResponse(200,
+                    "{\"Session\":\"discarded-test-session\",\"CodeDeliveryDetails\":{\"Destination\":\"private-test-destination\"}}".getBytes(StandardCharsets.UTF_8));
+        }
+        @Override public CognitoEmailConfirmationService.ProviderResponse submit(CognitoEmailConfirmationService.Operation operation,
+                byte[] body, long deadlineNanos) throws IOException {
+            calls.incrementAndGet();
+            if (fail) throw new IOException("private-provider-transport-detail");
+            return next;
         }
     }
 }

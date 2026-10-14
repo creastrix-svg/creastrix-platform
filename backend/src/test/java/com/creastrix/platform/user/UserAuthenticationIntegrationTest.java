@@ -132,10 +132,10 @@ class UserAuthenticationIntegrationTest {
     }
 
     @Test
-    void freshV1ThroughV12HasExactImmediateKeysAndRetainedBindings() {
+    void freshV1ThroughV13HasExactImmediateKeysAndRetainedBindings() {
         assertThat(sql.queryForObject("SHOW server_version", String.class)).startsWith("18.4");
         assertThat(sql.queryForList("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank",
-                String.class)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
+                String.class)).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
         List<Map<String, Object>> keys = sql.queryForList("""
                 SELECT conname, contype::text, condeferrable, confdeltype::text
                 FROM pg_constraint WHERE conrelid='user_identity_bindings'::regclass
@@ -147,7 +147,7 @@ class UserAuthenticationIntegrationTest {
             assertThat(row.get("contype")).isEqualTo("p");
             assertThat(row.get("condeferrable")).isEqualTo(false);
         }).anySatisfy(row -> {
-            assertThat(row.get("conname")).isEqualTo("user_identity_bindings_user_unique");
+            assertThat(row.get("conname")).isEqualTo("user_identity_bindings_owner_pair_unique");
             assertThat(row.get("condeferrable")).isEqualTo(false);
         }).anySatisfy(row -> {
             assertThat(row.get("conname")).isEqualTo("user_identity_bindings_user_fk");
@@ -159,7 +159,7 @@ class UserAuthenticationIntegrationTest {
                 .hasStackTraceContaining("immutable and retained");
         assertThatThrownBy(() -> sql.update("DELETE FROM user_identity_bindings WHERE user_id=?", user.id()))
                 .hasStackTraceContaining("immutable and retained");
-        assertThatThrownBy(() -> sql.execute("TRUNCATE user_identity_bindings"))
+        assertThatThrownBy(() -> sql.execute("TRUNCATE user_identity_bindings CASCADE"))
                 .hasStackTraceContaining("immutable and retained");
         assertThat(auth.resolve(identity, ignored -> true)).isEqualTo(user);
     }
@@ -197,7 +197,7 @@ class UserAuthenticationIntegrationTest {
     }
 
     @Test
-    void onePhysicalReadCommittedTransactionCreatesAllThreeRowsAndNoWorkspace() {
+    void onePhysicalReadCommittedTransactionCreatesAllFourRowsAndNoWorkspace() {
         Plan plan = observe(new Plan());
         Map<String, Long> before = counts();
         Identity identity = identity();
@@ -205,11 +205,12 @@ class UserAuthenticationIntegrationTest {
         assertThat(user.status()).isEqualTo(UserStatus.ACTIVE);
         assertThat(plan.sessions).hasSize(1);
         Session session = plan.sessions.getFirst();
-        assertThat(session.inserts).hasSize(3);
+        assertThat(session.inserts).hasSize(4);
         assertThat(session.inserts.stream().map(Snapshot::pid).distinct()).hasSize(1);
         assertThat(session.inserts.stream().map(Snapshot::xid).distinct()).hasSize(1);
         assertThat(session.inserts).allSatisfy(snapshot -> assertThat(snapshot.isolation()).isEqualTo("read committed"));
-        assertThat(session.events).containsSubsequence("insert:users", "insert:user_profiles", "insert:user_identity_bindings", "commit");
+        assertThat(session.events).containsSubsequence("insert:users", "insert:user_profiles", "insert:user_identity_bindings",
+                "insert:user_identity_current", "commit");
         assertDelta(before, 1);
         assertThat(auth.resolve(identity, ignored -> true)).isEqualTo(user);
         assertThat(auth.currentUser(identity, ignored -> true)).contains(user);
@@ -217,7 +218,7 @@ class UserAuthenticationIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {1, 2, 3})
+    @ValueSource(ints = {1, 2, 3, 4})
     void failureAfterEachRealInsertRollsBackTheWholePhysicalTransaction(int afterInsert, CapturedOutput logs) {
         Map<String, Long> before = counts();
         Plan plan = observe(new Plan() {
@@ -233,7 +234,7 @@ class UserAuthenticationIntegrationTest {
         assertDelta(before, 0);
         assertThat(logs.getAll().contains("operation=USER_CREATE completion=COMMITTED"))
                 .as("A rolled-back identity transaction never reports committed creation").isFalse();
-        if (afterInsert == 3) {
+        if (afterInsert >= 3) {
             assertThat(logs.getAll().contains("operation=USER_CREATE completion=ROLLED_BACK"))
                     .as("Work-phase rollback is observed").isTrue();
         }
@@ -288,7 +289,7 @@ class UserAuthenticationIntegrationTest {
         Throwable userKey = assertThrows(RuntimeException.class, () -> transaction.executeWithoutResult(status ->
                 bindings.insert(identity(), user.id())));
         assertThat(userKey).isNotInstanceOf(PairAlreadyBoundException.class);
-        assertMetadata(userKey, "23505", "user_identity_bindings", "user_identity_bindings_user_unique");
+        assertMetadata(userKey, "23505", "user_identity_current", "user_identity_current_pkey");
         Throwable foreignKey = assertThrows(RuntimeException.class, () -> transaction.executeWithoutResult(status ->
                 bindings.insert(identity(), UUID.randomUUID())));
         assertThat(foreignKey).isNotInstanceOf(PairAlreadyBoundException.class);
@@ -542,6 +543,345 @@ class UserAuthenticationIntegrationTest {
         assertDelta(before, 0);
     }
 
+    @Test
+    void populatedV12UpgradePreservesAllPriorRowsAndBackfillsOnlyExistingBindings() {
+        String database = "identity_v13_" + UUID.randomUUID().toString().replace("-", "");
+        sql.execute("CREATE DATABASE \"" + database + "\"");
+        try (HikariDataSource upgrade = newPool(database)) {
+            migration(upgrade, "12").migrate();
+            JdbcTemplate old = new JdbcTemplate(upgrade);
+            UUID owner = UUID.randomUUID();
+            populatePreviousDomains(old, upgrade, owner);
+            Identity original = identity();
+            old.update("INSERT INTO user_identity_bindings(issuer,subject,user_id) VALUES (?,?,?)",
+                    original.issuer(), original.subject(), owner);
+            Map<String, List<String>> before = allRows(old, "public");
+            List<Map<String, Object>> history = old.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank");
+            migration(upgrade, "13").migrate();
+            Map<String, List<String>> after = allRows(old, "public");
+            before.forEach((table, rows) -> assertThat(after.get(table)).as(table).isEqualTo(rows));
+            assertThat(old.queryForList("SELECT * FROM flyway_schema_history WHERE version<>'13' ORDER BY installed_rank"))
+                    .isEqualTo(history);
+            assertThat(old.queryForObject("SELECT count(*) FROM user_identity_current", Integer.class)).isOne();
+            assertThat(old.queryForObject("SELECT user_id FROM user_identity_current", UUID.class)).isEqualTo(owner);
+            assertThat(old.queryForObject("SELECT count(*) FROM user_identity_migration_receipts", Integer.class)).isZero();
+            assertThat(new JdbcUserIdentityBindingRepository(old).findCurrentUser(original)).contains(new User(owner, UserStatus.ACTIVE));
+            assertThat(old.queryForObject("SELECT count(*) FROM users u WHERE NOT EXISTS "
+                    + "(SELECT 1 FROM user_identity_bindings b WHERE b.user_id=u.id)", Integer.class)).isOne();
+            assertThat(old.queryForObject("SELECT count(*) FROM user_identity_current c WHERE NOT EXISTS "
+                    + "(SELECT 1 FROM user_identity_bindings b WHERE b.user_id=c.user_id)", Integer.class)).isZero();
+        }
+    }
+
+    @Test
+    void existingOnlyAdmissionAndSupersededHistoryNeverCreateOrAdoptAnAlias() {
+        Identity old = identity(), target = identity();
+        User owner = auth.resolve(old, ignored -> true);
+        Map<String, Long> before = counts();
+        Plan observation = observe(new Plan());
+        assertThrows(AdmissionDeniedException.class, () -> auth.resolve(target, ignored -> false, true));
+        assertThat(observation.sessions).isEmpty(); // exact admission precedes even connection acquisition
+        assertThrows(AdmissionDeniedException.class, () -> auth.resolve(target, ignored -> true, true));
+        assertDelta(before, 0);
+        assertThat(switchIdentity(UUID.randomUUID(), owner.id(), 1, old, target)).isEqualTo("APPLIED");
+        Map<String, Long> migrated = counts();
+        assertThrows(AdmissionDeniedException.class, () -> auth.resolve(old, ignored -> true));
+        assertThrows(AdmissionDeniedException.class, () -> auth.resolve(old, ignored -> true, true));
+        assertThrows(AdmissionDeniedException.class, () -> auth.resolve(identity(), ignored -> true, true));
+        assertThat(auth.currentUser(old, ignored -> true)).isEmpty();
+        assertThat(auth.resolve(target, ignored -> true, true)).isEqualTo(owner);
+        assertThat(auth.currentUser(target, ignored -> true)).contains(owner);
+        assertDelta(migrated, 0);
+    }
+
+    @Test
+    void controlledSwitchPreservesUuidProfileGenerationRightsAndEveryUnrelatedRow() {
+        Identity old = identity(), target = identity();
+        User owner = auth.resolve(old, ignored -> true);
+        Map<String, List<String>> before = allRows(sql, "public");
+        UUID operation = UUID.randomUUID();
+        assertThat(switchIdentity(operation, owner.id(), 1, old, target)).isEqualTo("APPLIED");
+        Map<String, List<String>> after = allRows(sql, "public");
+        before.forEach((table, rows) -> {
+            if (!List.of("user_identity_bindings", "user_identity_current", "user_identity_migration_receipts").contains(table)) {
+                assertThat(after.get(table)).as(table).isEqualTo(rows);
+            }
+        });
+        assertThat(sql.queryForObject("SELECT count(*) FROM user_identity_bindings WHERE user_id=?", Integer.class, owner.id())).isEqualTo(2);
+        assertThat(sql.queryForObject("SELECT count(*) FROM user_identity_current WHERE user_id=?", Integer.class, owner.id())).isOne();
+        assertThat(sql.queryForObject("SELECT operation_id FROM user_identity_current WHERE user_id=?", UUID.class, owner.id())).isEqualTo(operation);
+        assertThat(auth.resolve(target, ignored -> true, true)).isEqualTo(owner);
+        assertThat(sql.queryForObject("SELECT account_eligibility_generation FROM users WHERE id=?", Long.class, owner.id())).isEqualTo(1L);
+    }
+
+    @Test
+    void sameOperationReplaysExactPayloadAndReturnUsesANewReceiptNotHistoryMutation() {
+        Identity old = identity(), target = identity();
+        User owner = auth.resolve(old, ignored -> true);
+        UUID operation = UUID.randomUUID();
+        assertThat(switchIdentity(operation, owner.id(), 1, old, target)).isEqualTo("APPLIED");
+        Map<String, List<String>> committed = allRows(sql, "public");
+        assertThat(switchIdentity(operation, owner.id(), 1, old, target)).isEqualTo("REPLAY");
+        assertThat(allRows(sql, "public")).isEqualTo(committed);
+        assertMigrationConstraint(assertThrows(RuntimeException.class,
+                () -> switchIdentity(operation, owner.id(), 1, old, identity())), "user_identity_migration_operation_conflict");
+        assertMigrationConstraint(assertThrows(RuntimeException.class,
+                () -> switchIdentity(UUID.randomUUID(), owner.id(), 1, old, target)), "user_identity_migration_expected_current");
+        assertThat(allRows(sql, "public")).isEqualTo(committed);
+        assertThat(switchIdentity(UUID.randomUUID(), owner.id(), 1, target, old)).isEqualTo("APPLIED");
+        assertThat(auth.resolve(old, ignored -> true, true)).isEqualTo(owner);
+        assertThrows(AdmissionDeniedException.class, () -> auth.resolve(target, ignored -> true));
+        assertMetadata(assertThrows(RuntimeException.class, () -> sql.update(
+                "UPDATE user_identity_current SET issuer=?,subject=?,operation_id=? WHERE user_id=?",
+                target.issuer(), target.subject(), operation, owner.id())),
+                "23514", "user_identity_current", "user_identity_current_exact_receipt");
+        assertThat(switchIdentity(operation, owner.id(), 1, old, target)).isEqualTo("REPLAY");
+        assertThat(auth.currentUser(old, ignored -> true)).contains(owner); // replay never switches back implicitly
+        assertThat(sql.queryForObject("SELECT count(*) FROM user_identity_bindings WHERE user_id=?", Integer.class, owner.id())).isEqualTo(2);
+        assertThat(sql.queryForObject("SELECT count(*) FROM user_identity_migration_receipts WHERE user_id=?", Integer.class, owner.id())).isEqualTo(2);
+    }
+
+    @Test
+    void migrationRefusesAnotherPairsOwnerAndUnexpectedAccountOrGeneration() {
+        Identity old = identity(), other = identity();
+        User owner = auth.resolve(old, ignored -> true);
+        auth.resolve(other, ignored -> true);
+        Map<String, List<String>> before = allRows(sql, "public");
+        assertMigrationConstraint(assertThrows(RuntimeException.class,
+                () -> switchIdentity(UUID.randomUUID(), owner.id(), 1, old, other)), "user_identity_migration_target_owned");
+        assertMigrationConstraint(assertThrows(RuntimeException.class,
+                () -> switchIdentity(UUID.randomUUID(), owner.id(), 2, old, identity())), "user_identity_migration_account");
+        assertMigrationConstraint(assertThrows(RuntimeException.class,
+                () -> switchIdentity(UUID.randomUUID(), UUID.randomUUID(), 1, old, identity())), "user_identity_migration_account");
+        assertThat(allRows(sql, "public")).isEqualTo(before);
+        users.changeStatus(owner.id(), UserStatus.SUSPENDED);
+        before = allRows(sql, "public");
+        assertMigrationConstraint(assertThrows(RuntimeException.class,
+                () -> switchIdentity(UUID.randomUUID(), owner.id(), 2, old, identity())), "user_identity_migration_account");
+        assertThat(allRows(sql, "public")).isEqualTo(before);
+    }
+
+    @Test
+    void exactOwnerForeignKeyMandatoryCurrentAndRetainedRecordsAreDatabaseEnforced() {
+        Identity old = identity(), target = identity();
+        User owner = auth.resolve(old, ignored -> true);
+        User legacy = users.createUser();
+        Throwable wrongOwner = assertThrows(RuntimeException.class, () -> sql.update(
+                "INSERT INTO user_identity_current(user_id,issuer,subject) VALUES (?,?,?)", legacy.id(), old.issuer(), old.subject()));
+        // Pair uniqueness may be checked before the owner FK, so isolate the owner FK using a retained old pair.
+        assertThat(findPostgres(wrongOwner).getSQLState()).isIn("23505", "23503");
+        UUID operation = UUID.randomUUID();
+        switchIdentity(operation, owner.id(), 1, old, target);
+        assertMetadata(assertThrows(RuntimeException.class, () -> sql.update("INSERT INTO user_identity_migration_receipts "
+                + "(operation_id,user_id,expected_generation,old_issuer,old_subject,new_issuer,new_subject) VALUES (?,?,1,?,?,?,?)",
+                UUID.randomUUID(), owner.id(), target.issuer(), target.subject(), old.issuer(), old.subject())),
+                "23514", "user_identity_migration_receipts", "user_identity_receipt_atomic_result");
+        assertMetadata(assertThrows(RuntimeException.class, () -> sql.update(
+                "INSERT INTO user_identity_current(user_id,issuer,subject) VALUES (?,?,?)", legacy.id(), old.issuer(), old.subject())),
+                "23503", "user_identity_current", "user_identity_current_owner_fk");
+        Identity missingSelector = identity();
+        assertMetadata(assertThrows(RuntimeException.class, () -> transaction.executeWithoutResult(status -> sql.update(
+                "INSERT INTO user_identity_bindings(issuer,subject,user_id) VALUES (?,?,?)",
+                missingSelector.issuer(), missingSelector.subject(), legacy.id()))),
+                "23514", "user_identity_bindings", "user_identity_history_current");
+        assertMetadata(assertThrows(RuntimeException.class, () -> sql.update(
+                "UPDATE user_identity_current SET issuer=?,subject=?,operation_id=NULL WHERE user_id=?",
+                old.issuer(), old.subject(), owner.id())), "23514", "user_identity_current", "user_identity_current_exact_receipt");
+        for (String table : List.of("user_identity_bindings", "user_identity_migration_receipts")) {
+            assertThatThrownBy(() -> sql.update("UPDATE " + table + " SET user_id=user_id WHERE user_id=?", owner.id()))
+                    .hasStackTraceContaining("immutable and retained");
+            assertThatThrownBy(() -> sql.update("DELETE FROM " + table + " WHERE user_id=?", owner.id()))
+                    .hasStackTraceContaining("immutable and retained");
+            assertThatThrownBy(() -> sql.execute("TRUNCATE " + table + " CASCADE"))
+                    .hasStackTraceContaining("immutable and retained");
+        }
+        assertMetadata(assertThrows(RuntimeException.class, () -> sql.update("DELETE FROM user_identity_current WHERE user_id=?", owner.id())),
+                "23514", "user_identity_current", "user_identity_current_retained");
+        assertThatThrownBy(() -> sql.execute("TRUNCATE user_identity_current")).hasStackTraceContaining("immutable and retained");
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2, 3})
+    void realMigrationStatementFailureRollsBackHistoryReceiptAndSelector(int stage) {
+        Identity old = identity(), target = identity();
+        User owner = auth.resolve(old, ignored -> true);
+        Map<String, List<String>> before = allRows(sql, "public");
+        String table = List.of("user_identity_bindings", "user_identity_migration_receipts", "user_identity_current").get(stage - 1);
+        String event = stage == 3 ? "UPDATE" : "INSERT";
+        sql.execute("CREATE FUNCTION test_identity_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+                + "RAISE EXCEPTION 'Synthetic migration statement fault' USING ERRCODE='P0001'; END; $$");
+        sql.execute("CREATE TRIGGER test_identity_fault AFTER " + event + " ON " + table
+                + " FOR EACH ROW EXECUTE FUNCTION test_identity_fault()");
+        try {
+            Throwable failed = assertThrows(RuntimeException.class, () -> switchIdentity(UUID.randomUUID(), owner.id(), 1, old, target));
+            assertThat(findPostgres(failed).getSQLState()).isEqualTo("P0001");
+            assertThat(allRows(sql, "public")).isEqualTo(before);
+        } finally {
+            sql.execute("DROP TRIGGER test_identity_fault ON " + table);
+            sql.execute("DROP FUNCTION test_identity_fault()");
+        }
+    }
+
+    @Test
+    void physicalMigrationCommitIsAtomicAndLostAcknowledgementReconcilesTheSameReceipt() {
+        Identity old = identity(), target = identity();
+        User owner = auth.resolve(old, ignored -> true);
+        UUID operation = UUID.randomUUID();
+        AtomicBoolean committed = new AtomicBoolean();
+        Plan plan = observe(new Plan() {
+            @Override void afterMigration(Session session) throws SQLException {
+                assertThat(session.connection.getAutoCommit()).isFalse();
+                Snapshot beforeCommit = session.snapshot();
+                assertThat(beforeCommit.isolation()).isEqualTo("read committed");
+                assertThat(new JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(session.connection, true))
+                        .queryForObject("SELECT operation_id FROM user_identity_current WHERE user_id=?", UUID.class, owner.id())).isEqualTo(operation);
+                assertThat(sql.queryForObject("SELECT count(*) FROM user_identity_migration_receipts WHERE operation_id=?", Integer.class, operation)).isZero();
+                assertThat(sql.queryForObject("SELECT subject FROM user_identity_current WHERE user_id=?", String.class, owner.id())).isEqualTo(old.subject());
+                assertThat(session.snapshot().xid()).isEqualTo(beforeCommit.xid());
+            }
+            @Override void afterCommit(Session session) throws SQLException {
+                if (committed.compareAndSet(false, true)) throw new SQLException("Synthetic lost migration commit acknowledgement", "08006");
+            }
+        });
+        assertThrows(RuntimeException.class, () -> switchIdentity(operation, owner.id(), 1, old, target));
+        assertThat(committed).isTrue();
+        assertThat(plan.sessions).hasSize(1);
+        assertThat(plan.sessions.getFirst().events).containsSubsequence("migration", "commit");
+        assertThat(sql.queryForObject("SELECT recorded_xid::text FROM user_identity_migration_receipts WHERE operation_id=?",
+                String.class, operation)).isNotBlank();
+        observe(new Plan());
+        assertThat(switchIdentity(operation, owner.id(), 1, old, target)).isEqualTo("REPLAY");
+        assertThat(sql.queryForObject("SELECT count(*) FROM user_identity_migration_receipts WHERE operation_id=?", Integer.class, operation)).isOne();
+        assertThat(auth.resolve(target, ignored -> true, true)).isEqualTo(owner);
+    }
+
+    @Test
+    void exceptionAfterCompleteOperationButBeforeCommitLeavesNoPartialMigration() {
+        Identity old = identity(), target = identity();
+        User owner = auth.resolve(old, ignored -> true);
+        Map<String, List<String>> before = allRows(sql, "public");
+        Plan plan = observe(new Plan() {
+            @Override void afterMigration(Session session) throws SQLException {
+                throw new SQLException("Synthetic fault after real operation before commit", "XX000");
+            }
+        });
+        assertThrows(RuntimeException.class, () -> switchIdentity(UUID.randomUUID(), owner.id(), 1, old, target));
+        assertThat(plan.sessions.getFirst().events).containsSubsequence("migration", "rollback").doesNotContain("commit");
+        assertThat(allRows(sql, "public")).isEqualTo(before);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void concurrentDuplicateOperationsWaitOnExactPidAndReplayOnlyAfterAcknowledgedWinner(boolean rollbackWinner) throws Exception {
+        migrationRace(rollbackWinner, false);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void competingOperationsSerializeAndRevalidateExpectedCurrentAfterTheWait(boolean rollbackWinner) throws Exception {
+        migrationRace(rollbackWinner, true);
+    }
+
+    private void migrationRace(boolean rollbackWinner, boolean competing) throws Exception {
+        Identity old = identity(), target = identity();
+        User owner = auth.resolve(old, ignored -> true);
+        UUID operation = UUID.randomUUID();
+        UUID secondOperation = competing ? UUID.randomUUID() : operation;
+        Identity secondTarget = competing ? identity() : target;
+        CountDownLatch completedStatement = new CountDownLatch(1), release = new CountDownLatch(1);
+        AtomicReference<Session> winner = new AtomicReference<>();
+        Plan plan = observe(new Plan() {
+            @Override void afterMigration(Session session) throws SQLException {
+                if (winner.compareAndSet(null, session)) {
+                    completedStatement.countDown();
+                    awaitLatch(release);
+                    if (rollbackWinner) throw new SQLException("Synthetic migration winner rollback", "XX000");
+                }
+            }
+        });
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Object> first = executor.submit(() -> migrationOutcome(operation, owner.id(), old, target));
+            assertThat(completedStatement.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(sql.queryForObject("SELECT count(*) FROM user_identity_migration_receipts WHERE operation_id=?", Integer.class, operation)).isZero();
+            Future<Object> second = executor.submit(() -> migrationOutcome(secondOperation, owner.id(), old, secondTarget));
+            await(() -> plan.sessions.size() == 2 && plan.sessions.stream().allMatch(s -> s.pid > 0), 3);
+            Session blocked = plan.sessions.stream().filter(s -> s != winner.get()).findFirst().orElseThrow();
+            await(() -> Boolean.TRUE.equals(sql.queryForObject("SELECT ?=ANY(pg_blocking_pids(?))", Boolean.class, winner.get().pid, blocked.pid)), 3);
+            assertThat(first.isDone()).isFalse();
+            assertThat(second.isDone()).isFalse();
+            release.countDown();
+            Object a = first.get(10, TimeUnit.SECONDS), b = second.get(10, TimeUnit.SECONDS);
+            if (rollbackWinner) {
+                assertThat(a).isInstanceOf(RuntimeException.class);
+                assertThat(b).isEqualTo("APPLIED");
+                assertThat(winner.get().events).contains("rollback").doesNotContain("commit");
+            } else {
+                assertThat(a).isEqualTo("APPLIED");
+                if (competing) {
+                    assertThat(b).isInstanceOf(RuntimeException.class);
+                    assertMigrationConstraint((Throwable) b, "user_identity_migration_expected_current");
+                } else {
+                    assertThat(b).isEqualTo("REPLAY");
+                }
+            }
+            assertThat(sql.queryForObject("SELECT count(*) FROM user_identity_migration_receipts WHERE operation_id IN (?,?)", Integer.class, operation, secondOperation)).isOne();
+            assertThat(sql.queryForObject("SELECT count(*) FROM user_identity_bindings WHERE user_id=?", Integer.class, owner.id())).isEqualTo(2);
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(15, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
+    void offlineOperationRejectsUnsupportedPhysicalIsolationWithoutAnyWrite() throws Exception {
+        Identity old = identity(), target = identity();
+        User owner = auth.resolve(old, ignored -> true);
+        Map<String, List<String>> before = allRows(sql, "public");
+        // Direct owned driver connection: do not change the runtime pool policy for SQLSTATE 0A000.
+        try (Connection raw = java.sql.DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+            raw.setAutoCommit(false);
+            raw.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+            try (PreparedStatement operation = raw.prepareStatement("SELECT public.migrate_owner_identity(?,?,?,?,?,?,?)")) {
+                operation.setObject(1, UUID.randomUUID()); operation.setObject(2, owner.id()); operation.setLong(3, 1);
+                operation.setString(4, old.issuer()); operation.setString(5, old.subject());
+                operation.setString(6, target.issuer()); operation.setString(7, target.subject());
+                assertThat(assertThrows(PSQLException.class, operation::execute).getSQLState()).isEqualTo("0A000");
+            } finally { raw.rollback(); }
+        }
+        assertThat(allRows(sql, "public")).isEqualTo(before);
+    }
+
+    private static Flyway migration(DataSource source, String target) {
+        return Flyway.configure().dataSource(source).target(target).executeInTransaction(true).group(false)
+                .configuration(Map.of("flyway.postgresql.transactional.lock", "false")).load();
+    }
+
+    private static String switchIdentity(UUID operation, UUID userId, long generation, Identity old, Identity target) {
+        TransactionTemplate bounded = new TransactionTemplate(context.getBean(PlatformTransactionManager.class));
+        bounded.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_READ_COMMITTED);
+        bounded.setTimeout(15);
+        JdbcTemplate commands = context.getBean(JdbcTemplate.class);
+        return bounded.execute(status -> {
+            commands.execute("SET LOCAL lock_timeout='5s'");
+            commands.execute("SET LOCAL statement_timeout='10s'");
+            commands.execute("SET LOCAL transaction_timeout='15s'");
+            return commands.queryForObject("SELECT public.migrate_owner_identity(?,?,?,?,?,?,?)", String.class,
+                    operation, userId, generation, old.issuer(), old.subject(), target.issuer(), target.subject());
+        });
+    }
+
+    private static Object migrationOutcome(UUID operation, UUID user, Identity old, Identity target) {
+        try { return switchIdentity(operation, user, 1, old, target); }
+        catch (RuntimeException failure) { return failure; }
+    }
+
+    private static void assertMigrationConstraint(Throwable failure, String constraint) {
+        assertThat(findPostgres(failure).getSQLState()).isEqualTo("23514");
+        assertThat(findPostgres(failure).getServerErrorMessage().getConstraint()).isEqualTo(constraint);
+    }
+
     private static HikariDataSource newPool(String database) {
         HikariConfig configuration = new HikariConfig();
         configuration.setJdbcUrl(database == null ? POSTGRES.getJdbcUrl()
@@ -593,7 +933,7 @@ class UserAuthenticationIntegrationTest {
 
     private static Map<String, Long> counts() {
         Map<String, Long> values = new java.util.LinkedHashMap<>();
-        for (String table : List.of("users", "user_profiles", "user_identity_bindings", "workspaces", "workspace_memberships")) {
+        for (String table : List.of("users", "user_profiles", "user_identity_bindings", "user_identity_current", "workspaces", "workspace_memberships")) {
             values.put(table, sql.queryForObject("SELECT count(*) FROM " + table, Long.class));
         }
         return values;
@@ -649,6 +989,7 @@ class UserAuthenticationIntegrationTest {
         void afterInsert(Session session) throws SQLException { }
         void afterFind(Session session) throws SQLException { }
         void afterCommit(Session session) throws SQLException { }
+        void afterMigration(Session session) throws SQLException { }
     }
 
     private record Snapshot(int pid, String xid, String isolation) { }
@@ -707,8 +1048,10 @@ class UserAuthenticationIntegrationTest {
                         boolean find = statement.contains("FROM user_identity_bindings b");
                         boolean insert = statement.startsWith("INSERT INTO users ")
                                 || statement.startsWith("INSERT INTO user_profiles ")
-                                || statement.startsWith("INSERT INTO user_identity_bindings ");
-                        if (execute && (find || insert)) {
+                                || statement.startsWith("INSERT INTO user_identity_bindings ")
+                                || statement.startsWith("INSERT INTO user_identity_current ");
+                        boolean migration = statement.contains("public.migrate_owner_identity(");
+                        if (execute && (find || insert || migration)) {
                             Snapshot snapshot = session.snapshot();
                             if (find) { session.findTransactions.add(snapshot.xid()); }
                             currentPlan.beforeStatement(session, statement);
@@ -731,6 +1074,10 @@ class UserAuthenticationIntegrationTest {
                             session.finds++;
                             session.events.add("find");
                             currentPlan.afterFind(session);
+                        }
+                        if (execute && migration) {
+                            session.events.add("migration");
+                            currentPlan.afterMigration(session);
                         }
                         return value;
                     });

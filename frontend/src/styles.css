@@ -79,6 +79,10 @@ dd { margin: 0; text-align: right; }
 .workspace p { margin-top: 12px; font-size: .875rem; }
 .workspace .workspace-note { border-top: 1px solid #d5d5ce; padding-top: 16px; margin-top: 20px; font-size: .75rem; }
 .boundary-note { margin: 24px 0 20px; font-size: .8rem; }
+.confirmation-form { display: grid; gap: 12px; }
+.confirmation-form label { font-size: .875rem; font-weight: 550; }
+.confirmation-form input { font: inherit; min-width: 0; width: 100%; min-height: 44px; padding: 12px; border: 1px solid #bfbfb8; border-radius: 6px; background: #fff; color: #191919; }
+.confirmation-form .actions { gap: 12px; margin-top: 12px; }
 .not-found { max-width: 620px; padding: 24px 0; }
 .not-found .button { margin-top: 32px; }
 footer { border-top: 1px solid #d9d9d5; padding: 28px 0; display: flex; justify-content: space-between; gap: 20px; font-size: .75rem; line-height: 1.6; color: #62625d; }

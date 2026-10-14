@@ -46,6 +46,11 @@ public class AuthenticatedUserService {
     }
 
     public User resolve(Identity identity, Predicate<Identity> admission) {
+        return resolve(identity, admission, false);
+    }
+
+    /** Controlled owner mode never creates User/Profile for a missing or superseded exact pair. */
+    public User resolve(Identity identity, Predicate<Identity> admission, boolean existingOnly) {
         return bounded(identity, admission, lease -> {
             try {
                 return transaction(lease, false, () -> {
@@ -53,6 +58,9 @@ public class AuthenticatedUserService {
                     Optional<User> existing = bindings.findCurrentUser(identity);
                     if (existing.isPresent()) {
                         return requireActive(existing.get());
+                    }
+                    if (existingOnly || bindings.isRetained(identity)) {
+                        throw new AdmissionDeniedException();
                     }
                     User created = users.createUser(); // existing Spring proxy joins this exact holder
                     bindings.insert(identity, created.id());

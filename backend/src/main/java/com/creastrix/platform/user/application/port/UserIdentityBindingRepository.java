@@ -11,6 +11,9 @@ public interface UserIdentityBindingRepository {
 
     Optional<User> findCurrentUser(Identity identity);
 
+    /** Retained history is not a current alias and must never trigger replacement-account creation. */
+    boolean isRetained(Identity identity);
+
     /** Participates in the caller's transaction; never commits User or binding separately. */
     void insert(Identity identity, UUID userId);
 

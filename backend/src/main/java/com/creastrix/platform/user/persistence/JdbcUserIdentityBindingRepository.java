@@ -26,10 +26,17 @@ public class JdbcUserIdentityBindingRepository implements UserIdentityBindingRep
         return jdbc.query("""
                 SELECT u.id, u.status FROM user_identity_bindings b
                 JOIN users u ON u.id = b.user_id
+                JOIN user_identity_current c ON c.user_id=b.user_id AND c.issuer=b.issuer AND c.subject=b.subject
                 WHERE b.issuer = ? AND b.subject = ?
                 """, (rs, row) -> new User(rs.getObject("id", UUID.class),
                 UserStatus.valueOf(rs.getString("status"))), identity.issuer(), identity.subject())
                 .stream().findFirst();
+    }
+
+    @Override
+    public boolean isRetained(Identity identity) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM user_identity_bindings "
+                + "WHERE issuer=? AND subject=?)", Boolean.class, identity.issuer(), identity.subject()));
     }
 
     @Override
@@ -44,6 +51,10 @@ public class JdbcUserIdentityBindingRepository implements UserIdentityBindingRep
             }
             throw failure;
         }
+        // Initial history and selector share the User/Profile physical transaction.
+        // Selector/FK failures are not reclassified as an exact-pair registration race.
+        jdbc.update("INSERT INTO user_identity_current (user_id, issuer, subject) VALUES (?, ?, ?)",
+                userId, identity.issuer(), identity.subject());
     }
 
     private static boolean isExactPairConflict(Throwable failure, String schema) {

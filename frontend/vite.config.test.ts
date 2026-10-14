@@ -9,6 +9,12 @@ describe('fixed development transport configuration, not a runtime proxy proof',
     '/l%6fgin/oauth2/code/auth0', '/l%6Fgin/%6Fauth2/code/auth0'])('routes namespace %s before SPA fallback', path => {
     expect(routed.test(path)).toBe(true);
   });
+  it.each(['/oauth2/authorization/cognito', '/login/oauth2/code/cognito?code=test&state=test',
+    '/%6fauth2/authorization/cognito', '/login/%6fauth2/code/cognito', '/login/oauth2/code/%63ognito'])(
+    'preserves Cognito namespace %s without provider-specific proxy rewriting', path => {
+    expect(routed.test(path)).toBe(true);
+    expect(authProxy).not.toHaveProperty('rewrite');
+  });
   it.each(['/', '/login', '/login?auth=failed', '/account', '/login/other', '/authority', '/apiculture',
     '/oauth20', '/login/oauth20', '/AUTH/login', '/%2561uth/login'])('does not treat %s as the accepted namespace', path => {
     expect(routed.test(path)).toBe(false);

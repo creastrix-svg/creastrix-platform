@@ -44,7 +44,7 @@ public final class CreastrixOidcUserService implements OAuth2UserService<OidcUse
         }
         Identity identity = verifiedIdentity(provider, properties, started, clock.instant());
         try {
-            var user = users.resolve(identity, properties::admits);
+            var user = users.resolve(identity, properties::admits, properties.existingOnly());
             return new CreastrixPrincipal(user.id(), identity, clock.instant(), provider);
         } catch (RuntimeException failure) {
             // No transaction outcome, provider claims, SQL diagnostic or token leaves this boundary.
@@ -76,6 +76,10 @@ public final class CreastrixOidcUserService implements OAuth2UserService<OidcUse
             throw rejected();
         }
         requireVerifiedEmail(claims);
+        if (properties.provider() == AuthenticationProperties.Provider.COGNITO
+                && (!"id".equals(claims.get("token_use")) || provider.getUserInfo() != null)) {
+            throw rejected();
+        }
         if (provider.getUserInfo() != null) {
             requireVerifiedEmail(provider.getUserInfo().getClaims());
             if (!value.equals(provider.getUserInfo().getSubject())) {
