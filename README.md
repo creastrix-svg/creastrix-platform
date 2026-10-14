@@ -241,9 +241,9 @@ The original cookie follow-up is closed only for the accepted local pilot scope;
 The Cognito migration and email-confirmation recovery source is integrated by
 [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37) as `e5b58d43a9dc07c76efc905bc63d8269feaa40fe`. Its exact reviewed tree was preserved;
 separately authorized local operator actions remain distinct from integration.
-This bounded slice adds a selected AUTH0/COGNITO registration,
+That integrated slice added a selected AUTH0/COGNITO registration,
 Cognito signed-ID-token-only validation and existing-only owner resolution.
-Auth0 remains the default and retains its original claim checks. V13 adds one
+At PR #37 integration, Auth0 remained the source default. V13 adds one
 current pair per User, immutable historical pairs and exact migration receipts;
 the offline operation must preserve the internal UUID/Profile/status/generation
 and existing rights. Unknown or superseded owner identities do not create Users.
@@ -255,8 +255,20 @@ retained the same User UUID/Profile/status/generation/rights and business rows,
 both historical pairs and one receipt. The local existing-only runtime admits
 only the owner's exact Cognito identity. Real owner login, local logout (204
 then `/api/me` 401), repeat login and login after the owner-reported password
-change returned the same ACTIVE account. Auth0 tenant/client/account and private
-configuration are retained, not a current authentication alias.
+change returned the same ACTIVE account. That operation retained the Auth0
+tenant/client/account and private configuration, not a current authentication alias.
+
+The owner authorized an Auth0 source-retirement candidate on 2026-10-14.
+In that candidate, Cognito Frankfurt is the only supported runtime adapter;
+provider/default admission settings are `COGNITO` and existing-only. Legacy
+`AUTH0` configuration fails closed and its entry/callback routes are unsupported.
+This is a new candidate, not an integrated or browser-verified retirement result.
+The internal account and retained identity history need no new transfer. Standard
+OIDC and V13's controlled exact-identity operation remain available as foundations
+for a future separately reviewed provider adapter, not automatic account linking
+or password export. Separately, the owner-approved external Auth0 application
+Creastrix Local Pilot was deleted on 2026-10-14; tenant, Default App, users and
+private configuration remain. See the [separate operator evidence](docs/authentication-provider-migration.md#2026-10-14-auth0-retirement-boundary).
 
 External Cognito self-registration remains distinct from closed Creastrix
 admission. Real unverified/admitted backend refusal is **NOT RUN**; hosted-provider

@@ -44,7 +44,6 @@ import org.springframework.security.oauth2.client.web.HttpSessionOAuth2Authoriza
 import org.springframework.security.oauth2.client.web.HttpSessionOAuth2AuthorizedClientRepository;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestCustomizers;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
-import org.springframework.security.oauth2.core.converter.ClaimTypeConverter;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.web.SecurityFilterChain;
@@ -90,10 +89,13 @@ public class AuthenticationConfiguration {
                 throw new IllegalArgumentException("Authentication mode must be explicitly true or false (creastrix.auth.enabled)");
             }
             if ("true".equalsIgnoreCase(mode)) {
-                AuthenticationProperties.Provider.configured(environment.getProperty("creastrix.auth.provider", "AUTH0"));
-                String existingOnly = environment.getProperty("creastrix.auth.existing-only", "false");
+                AuthenticationProperties.Provider.configured(environment.getProperty("creastrix.auth.provider", "COGNITO"));
+                String existingOnly = environment.getProperty("creastrix.auth.existing-only", "true");
                 if (!("true".equalsIgnoreCase(existingOnly) || "false".equalsIgnoreCase(existingOnly))) {
                     throw new IllegalArgumentException("creastrix.auth.existing-only must be explicitly true or false");
+                }
+                if (!Boolean.parseBoolean(existingOnly)) {
+                    throw new IllegalArgumentException("Cognito owner mode requires creastrix.auth.existing-only=true");
                 }
             }
         };
@@ -157,8 +159,8 @@ public class AuthenticationConfiguration {
                     environment.getRequiredProperty("creastrix.auth.client-secret"),
                     environment.getRequiredProperty("creastrix.auth.browser-origin"), subjects,
                     environment.getProperty("server.servlet.session.cookie.secure", Boolean.class, true),
-                    AuthenticationProperties.Provider.configured(environment.getProperty("creastrix.auth.provider", "AUTH0")),
-                    environment.getProperty("creastrix.auth.existing-only", Boolean.class, false));
+                    AuthenticationProperties.Provider.configured(environment.getProperty("creastrix.auth.provider", "COGNITO")),
+                    environment.getProperty("creastrix.auth.existing-only", Boolean.class, true));
             properties.validateRuntime(local);
             return properties;
         }
@@ -178,12 +180,11 @@ public class AuthenticationConfiguration {
                 if (!properties.issuer().equals(raw.get("iss"))) {
                     throw CreastrixOidcUserService.rejected();
                 }
-                if (properties.provider() == AuthenticationProperties.Provider.COGNITO
-                        && !"id".equals(raw.get("token_use"))) {
+                if (!"id".equals(raw.get("token_use"))) {
                     throw CreastrixOidcUserService.rejected();
                 }
                 return CreastrixOidcUserService.strictClaims(
-                        OidcIdTokenDecoderFactory.createDefaultClaimTypeConverter(), true).convert(raw);
+                        OidcIdTokenDecoderFactory.createDefaultClaimTypeConverter()).convert(raw);
             });
             return factory;
         }
@@ -192,12 +193,8 @@ public class AuthenticationConfiguration {
         CreastrixOidcUserService authenticationUsers(AuthenticatedUserService users,
                                                     AuthenticationProperties properties, Clock clock) {
             var delegate = new OidcUserService();
-            // Only the selected Cognito mode skips UserInfo. Spring still validates the signed ID token.
-            if (properties.provider() == AuthenticationProperties.Provider.COGNITO) {
-                delegate.setRetrieveUserInfo(request -> false);
-            }
-            delegate.setClaimTypeConverterFactory(registration -> CreastrixOidcUserService.strictClaims(
-                    new ClaimTypeConverter(OidcUserService.createDefaultClaimTypeConverters()), false));
+            // The supported adapter uses the signed ID token only; no UserInfo source is adopted.
+            delegate.setRetrieveUserInfo(request -> false);
             return new CreastrixOidcUserService(delegate, users, properties, clock);
         }
 
@@ -289,7 +286,6 @@ public class AuthenticationConfiguration {
     static final class OwnedAuthorizedClients implements OAuth2AuthorizedClientRepository {
         private final HttpSessionOAuth2AuthorizedClientRepository delegate = new HttpSessionOAuth2AuthorizedClientRepository();
         private final String registration;
-        OwnedAuthorizedClients() { this("auth0"); }
         OwnedAuthorizedClients(String registration) { this.registration = registration; }
 
         @Override

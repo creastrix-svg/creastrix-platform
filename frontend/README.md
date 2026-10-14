@@ -158,8 +158,10 @@ and [authentication contract](../docs/authentication-pilot.md#react-client-and-f
 
 The frontend keeps its native POST to `/auth/login`; it does not choose the
 provider, store provider tokens or collect a password. Backend configuration
-selects exactly one registration and returns either the Auth0 or Cognito entry
-and callback paths. The existing proxy namespaces already route
+selects exactly one registration. The owner-authorized 2026-10-14 source-retirement
+candidate supports Cognito only; legacy AUTH0 configuration fails closed and the
+Auth0 entry/callback paths are unsupported. This is a new candidate, not an
+integrated or browser-verified retirement result. The existing proxy namespaces route
 `/oauth2/authorization/cognito` and `/login/oauth2/code/cognito`, including accepted
 encoded segments, without rewriting headers, URI/query, Location or cookies.
 Config-unit checks are not a real Cognito/browser proxy proof.
@@ -171,10 +173,15 @@ The [controlled migration runbook](../docs/authentication-provider-migration.md)
 records the separately authorized 2026-10-13 local owner transfer: same internal
 ACTIVE User, local logout/private refusal, repeat login and new-password login.
 The local backend selects Cognito existing-only for that one owner through private
-environment; default AUTH0 configuration is unchanged and Auth0 is retained, not
-a current alias. The updated DE/EN pilot notice reflects that local fact only.
+environment. The retirement candidate makes COGNITO/existing-only the source
+defaults without changing that internal account or the frontend's provider-neutral
+login form. The 2026-10-13 transfer retained Auth0 externally, not as a current alias;
+the separately confirmed deletion of its old client is recorded in the
+[operator evidence](../docs/authentication-provider-migration.md#2026-10-14-auth0-retirement-boundary).
+The DE/EN pilot notice
+reflects the bounded local Cognito runtime only.
 
-Source is integrated by [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37) as
+The earlier migration/recovery source was integrated by [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37) as
 `e5b58d43a9dc07c76efc905bc63d8269feaa40fe`. Historical independent frontend 140,
 backend 1690/package and native 417/scoped views remain separate; overall IDE
 schema/background completion is UNKNOWN/INCOMPLETE. Real unverified/admitted
@@ -206,7 +213,8 @@ retry, logout, Q reset or login occurs. The anonymous selected-Cognito backend
 boundary is authoritative; ordinary OIDC and exact admission are still needed for
 Creastrix access. Existing login/logout/private-state ownership is unchanged.
 Mock-fetch/DOM tests do not prove actual Cognito email delivery or browser recovery.
-Auth0 remains retained. The limited owner EMAIL disposition is in the
+Retiring the Auth0 source adapter does not change these recovery claims.
+The limited owner EMAIL disposition is in the
 [runbook](../docs/authentication-provider-migration.md#limited-email-gate-disposition);
 it did not itself approve recovery code or close native/cookie/publication gates.
 The later independent review and PR #37 integration are separate evidence.

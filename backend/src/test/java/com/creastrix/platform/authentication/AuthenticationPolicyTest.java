@@ -49,14 +49,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
 import org.springframework.security.oauth2.client.oidc.authentication.OidcIdTokenDecoderFactory;
-import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
-import org.springframework.security.oauth2.core.converter.ClaimTypeConverter;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.oauth2.core.oidc.OidcIdToken;
 import org.springframework.security.oauth2.core.oidc.OidcUserInfo;
@@ -92,8 +90,8 @@ class AuthenticationPolicyTest {
         });
     }
 
-    private static final String ISSUER = "https://pilot.eu.auth0.com/";
-    private static final String SUBJECT = "auth0|pilot-subject";
+    private static final String ISSUER = "https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_SyntheticPool";
+    private static final String SUBJECT = "synthetic|pilot-subject";
     private static final Instant STARTED = Instant.parse("2026-09-10T12:00:00Z");
     private static final Instant NOW = STARTED.plusSeconds(120);
 
@@ -141,7 +139,7 @@ class AuthenticationPolicyTest {
 
             Filter security = context.getBean("springSecurityFilterChain", Filter.class);
             for (String path : List.of("/actuator/health", "/actuator/info", "/api/me", "/auth/csrf",
-                    "/login", "/oauth2/authorization/auth0")) {
+                    "/login", "/oauth2/authorization/cognito")) {
                 MockHttpServletResponse response = new MockHttpServletResponse();
                 AtomicBoolean endpointReached = new AtomicBoolean();
                 security.doFilter(new MockHttpServletRequest("GET", path), response,
@@ -187,10 +185,10 @@ class AuthenticationPolicyTest {
                         "server.servlet.session.cookie.secure=false")
                 .withBean(AuthenticatedUserService.class, () -> mock(AuthenticatedUserService.class))
                 .withBean(ClientRegistrationRepository.class, () -> new InMemoryClientRegistrationRepository(
-                        ClientRegistration.withRegistrationId("auth0").clientId("client").clientSecret("secret")
+                        ClientRegistration.withRegistrationId("cognito").clientId("client").clientSecret("secret")
                                 .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                                 .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
-                                .redirectUri("http://localhost:3000/login/oauth2/code/auth0")
+                                .redirectUri("http://localhost:3000/login/oauth2/code/cognito")
                                 .scope("openid", "profile", "email").issuerUri(ISSUER)
                                 .authorizationUri(ISSUER + "authorize").tokenUri(ISSUER + "oauth/token")
                                 .jwkSetUri(ISSUER + ".well-known/jwks.json").userInfoUri(ISSUER + "userinfo")
@@ -203,10 +201,37 @@ class AuthenticationPolicyTest {
                             .doesNotHaveBean("authenticationDisabled");
                     assertThat(context.getBean(AuthenticationProperties.class).admits(new Identity(ISSUER, SUBJECT)))
                             .isTrue();
+                    assertThat(context.getBean(AuthenticationProperties.class).provider())
+                            .isEqualTo(AuthenticationProperties.Provider.COGNITO);
+                    assertThat(context.getBean(AuthenticationProperties.class).existingOnly()).isTrue();
+                    assertThat(context.getBean(ClientRegistrationRepository.class).findByRegistrationId("auth0")).isNull();
                     assertThat(context.getBean(SecurityFilterChain.class).getFilters())
                             .noneMatch(filter -> filter instanceof BasicAuthenticationFilter
                                     || filter instanceof UsernamePasswordAuthenticationFilter
                                     || filter instanceof DefaultLoginPageGeneratingFilter);
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"AUTH0", "auth0", "OTHER"})
+    void unsupportedProviderStopsEnabledStartupBeforeDiscovery(String provider) {
+        new WebApplicationContextRunner().withUserConfiguration(AuthenticationConfiguration.class)
+                .withPropertyValues("creastrix.auth.enabled=true", "creastrix.auth.provider=" + provider)
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasStackTraceContaining("creastrix.auth.provider must be COGNITO");
+                });
+    }
+
+    @Test
+    void enabledStartupCannotTurnOffDefaultExistingOnlyAdmission() {
+        new WebApplicationContextRunner().withUserConfiguration(AuthenticationConfiguration.class)
+                .withPropertyValues("creastrix.auth.enabled=true", "creastrix.auth.existing-only=false")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasStackTraceContaining("Cognito owner mode requires creastrix.auth.existing-only=true");
                 });
     }
 
@@ -243,19 +268,17 @@ class AuthenticationPolicyTest {
 
     @ParameterizedTest
     @MethodSource("malformedRawClaims")
-    void malformedRawClaimsAreRejectedBeforeEitherFrameworkConverter(String claim, Object value) {
-        for (boolean idToken : List.of(true, false)) {
-            Map<String, Object> raw = rawClaims();
-            raw.put(claim, value);
-            AtomicBoolean converted = new AtomicBoolean();
+    void malformedRawClaimsAreRejectedBeforeTheIdTokenConverter(String claim, Object value) {
+        Map<String, Object> raw = rawClaims();
+        raw.put(claim, value);
+        AtomicBoolean converted = new AtomicBoolean();
 
-            assertRejected(() -> CreastrixOidcUserService.strictClaims(input -> {
-                converted.set(true);
-                return input;
-            }, idToken).convert(raw));
+        assertRejected(() -> CreastrixOidcUserService.strictClaims(input -> {
+            converted.set(true);
+            return input;
+        }).convert(raw));
 
-            assertThat(converted).isFalse();
-        }
+        assertThat(converted).isFalse();
     }
 
     static Stream<Arguments> malformedRawClaims() {
@@ -289,7 +312,7 @@ class AuthenticationPolicyTest {
         raw.put("auth_time", authenticationTime);
 
         Map<String, Object> converted = CreastrixOidcUserService.strictClaims(
-                OidcIdTokenDecoderFactory.createDefaultClaimTypeConverter(), true).convert(raw);
+                OidcIdTokenDecoderFactory.createDefaultClaimTypeConverter()).convert(raw);
 
         assertThat(converted.get("auth_time")).isEqualTo(STARTED);
         assertThat(converted.get("email_verified")).isEqualTo(true);
@@ -302,22 +325,18 @@ class AuthenticationPolicyTest {
     }
 
     @Test
-    void missingAuthenticationTimeIsRejectedInIdTokenButIsOptionalInUserInfo() {
+    void missingAuthenticationTimeIsRejectedInTheOnlySupportedClaimSource() {
         Map<String, Object> raw = rawClaims();
         raw.remove("auth_time");
 
-        assertRejected(() -> CreastrixOidcUserService.strictClaims(input -> input, true).convert(raw));
-        assertThat(CreastrixOidcUserService.strictClaims(new ClaimTypeConverter(
-                OidcUserService.createDefaultClaimTypeConverters()), false).convert(raw))
-                .containsEntry("email_verified", true)
-                .doesNotContainKey("auth_time");
+        assertRejected(() -> CreastrixOidcUserService.strictClaims(input -> input).convert(raw));
     }
 
     @Test
     void booleanFalseIsAValidRawTypeButNeverVerifiedIdentity() {
         Map<String, Object> raw = rawClaims();
         raw.put("email_verified", false);
-        assertThat(CreastrixOidcUserService.strictClaims(input -> input, true).convert(raw))
+        assertThat(CreastrixOidcUserService.strictClaims(input -> input).convert(raw))
                 .containsEntry("email_verified", false);
 
         Map<String, Object> claims = verifiedClaims();
@@ -328,16 +347,15 @@ class AuthenticationPolicyTest {
     @Test
     void exactAdmittedIdentityWithFreshAuthenticationIsAccepted() {
         assertThat(verify(verifiedClaims(), null, STARTED, NOW)).isEqualTo(new Identity(ISSUER, SUBJECT));
-        assertThat(verify(verifiedClaims(), userInfoClaims(), STARTED, NOW))
-                .isEqualTo(new Identity(ISSUER, SUBJECT));
+        assertRejected(() -> verify(verifiedClaims(), userInfoClaims(), STARTED, NOW));
     }
 
     @ParameterizedTest
     @MethodSource("invalidVerifiedEmailClaims")
-    void eitherClaimSourceMustHaveVerifiedNonblankEmail(String claim, Object value) {
+    void idTokenMustHaveVerifiedNonblankEmailWithoutUserInfoFallback(String claim, Object value) {
         Map<String, Object> invalid = verifiedClaims();
         invalid.put(claim, value);
-        assertRejected(() -> verify(invalid, userInfoClaims(), STARTED, NOW));
+        assertRejected(() -> verify(invalid, null, STARTED, NOW));
 
         Map<String, Object> invalidUserInfo = userInfoClaims();
         invalidUserInfo.put(claim, value);
@@ -356,6 +374,7 @@ class AuthenticationPolicyTest {
         for (String claim : List.of("email_verified", "email")) {
             Map<String, Object> idToken = verifiedClaims();
             idToken.remove(claim);
+            assertRejected(() -> verify(idToken, null, STARTED, NOW));
             assertRejected(() -> verify(idToken, userInfoClaims(), STARTED, NOW));
 
             Map<String, Object> userInfo = userInfoClaims();
@@ -365,9 +384,10 @@ class AuthenticationPolicyTest {
     }
 
     @Test
-    void userInfoSubjectMustMatchIdTokenEvenWhenEmailMatches() {
+    void unexpectedUserInfoIsRejectedEvenWhenEmailAndSubjectMatch() {
         Map<String, Object> userInfo = userInfoClaims();
-        userInfo.put("sub", "auth0|another-subject");
+        assertRejected(() -> verify(verifiedClaims(), userInfo, STARTED, NOW));
+        userInfo.put("sub", "synthetic|another-subject");
 
         assertRejected(() -> verify(verifiedClaims(), userInfo, STARTED, NOW));
     }
@@ -375,7 +395,7 @@ class AuthenticationPolicyTest {
     @Test
     void subjectAdmissionNeverFallsBackToAnExistingVerifiedEmail() {
         Map<String, Object> claims = verifiedClaims();
-        claims.put("sub", "auth0|unadmitted-subject");
+        claims.put("sub", "synthetic|unadmitted-subject");
 
         assertRejected(() -> verify(claims, null, STARTED, NOW));
     }
@@ -427,16 +447,16 @@ class AuthenticationPolicyTest {
     void admissionIsAnImmutableExactIssuerSubjectSet() {
         Set<String> configured = new HashSet<>(Set.of(SUBJECT));
         AuthenticationProperties properties = properties(ISSUER, "http://localhost:3000", configured, false);
-        configured.add("auth0|added-after-start");
+        configured.add("synthetic|added-after-start");
 
         assertThat(properties.admits(new Identity(ISSUER, SUBJECT))).isTrue();
         assertThat(properties.admits(new Identity(ISSUER, SUBJECT.toUpperCase()))).isFalse();
         assertThat(properties.admits(new Identity(ISSUER, " " + SUBJECT))).isFalse();
-        assertThat(properties.admits(new Identity(ISSUER, "auth0|added-after-start"))).isFalse();
+        assertThat(properties.admits(new Identity(ISSUER, "synthetic|added-after-start"))).isFalse();
         assertThat(properties.admits(new Identity(ISSUER + "/", SUBJECT))).isFalse();
         assertThat(properties(ISSUER, "http://localhost:3000", Set.of(), false)
                 .admits(new Identity(ISSUER, SUBJECT))).isFalse();
-        assertThatThrownBy(() -> properties.allowedSubjects().add("auth0|mutation"))
+        assertThatThrownBy(() -> properties.allowedSubjects().add("synthetic|mutation"))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 
@@ -449,7 +469,7 @@ class AuthenticationPolicyTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = { "", " ", " auth0|subject", "auth0|subject " })
+    @ValueSource(strings = { "", " ", " synthetic|subject", "synthetic|subject " })
     void invalidAdmissionEntriesAreRejectedRatherThanNormalized(String subject) {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> properties(ISSUER, "http://localhost:3000", Set.of(subject), false));
@@ -458,12 +478,12 @@ class AuthenticationPolicyTest {
     @Test
     void missingRequiredConfigurationIsRejected() {
         assertThatIllegalArgumentException().isThrownBy(() -> new AuthenticationProperties(
-                " ", "client", "secret", "http://localhost:3000", Set.of(), false));
+                " ", "client", "secret", "http://localhost:3000", Set.of(), false, AuthenticationProperties.Provider.COGNITO, true));
         for (String missing : new String[] { null, "", " " }) {
             assertThatIllegalArgumentException().isThrownBy(() -> new AuthenticationProperties(
-                    ISSUER, missing, "secret", "http://localhost:3000", Set.of(), false));
+                    ISSUER, missing, "secret", "http://localhost:3000", Set.of(), false, AuthenticationProperties.Provider.COGNITO, true));
             assertThatIllegalArgumentException().isThrownBy(() -> new AuthenticationProperties(
-                    ISSUER, "client", missing, "http://localhost:3000", Set.of(), false));
+                    ISSUER, "client", missing, "http://localhost:3000", Set.of(), false, AuthenticationProperties.Provider.COGNITO, true));
         }
         assertThatNullPointerException().isThrownBy(() -> properties(null, "http://localhost:3000", Set.of(), false));
         assertThatNullPointerException().isThrownBy(() -> properties(ISSUER, null, Set.of(), false));
@@ -505,8 +525,8 @@ class AuthenticationPolicyTest {
     void redirectsAreFixedAndSensitiveRecordsAreRedacted() {
         AuthenticationProperties properties = properties();
         assertThat(properties.browserAuthority()).isEqualTo("localhost:3000");
-        assertThat(properties.callbackUri()).isEqualTo("http://localhost:3000/login/oauth2/code/auth0");
-        assertThat(properties.entryUri()).isEqualTo("http://localhost:3000/oauth2/authorization/auth0");
+        assertThat(properties.callbackUri()).isEqualTo("http://localhost:3000/login/oauth2/code/cognito");
+        assertThat(properties.entryUri()).isEqualTo("http://localhost:3000/oauth2/authorization/cognito");
         assertThat(properties.successUri()).isEqualTo("http://localhost:3000/account");
         assertThat(properties.failureUri()).isEqualTo("http://localhost:3000/login?auth=failed");
         assertThat(properties.toString()).isEqualTo("AuthenticationProperties[redacted]");
@@ -530,7 +550,7 @@ class AuthenticationPolicyTest {
     @Test
     void admittedFlowCannotBeErasedByDuplicateCleanupOrNewerEntryBeforeFrameworkConsumption() {
         var requests = new AuthenticationConfiguration.TimedAuthorizationRequests(Clock.fixed(NOW, ZoneOffset.UTC));
-        var request = new MockHttpServletRequest("GET", "/login/oauth2/code/auth0");
+        var request = new MockHttpServletRequest("GET", "/login/oauth2/code/cognito");
         request.setSession(new MockHttpSession());
         request.setParameter("state", "owned-state");
         request.setParameter("code", "test-code");
@@ -547,7 +567,7 @@ class AuthenticationPolicyTest {
             var pinned = attempt.pin(request);
             assertThat(requests.removeAuthorizationRequest(pinned, response) == owned).isTrue();
             assertThat(requests.removeAuthorizationRequest(pinned, response)).isNull();
-            var nextRequest = new MockHttpServletRequest("GET", "/login/oauth2/code/auth0");
+            var nextRequest = new MockHttpServletRequest("GET", "/login/oauth2/code/cognito");
             nextRequest.setSession(request.getSession(false));
             nextRequest.setParameter("state", "newer-state");
             assertThat(requests.loadAuthorizationRequest(nextRequest) == newer).isTrue();
@@ -669,7 +689,7 @@ class AuthenticationPolicyTest {
     void requestBoundaryDoesNotDisguiseCommittedRejectionAndAlwaysReleasesItsOwner(boolean committed)
             throws Exception {
         var requests = new AuthenticationConfiguration.TimedAuthorizationRequests(Clock.fixed(NOW, ZoneOffset.UTC));
-        var request = new MockHttpServletRequest("GET", "/login/oauth2/code/auth0");
+        var request = new MockHttpServletRequest("GET", "/login/oauth2/code/cognito");
         var session = new MockHttpSession();
         request.setSession(session);
         request.addHeader("Host", properties().browserAuthority());
@@ -1810,7 +1830,7 @@ class AuthenticationPolicyTest {
 
     private static OAuth2AuthorizationRequest savedFlow(String state) {
         return OAuth2AuthorizationRequest.authorizationCode().authorizationUri(ISSUER + "authorize")
-                .clientId("test-client").redirectUri("http://localhost:3000/login/oauth2/code/auth0")
+                .clientId("test-client").redirectUri("http://localhost:3000/login/oauth2/code/cognito")
                 .state(state).attributes(attributes -> attributes.put(AuthenticationConfiguration.FLOW_STARTED, STARTED))
                 .build();
     }
@@ -1822,8 +1842,8 @@ class AuthenticationPolicyTest {
         assertThat(cognito.callbackUri()).isEqualTo("http://localhost:3000/login/oauth2/code/cognito");
         assertThat(cognito.entryUri()).isEqualTo("http://localhost:3000/oauth2/authorization/cognito");
         assertThat(cognito.registrationId()).isEqualTo("cognito");
-        assertThat(properties().provider()).isEqualTo(AuthenticationProperties.Provider.AUTH0);
-        assertThat(properties().existingOnly()).isFalse();
+        assertThat(properties().provider()).isEqualTo(AuthenticationProperties.Provider.COGNITO);
+        assertThat(properties().existingOnly()).isTrue();
         assertThatIllegalArgumentException().isThrownBy(() -> cognitoProperties(cognito.issuer(), false).validateRuntime(true));
         assertThat(cognito.toString()).isEqualTo("AuthenticationProperties[redacted]");
     }
@@ -1877,7 +1897,7 @@ class AuthenticationPolicyTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"cognito", "AUTH0,COGNITO", "", "OTHER", " COGNITO"})
+    @ValueSource(strings = {"AUTH0", "auth0", "cognito", "AUTH0,COGNITO", "", "OTHER", " COGNITO"})
     void providerChoiceIsClosedAndDoesNotNormalizeOrEnableMultipleRegistrations(String provider) {
         assertThatIllegalArgumentException().isThrownBy(() -> AuthenticationProperties.Provider.configured(provider));
     }
@@ -1919,7 +1939,8 @@ class AuthenticationPolicyTest {
 
     private static AuthenticationProperties properties(String issuer, String browserOrigin,
                                                         Set<String> subjects, boolean secureCookie) {
-        return new AuthenticationProperties(issuer, "client", "secret", browserOrigin, subjects, secureCookie);
+        return new AuthenticationProperties(issuer, "client", "secret", browserOrigin, subjects, secureCookie,
+                AuthenticationProperties.Provider.COGNITO, true);
     }
 
     private static Map<String, Object> rawClaims() {
@@ -1934,6 +1955,7 @@ class AuthenticationPolicyTest {
         claims.put("sub", SUBJECT);
         claims.put("email", "pilot@example.test");
         claims.put("email_verified", true);
+        claims.put("token_use", "id");
         claims.put("auth_time", STARTED);
         return claims;
     }

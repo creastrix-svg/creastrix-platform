@@ -8,19 +8,48 @@ does not authorize AWS/SES changes, production deployment or database execution.
 The [pilot contract](authentication-pilot.md) and [backend boundary](../backend/README.md#controlled-provider-migration-candidate-author-wip)
 preserve the existing OIDC/session/Q/CSRF and deadline rules.
 
+### 2026-10-14 Auth0 retirement boundary
+
+The owner authorized a new source-retirement candidate: Cognito Frankfurt is
+the only supported runtime adapter, with COGNITO/existing-only defaults. Legacy
+AUTH0 selection fails closed; its entry/callback paths are unsupported. Strict
+signed-ID-token validation (`token_use=id`, raw Boolean verified email, numeric
+auth_time), no UserInfo, exact admission and common OIDC/session/Q checks remain.
+Candidate review, verification and integration are separate gates; the historical
+PR #37 and browser results below do not complete them.
+
+Separately, on 2026-10-14 the owner explicitly approved removal of the external
+Auth0 application **Creastrix Local Pilot**. The dashboard's refreshed application
+list confirmed its deletion; the tenant, Default App, provider users and private
+configuration were retained. Fresh Cognito login before deletion and an account
+recheck afterward showed the same ACTIVE internal User. These are observations
+on the previous live backend, not proof of the new source candidate. Exact
+operator evidence is retained outside Git in
+`auth0-retirement-coordination-20261014-aVOF3v`; no private identity values or
+credentials are copied into this runbook.
+
+Source retirement does not need another account transfer: the owner already uses
+the current Cognito pair installed on 2026-10-13. Keep that User UUID, Profile,
+status, generation, rights, selector, both immutable history pairs and receipt.
+Future provider support requires a separately reviewed adapter and an explicitly
+authorized verified exact-identity operation. V13 provides that bounded offline
+mechanism, not automatic email linking, bulk migration or password export.
+
 ## Contract and prerequisites
 
 - Preserve the internal User UUID, exactly one unchanged Profile, ACTIVE status,
   eligibility generation, business references and rights. No new Workspace,
   grant, email match, additional User, simultaneously active alias or password
   export is part of this operation.
-- Keep Auth0 tenant/client/account/private configuration enabled and retained.
-  One selected application registration is active after restart; Auth0 is the
-  source default. The authorized local runtime selects Cognito through private
-  environment; this does not change committed defaults or retain Auth0 as an alias.
+- Keep the current Cognito configuration and exact owner admission. The retirement
+  candidate supports one Cognito registration, default COGNITO/existing-only;
+  no historical Auth0 binding is an active alias. External resource disposition
+  is recorded above; do not infer permission to delete remaining resources.
 - Obtain independent code review and the owner's separate exact-operation
-  authorization. Prove control of the exact old Auth0 `(issuer, subject)` and
-  new Cognito pair through fresh validated provider evidence, not matching email.
+  authorization for any future identity switch. Prove control of the exact old
+  and new `(issuer, subject)` pairs through fresh validated provider evidence,
+  not matching email. The completed Auth0-to-Cognito operation below required
+  those exact provider pairs; retirement itself performs no new switch.
   Do not log/export passwords, tokens, secrets, full claims or identity values.
 - Preflight the actual pool/client, original Frankfurt issuer, callback
   `http://localhost:3000/login/oauth2/code/cognito`, allowed scopes and current
@@ -40,8 +69,9 @@ preserve the existing OIDC/session/Q/CSRF and deadline rules.
 
 ## Forward schema and private preflight
 
-Apply reviewed V13 with the existing Flyway settings only to the authorized
-owned database. V1–V12 must remain unchanged. Existing bindings backfill one
+The 2026-10-13 owner database already has V13; source retirement adds no migration.
+For a separately authorized database upgrade, apply reviewed V13 with the existing
+Flyway settings only to that owned database. V1–V12 must remain unchanged. Existing bindings backfill one
 current selector; a legacy User without a binding gets no invented identity.
 V11 immutable history and global exact-pair ownership remain. New schema is
 technical persistence, not a new core entity or an actor-authorized SQL model.
@@ -97,18 +127,24 @@ After a resolved commit, exact replay may reconcile the same operation. Validate
 receipt payload, same User/Profile/generation and current pair. A conflicting
 receipt or unexpected later switch is not repaired automatically.
 
-Returning to Auth0 requires another separately authorized operation UUID with
-expected current Cognito pair and retained Auth0 target. Reuse the historical
-Auth0 row; do not rewrite it. Acknowledge COMMIT/read-back, restart with Auth0
-and fresh exact admission, then perform a new full login. Old cookies/sessions
-are not migrated or revived; dump restore is not the ordinary return mechanism.
+V13 still supports a controlled future switch without rewriting identity history.
+It does not make any provider immediately usable: review and verify its adapter,
+client configuration and exact identity-control evidence first. In particular,
+the retired Auth0 adapter and deleted client cannot be restored by changing an
+environment variable or restarting. A return to a retained historical pair
+would need new explicit authorization and an operation UUID with the expected
+current pair and verified target. Reuse that User's historical row; never rewrite
+it. Acknowledge COMMIT/read-back, then restart the separately approved runtime
+and perform a fresh full login. Old cookies/sessions are not migrated or revived;
+dump restore is not the ordinary return mechanism.
 
 ## Restart and separate walkthrough
 
 Only after approved commit/read-back select `CREASTRIX_AUTH_PROVIDER=COGNITO`
 and `CREASTRIX_AUTH_EXISTING_ONLY=true`, the exact issuer/client and owner subject
 in a separately authorized backend-only configuration. Keep client secret out
-of React, Git, logs and evidence; do not overwrite Auth0 configuration. Restart
+of React, Git, logs and evidence. Retained obsolete private configuration must not
+be loaded as an automatic fallback or deleted without its own authorization. Restart
 the owned application only under its separate authorization. Process-local
 sessions/Q contexts are discarded; bootstrap/echo and fresh full login are required.
 
@@ -184,7 +220,8 @@ fields only; no password, URL/query/history payload or persisted account data is
 introduced. Each explicit confirm/resend action uses fresh standard session CSRF
 and an anonymous-only exact Host/Origin backend boundary. Provider-only recovery
 does not require live Q/echo/canStart and does not automatically logout or reset Q.
-Already authenticated requests and non-Cognito mode refuse without identity mutation.
+Already authenticated requests refuse without identity mutation; the retirement
+candidate supports no alternative provider mode for these routes.
 
 The existing confidential backend client submits only ConfirmSignUp or
 ResendConfirmationCode to the fixed Frankfurt API, preserving exact entered
@@ -250,9 +287,9 @@ passed 234/234, locked install, typecheck, lint and build. These are separate
 post-merge checks, not new native/browser runs. Integration evidence is retained in
 `cognito-merge-20261014-islXPJ/REPORT.md`.
 
-This factual alignment runs no new tests/provider/browser/database actions;
-new wording has not received a new native preview gate. Auth0 remains retained,
-source defaults unchanged, and actual admitted signed-false remains NOT RUN under
+That PR #37 factual alignment ran no new tests/provider/browser/database actions
+and retained Auth0/defaults at that time. The later retirement boundary is recorded
+above rather than retroactively changing those results. Actual admitted signed-false remains NOT RUN under
 the limited EMAIL alternative-2 disposition above. The [local cookie disposition and retained public gate](authentication-pilot.md#open-cookie-follow-up)
 records accepted local-only closure. The historical npm HIGH warning is retained;
 the [lockfile follow-up and installed-environment limits](../frontend/README.md#dependency-follow-up)

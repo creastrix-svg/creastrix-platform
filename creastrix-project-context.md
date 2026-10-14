@@ -238,9 +238,10 @@ See the [local cookie disposition and retained public gate](docs/authentication-
 
 The owner accepted ordinary external Cognito self-registration in Frankfurt with
 closed exact-pair Creastrix admission, not public Creastrix signup or access.
-The bounded code candidate uses one selected AUTH0/COGNITO registration; Cognito
+The PR #37 slice introduced one selected AUTH0/COGNITO registration; Cognito
 requires a verified signed ID token with raw Boolean email verification, numeric
-auth_time and token_use=id and does not call UserInfo. Auth0 retains its checks.
+auth_time and token_use=id and does not call UserInfo. At that integration, Auth0
+retained its checks and remained the source default.
 V13/current selector and immutable receipts permit an explicitly authorized
 offline switch while retaining all historical pairs and the same internal
 User/Profile/status/eligibility generation and rights. No email auto-linking or
@@ -254,10 +255,10 @@ the authorized 2026-10-13 local operator action verified backup/restore, applied
 V13 and acknowledged one owner switch with independent read-back. The same
 User UUID/Profile/status/generation/rights/business rows, both historical pairs
 and one receipt were retained. The local runtime selects Cognito existing-only
-with one exact owner subject through private environment; AUTH0 defaults are
-unchanged. Owner login, local logout/private 401, repeat login and login after
+with one exact owner subject through private environment. That operator action
+did not change source defaults. Owner login, local logout/private 401, repeat login and login after
 the owner-reported password change/private 200 returned the same ACTIVE User.
-Auth0 tenant/client/account/private configuration remain, not a current alias.
+That action retained Auth0 tenant/client/account/private configuration, not a current alias.
 
 The historical Auth0 P, synthetic author tests, independent backend 1690/package
 and frontend 140 checks, native compilation/417 tests/scoped views and the local
@@ -283,8 +284,8 @@ ConfirmSignUp/ResendConfirmationCode preserve the entered email case and never
 link identities, create internal accounts/Workspace/grants or log in automatically.
 Provider email confirmation still needs a fresh ordinary OIDC flow and exact
 Creastrix admission. Author tests, native IDE and actual provider/browser recovery
-have distinct evidence; no rollout or public self-admission is implied. Auth0 is
-retained and defaults unchanged; cookie/native/publication gates are not closed
+have distinct evidence; no rollout or public self-admission is implied. That
+recovery slice retained Auth0 and its source default; cookie/native/publication gates are not closed
 by the limited EMAIL disposition.
 
 Fresh isolated recovery author verification passed focused 528/528, the narrow
@@ -303,6 +304,27 @@ passed 1826/1826 with zero failures/errors/skipped and tests/package BUILD SUCCE
 passed 234/234, locked install, typecheck, lint and build. These are integration CI,
 not new browser/native proofs. Local operator results remain distinct; rollout
 and broader cookie safety are not authorized by source integration.
+
+### Auth0 source-retirement candidate
+
+On 2026-10-14 the owner authorized removal of active Auth0 support while keeping
+Cognito and the same internal account. The new candidate uses only the Cognito
+Frankfurt adapter, defaults to COGNITO/existing-only, and rejects legacy AUTH0
+selection and entry/callback routes. It preserves strict signed ID-token claims,
+common OIDC/session/Q checks, User UUID/Profile/rights, the current identity
+selector, immutable historical bindings and receipts. No new owner transfer,
+schema change or domain decision is needed.
+
+Future providers require a separately reviewed adapter plus an explicitly
+authorized, verified exact-identity operation through the preserved V13 boundary.
+Email auto-linking, bulk migration and password export are not provided.
+Source retirement is a candidate, not a merged or browser-verified result.
+Separately, exact-target owner confirmation preceded deletion of the external
+Auth0 application Creastrix Local Pilot on 2026-10-14. Tenant, Default App, users
+and private configuration remain; a fresh account recheck on the previous live
+runtime still showed the same ACTIVE User. See the [operator evidence](docs/authentication-provider-migration.md#2026-10-14-auth0-retirement-boundary).
+Historical Auth0 P and migration results remain historical. Local cookie closure,
+L1 and the OPEN public-readiness gate are unchanged.
 
 ## Domain Principles
 
