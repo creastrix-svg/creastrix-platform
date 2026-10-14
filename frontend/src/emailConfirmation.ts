@@ -1,7 +1,7 @@
 import { createContext } from 'react';
 
 export type ConfirmationResult = 'IDLE' | 'PENDING' | 'CONFIRMED' | 'CODE_REQUEST_ACCEPTED'
-  | 'INVALID_INPUT' | 'DENIED' | 'NOT_COMPLETED' | 'RATE_LIMITED' | 'UNKNOWN' | 'DISABLED';
+  | 'INVALID_INPUT' | 'DENIED' | 'NOT_COMPLETED' | 'RATE_LIMITED' | 'NOT_SENT' | 'UNKNOWN' | 'DISABLED';
 export const CONFIRMATION_TIMEOUT_MS = 30_000;
 
 // An injectable transport keeps finite DOM tests disconnected from real accounts.
@@ -38,7 +38,7 @@ function denial(status: number): ConfirmationResult {
 type Action = 'confirm' | 'resend';
 type Payload = { email: string; code?: string };
 type Reader = ReadableStreamDefaultReader<Uint8Array>;
-type Operation = { epoch: number; abort: AbortController; deadline: Promise<never>; timer: ReturnType<typeof setTimeout>; payload: Payload; reader: Reader | null };
+type Operation = { epoch: number; abort: AbortController; deadline: Promise<never>; timer: ReturnType<typeof setTimeout>; payload: Payload; reader: Reader | null; submitted: boolean; result: ConfirmationResult | null };
 
 function discardBody(response: Response) {
   try { void response.body?.cancel().catch(() => undefined); } catch { /* Best-effort resource control, not rollback. */ }
@@ -73,11 +73,19 @@ export function createEmailConfirmation(options: {
     }
   }
   function owns(op: Operation) { return !disposed && active === op && epoch === op.epoch && options.enabled(); }
-  function finish(op: Operation, result: ConfirmationResult) { if (owns(op)) options.changed(result); }
+  function finish(op: Operation, result: ConfirmationResult) {
+    if (owns(op) && op.result === null) {
+      // Record the terminal result before callbacks/finally can trigger passive cancellation.
+      op.result = result;
+      options.changed(result);
+    }
+  }
   async function request(op: Operation, path: '/auth/csrf' | '/auth/confirm-email' | '/auth/resend-confirmation-code', token?: string) {
     if (!owns(op)) return null;
     const body = token ? JSON.stringify(op.payload) : undefined;
     if (token) erase(op.payload);
+    // Invocation may submit even if transport throws or its acknowledgement never arrives.
+    if (token) op.submitted = true;
     const fetched = options.fetch(path, {
       method: token ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error',
       signal: op.abort.signal, headers: token ? { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token } : undefined,
@@ -128,7 +136,7 @@ export function createEmailConfirmation(options: {
       timer = setTimeout(() => { abort.abort(); }, CONFIRMATION_TIMEOUT_MS);
     });
     void deadline.catch(() => undefined);
-    const op: Operation = { epoch: ++epoch, abort, deadline, timer, payload, reader: null };
+    const op: Operation = { epoch: ++epoch, abort, deadline, timer, payload, reader: null, submitted: false, result: null };
     active = op;
     options.changed('PENDING');
     try {
@@ -162,6 +170,11 @@ export function createEmailConfirmation(options: {
     confirm(email: string, code: string) { return run('confirm', { email, code }); },
     resend(email: string) { return run('resend', { email }); },
     cancel,
+    pause() {
+      const retained = active ? active.result ?? (active.submitted ? 'UNKNOWN' : 'NOT_SENT') : null;
+      cancel();
+      return retained;
+    },
     dispose() { cancel(); disposed = true; },
   };
 }

@@ -154,13 +154,36 @@ to a fresh ordinary OIDC login under unchanged exact admission.
 not a signup/password SDK. Email/code stay in local form/request memory, cleared
 on departure/suspension; no URL/query/history/storage/Redux persistence is used.
 Each explicit action obtains fresh `/auth/csrf` once, then makes one bounded POST.
-Edits/cancellation/navigation/account or lifecycle changes discard stale completion.
+Edits/cancellation/navigation and unsafe account or lifecycle changes discard stale completion.
 Only exact 200 `confirmed` is confirmation; resend acknowledgement is conditional
 and technical uncertainty is not rollback. Backend caps bytes/concurrency/retention,
 uses finite global/hashed-target throttles independent of Q and performs no
 provider/log I/O under those locks. Alias stealing and auto-login are disabled;
 the submitted email identifier is not normalized or used for Creastrix linking.
 Synthetic tests alone do not prove actual provider/browser recovery.
+
+The bounded CFA06 frontend correction separates form retention from authentication
+and network ownership. Visible anonymous fields and settled results survive only
+passive same-document/same-shared-revision ANONYMOUS → CHECKING → ANONYMOUS
+revalidation. Focus retains the fresh owned `/api/me`, reducer checks and synchronous
+private curtain; confirmation/resend are paused during CHECKING. A synchronous
+store subscription processes every transition, including unsafe intermediate
+states hidden by React batching. Peer/document changes, hide/pagehide/pageshow,
+departure/unmount, explicit clear and TRANSITION/AUTHENTICATED or unsafe outcomes
+erase the prior generation without later restoration. DENIED, UNAVAILABLE and
+RECOVERY_REQUIRED still permit only the existing new empty provider-confirmation
+form, without live-Q gating or expanded Creastrix admission.
+
+Cancellation before POST invocation reports NOT_SENT for the provider action;
+CSRF HTTP work may already have occurred. From POST invocation onward, a thrown
+or rejected transport, delayed response headers or pending body cannot prove
+non-submission: passive cancellation is UNKNOWN, not rollback. A recorded terminal
+result is retained before callbacks/finally can cancel its remaining resources.
+No retained fields/results revive old requests, issue a next POST or authorize
+automatic continuation/retry. The extracted production lifecycle binder is shared
+with finite enabled-controller/store regressions, not a new real-browser/provider
+or broader cookie-safety proof. Backend security, provider admission and public
+readiness gates are unchanged.
 
 Fresh isolated recovery author checks passed focused 528/528, diagnostic catalog
 163/163, final full 1826/1826 with zero failures/errors/skipped and package,
@@ -196,6 +219,13 @@ Private-API current-user validation runs before final authorization:
 confirmed inactivity, lost admission and absolute expiry still invalidate the
 session, including equivalent encoded paths. An unavailable DB still fails closed
 without claiming invalidation.
+
+The 8-hour absolute limit is enforced at private-API validation, not implicitly
+at login or OAuth entry. An idle-valid session can retain its already-authenticated
+principal after that absolute deadline: a direct valid-CSRF login POST or OAuth
+entry still returns 409 without a new intent or provider flow. `/api/me` then
+returns 401 and performs the existing invalidation; explicit logout cleanup is
+also available. This is the current entry/cleanup boundary, not new expiry cleanup.
 
 ### Callback ownership and cancellation
 
@@ -309,7 +339,9 @@ on a fresh `/api/me` alone. Other still-live Qs are not globally linked/revoked.
 Separate PA observer/HOLD and combined foundation/HTTP/CI candidates are not
 composed into this exact S003 transfer.
 
-### Open cookie follow-up
+<a id="open-cookie-follow-up"></a>
+
+### Accepted local cookie closure and open public readiness
 
 **`AUTH-COOKIE-FOLLOWUP-001`: CLOSED FOR THE ACCEPTED LOCAL PILOT SCOPE.**
 The explicit owner/coordinator disposition on 2026-10-14 applies only to the
@@ -372,6 +404,20 @@ inactive/denied access or invalid security input, 503 for unavailable current
 state. Callback failure reveals no account/binding/SQL/token detail and makes
 no rollback claim. Auth/API responses are not cached. DB failure denies access
 but is not proof that logout or session invalidation succeeded.
+
+In enabled and disabled servlet modes, only a genuine `DispatcherType.ERROR`
+dispatch to exact default `/error` reaches the terminal opaque renderer. It
+preserves an original Integer status from 400 through 599, otherwise selects 500,
+and returns fixed JSON `{"error":"request_not_completed"}` with `Cache-Control:
+no-store`, including HTML Accept and trace queries. It does not use error details,
+views or content negotiation. Ordinary REQUEST/FORWARD `/error` and every other
+ERROR destination remain denied, including health and private routes. The renderer
+discards only an uncommitted body buffer and stale content length, retaining
+unrelated headers/cookies; a committed response is untouched. Its rendering and
+authorization decision do not inspect or mutate session, Q, principal, domain or
+provider state, issue/delete cookies or resume the failed handler. Standard
+SecurityContext loading elsewhere in the chain is unchanged. Only the actual
+default `/error` setup is supported; custom error paths are not authorized.
 
 ### React client and F boundary
 
@@ -455,7 +501,7 @@ this diagnostic change itself neither performed it nor authorized real Auth0 P o
 
 Tokens and authorized-client state exist only on the backend in the owning
 session. Successful login rotates session ID and CSRF. Sessions have 30-minute
-servlet idle expiry and 8-hour absolute expiry; confirmed inactivity or lost
+servlet idle expiry and private-API-enforced 8-hour absolute expiry; confirmed inactivity or lost
 admission invalidates session/client state. Returning a User to ACTIVE does not
 revive an old session. CSRF/bootstrap and logout cleanup remain available.
 

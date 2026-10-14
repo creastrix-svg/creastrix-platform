@@ -58,6 +58,8 @@ import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.Ports;
 import com.nimbusds.jose.util.JSONObjectUtils;
 import jakarta.servlet.Filter;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
@@ -130,6 +132,8 @@ class AuthenticationHttpIntegrationTest {
     private static final String OWNED_CONTAINER_VALUE = "auth-cookie-forward-port-s003";
     private static final MutableClock CLOCK = new MutableClock();
     private static final Faults FAULTS = new Faults();
+    private static final AtomicReference<RuntimeException> ERROR_FAULT = new AtomicReference<>();
+    private static final List<Map<String, Object>> ERROR_DISPATCHES = new java.util.concurrent.CopyOnWriteArrayList<>();
     private static final ConfirmationStub CONFIRMATION = new ConfirmationStub();
     private static final AtomicLong CONFIRMATION_TIME = new AtomicLong();
     private static final AtomicInteger NEXT_SUBJECT = new AtomicInteger();
@@ -181,7 +185,7 @@ class AuthenticationHttpIntegrationTest {
     }
 
     private static void startBackend() {
-        application = new SpringApplicationBuilder(TestWiring.class, CreastrixApplication.class)
+        application = new SpringApplicationBuilder(TestWiring.class, ErrorTestWiring.class, CreastrixApplication.class)
                 .run("--server.address=127.0.0.1", "--server.port=" + port,
                         "--spring.datasource.url=" + POSTGRES.getJdbcUrl(),
                         "--spring.datasource.username=" + POSTGRES.getUsername(),
@@ -238,6 +242,8 @@ class AuthenticationHttpIntegrationTest {
     @BeforeEach
     void freshFlow() throws Exception {
         CLOCK.reset();
+        ERROR_FAULT.set(null);
+        ERROR_DISPATCHES.clear();
         FAULTS.reset();
         CONFIRMATION.reset();
         // Advance only the provider-recovery test ticker. No limiter reset or live record eviction.
@@ -273,6 +279,312 @@ class AuthenticationHttpIntegrationTest {
         assertThat(actual.get(postgresPort)[0].getHostPortSpec())
                 .isEqualTo(Integer.toString(POSTGRES.getMappedPort(5432)));
         System.out.println("COOKIE_CONTEXT_RUNTIME owned_postgres_loopback=true ryuk_binding=NOT_VERIFIED");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"anonymous", "authenticated", "disabled"})
+    @Timeout(90)
+    void unexpectedContainerErrorPreservesOriginalStatus(String mode) throws Exception {
+        if ("disabled".equals(mode)) {
+            try (ConfigurableApplicationContext disabled = disabledErrorBackend();
+                    HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
+                var web = (org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext) disabled;
+                int disabledPort = web.getWebServer().getPort();
+                for (String fault : List.of("throw", "send")) {
+                    ERROR_DISPATCHES.clear();
+                    var response = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"
+                                    + disabledPort + "/actuator/health?trace=true"))
+                            .header("X-Error-Probe", fault).header("Accept", "text/html").GET()
+                            .timeout(Duration.ofSeconds(10)).build(), HttpResponse.BodyHandlers.ofString());
+                    assertContainerError(response, fault, "/actuator/health");
+                }
+            }
+        }
+        else {
+            Browser browser = browser();
+            String path = "/actuator/health";
+            if ("authenticated".equals(mode)) {
+                complete(browser);
+                path = "/api/me";
+            }
+            String sid = browser.sessionId();
+            String q = browser.contextId();
+            var session = probe().sessions.get(sid);
+            var attributes = session == null ? Map.of() : sessionAttributes(session);
+            for (String fault : List.of("throw", "send")) {
+                ERROR_DISPATCHES.clear();
+                assertContainerError(browser.get(path + "?trace=true",
+                        Map.of("X-Error-Probe", fault, "Accept", "text/html")), fault, path);
+                assertThat(browser.sessionId()).isEqualTo(sid);
+                assertThat(browser.contextId()).isEqualTo(q);
+                if (session != null) assertThat(sessionAttributes(session)).isEqualTo(attributes);
+            }
+            if (session == null) assertThat(browser.get("/actuator/health").statusCode()).isEqualTo(200);
+            else assertAccount(browser.get("/api/me"), bindingId());
+            assertThat(provider.authorizationRequests()).hasSize(session == null ? 0 : 1);
+            assertThat(provider.tokenRequests()).hasSize(session == null ? 0 : 1);
+        }
+        assertThat(counts()).isEqualTo(before);
+    }
+
+    private static ConfigurableApplicationContext disabledErrorBackend() {
+        return new SpringApplicationBuilder(ErrorTestWiring.class, CreastrixApplication.class)
+                .run("--server.address=127.0.0.1", "--server.port=0",
+                        "--spring.datasource.url=" + POSTGRES.getJdbcUrl(),
+                        "--spring.datasource.username=" + POSTGRES.getUsername(),
+                        "--spring.datasource.password=" + POSTGRES.getPassword(),
+                        "--spring.datasource.hikari.connection-timeout=1000", "--creastrix.auth.enabled=false",
+                        "--spring.main.banner-mode=off");
+    }
+
+    private static void assertContainerError(HttpResponse<String> response, String fault, String original) throws Exception {
+        int status = "send".equals(fault) ? 422 : 500;
+        assertThat(ERROR_DISPATCHES).containsExactly(Map.of("path", "/error", "original", original,
+                "status", status, "same_fault", !"send".equals(fault)));
+        assertJsonError(response, status);
+        assertThat(response.body()).isEqualTo("{\"error\":\"request_not_completed\"}");
+        assertThat(response.body()).doesNotContain("PRIVATE_ERROR_SENTINEL");
+        assertThat(response.headers().allValues("Set-Cookie")).isEmpty();
+        assertThat(response.headers().firstValue("X-Unrelated")).contains("retained");
+        System.out.printf("OPAQUE_ERROR_PROOF origin=%s kind=%s dispatch=ERROR wire_status=%d%n", original, fault, status);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void mvcControllerErrorsAreOpaqueWithoutSessionOrIdentityMutation(boolean authenticated) throws Exception {
+        Browser browser = browser();
+        if (authenticated) complete(browser);
+        var sid = browser.sessionId();
+        var q = browser.contextId();
+        var session = probe().sessions.get(sid);
+        var attributes = session == null ? Map.of() : sessionAttributes(session);
+        var durable = confirmationDurableSnapshot();
+        for (String fault : List.of("throw", "send")) {
+            ERROR_DISPATCHES.clear();
+            assertContainerError(browser.get("/auth/csrf?trace=true", Map.of("X-Error-Probe", "controller-" + fault,
+                    "Accept", "text/html")), fault, "/auth/csrf");
+            assertThat(browser.sessionId()).isEqualTo(sid);
+            assertThat(browser.contextId()).isEqualTo(q);
+            if (session != null) assertThat(sessionAttributes(session)).isEqualTo(attributes);
+        }
+        assertThat(confirmationDurableSnapshot()).isEqualTo(durable);
+        assertThat(provider.authorizationRequests()).hasSize(authenticated ? 1 : 0);
+        assertThat(provider.tokenRequests()).hasSize(authenticated ? 1 : 0);
+        assertThat(CONFIRMATION.calls).hasValue(0);
+        if (authenticated) assertAccount(browser.get("/api/me"), bindingId());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"writer-utf8", "writer-utf16", "stream"})
+    void nativePartialResponseChannelsRetainCharsetHeadersAndCookies(String channel) throws Exception {
+        // Direct renderer invocation isolates retained native response-channel state;
+        // genuine container ERROR routing/authorization has separate tests above.
+        try (HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
+            var response = client.send(HttpRequest.newBuilder(URI.create(origin + "/auth/csrf?trace=true"))
+                    .header("X-Error-Probe", "render").header("X-Error-Channel", channel)
+                    .header("Accept", "text/html").GET().timeout(Duration.ofSeconds(10)).build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            var charset = channel.endsWith("utf16") ? StandardCharsets.UTF_16 : StandardCharsets.UTF_8;
+            assertThat(response.statusCode()).isEqualTo(422);
+            assertThat(new String(response.body(), charset)).isEqualTo("{\"error\":\"request_not_completed\"}");
+            assertThat(response.headers().firstValue("Content-Type").orElseThrow())
+                    .isEqualTo("application/json;charset=" + charset.name());
+            assertThat(response.headers().firstValue("X-Unrelated")).contains("retained");
+            assertThat(response.headers().allValues("Set-Cookie")).containsExactly("unrelated=retained; Path=/");
+            assertThat(response.headers().firstValue("Cache-Control")).contains("no-store");
+            response.headers().firstValue("Content-Length").ifPresent(length ->
+                    assertThat(Integer.parseInt(length)).isEqualTo(response.body().length));
+            assertThat(ERROR_DISPATCHES).isEmpty();
+        }
+        assertThat(provider.authorizationRequests()).isEmpty();
+        assertThat(provider.tokenRequests()).isEmpty();
+        assertThat(counts()).isEqualTo(before);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"anonymous", "authenticated", "disabled"})
+    void errorDispatchCannotReachOrdinaryPermittedOrPrivateDestinations(String mode) throws Exception {
+        ConfigurableApplicationContext disabled = "disabled".equals(mode) ? disabledErrorBackend() : null;
+        try (HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
+            Browser browser = browser();
+            if ("authenticated".equals(mode)) complete(browser);
+            String base = disabled == null ? origin : "http://127.0.0.1:"
+                    + ((org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext) disabled)
+                        .getWebServer().getPort();
+            for (String destination : List.of("/actuator/health", "/api/me", "/unknown")) {
+                ERROR_DISPATCHES.clear();
+                Map<String, String> headers = Map.of("X-Error-Probe", "throw", "X-Error-Destination", destination);
+                HttpResponse<String> response;
+                if (disabled == null) response = browser.get("/actuator/health", headers);
+                else response = client.send(HttpRequest.newBuilder(URI.create(base + "/actuator/health"))
+                        .header("X-Error-Probe", "throw").header("X-Error-Destination", destination).GET()
+                        .timeout(Duration.ofSeconds(10)).build(), HttpResponse.BodyHandlers.ofString());
+                assertThat(ERROR_DISPATCHES).containsExactly(Map.of("path", destination, "original", "/actuator/health",
+                        "status", 500, "same_fault", true));
+                assertJsonError(response, "authenticated".equals(mode) ? 403 : 401);
+                assertThat(response.body()).isEqualTo("{\"error\":\"request_not_completed\"}");
+                assertThat(response.headers().allValues("Set-Cookie")).isEmpty();
+            }
+            ERROR_DISPATCHES.clear();
+            if (disabled == null) {
+                for (String path : List.of("/error", "/error/", "/error/extra", "/%65rror", "/ERROR")) {
+                    assertJsonError(browser.get(path), "authenticated".equals(mode) ? 403 : 401);
+                }
+                assertJsonError(browser.get("/actuator/health", Map.of("X-Error-Probe", "forward")),
+                        "authenticated".equals(mode) ? 403 : 401);
+                if ("authenticated".equals(mode)) assertAccount(browser.get("/api/me"), bindingId());
+            }
+            else {
+                for (String path : List.of("/error", "/error/", "/error/extra", "/%65rror", "/ERROR")) {
+                    assertJsonError(client.send(HttpRequest.newBuilder(URI.create(base + path)).GET()
+                            .timeout(Duration.ofSeconds(10)).build(), HttpResponse.BodyHandlers.ofString()), 401);
+                }
+                assertJsonError(client.send(HttpRequest.newBuilder(URI.create(base + "/actuator/health"))
+                        .header("X-Error-Probe", "forward").GET().timeout(Duration.ofSeconds(10)).build(),
+                        HttpResponse.BodyHandlers.ofString()), 401);
+            }
+            assertThat(ERROR_DISPATCHES).isEmpty();
+        }
+        finally { if (disabled != null) disabled.close(); }
+        assertThat(counts()).isEqualTo(before);
+    }
+
+    @Test
+    void absoluteExpiredIdleValidPrincipalKeepsEntryConflictUntilPrivateValidation() throws Exception {
+        Browser browser = browser();
+        complete(browser);
+        String token = csrf(browser);
+        String sid = browser.sessionId();
+        String q = browser.contextId();
+        HttpSession session = probe().sessions.get(sid);
+        var attributes = sessionAttributes(session);
+        var durable = confirmationDurableSnapshot();
+        // Age the injected absolute clock only, not Tomcat's idle clock or this session's TTL.
+        CLOCK.advance(AuthenticationProperties.ABSOLUTE_LIFETIME.plusSeconds(1));
+        assertThat(session.getMaxInactiveInterval()).isEqualTo(1800);
+        assertJsonError(loginPost(browser, token, Map.of()), 409);
+        assertJsonError(browser.get("/oauth2/authorization/cognito"), 409);
+        for (String path : List.of("/%6fauth2/authorization/cognito", "/oauth2/%61uthorization/cognito",
+                "/oauth2/authorization/%63ognito")) {
+            assertJsonError(browser.get(path), 409);
+        }
+        assertThat(probe().sessions.get(sid)).isSameAs(session);
+        assertThat(sessionAttributes(session)).isEqualTo(attributes).doesNotContainKey(AuthenticationConfiguration.LOGIN_INTENT);
+        assertThat(browser.sessionId()).isEqualTo(sid);
+        assertThat(browser.contextId()).isEqualTo(q);
+        assertThat(provider.authorizationRequests()).hasSize(1);
+        assertThat(provider.tokenRequests()).hasSize(1);
+        assertThat(confirmationDurableSnapshot()).isEqualTo(durable);
+        assertJsonError(browser.get("/api/me"), 401);
+        assertThat(probe().sessions).doesNotContainKey(sid);
+        assertThat(confirmationDurableSnapshot()).isEqualTo(durable);
+        assertThat(CONFIRMATION.calls).hasValue(0);
+    }
+
+    static final class HealthError extends RuntimeException { }
+    static final class PrivateError extends RuntimeException { }
+    static final class UnknownError extends RuntimeException { }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    @org.springframework.web.bind.annotation.RestController
+    static class ErrorTestWiring {
+        @org.springframework.web.bind.annotation.GetMapping(value = "/auth/csrf", headers = "X-Error-Probe=render")
+        void nativeResponseControl(HttpServletRequest request, HttpServletResponse response) throws IOException {
+            response.setHeader("X-Unrelated", "retained");
+            var cookie = new jakarta.servlet.http.Cookie("unrelated", "retained");
+            cookie.setPath("/");
+            response.addCookie(cookie);
+            response.setContentLength(4096);
+            String channel = request.getHeader("X-Error-Channel");
+            if ("stream".equals(channel)) {
+                response.getOutputStream().write("PRIVATE_ERROR_SENTINEL_PARTIAL".getBytes(StandardCharsets.UTF_8));
+            }
+            else {
+                response.setCharacterEncoding("writer-utf16".equals(channel) ? "UTF-16" : "UTF-8");
+                response.getWriter().write("PRIVATE_ERROR_SENTINEL_PARTIAL");
+            }
+            assertThat(response.isCommitted()).isFalse();
+            request.setAttribute(RequestDispatcher.ERROR_STATUS_CODE, 422);
+            new OpaqueErrorController().error(request, response);
+        }
+
+        @Bean org.springframework.boot.web.error.ErrorPageRegistrar deniedErrorDestinations() {
+            return registry -> registry.addErrorPages(
+                    new org.springframework.boot.web.error.ErrorPage(HealthError.class, "/actuator/health"),
+                    new org.springframework.boot.web.error.ErrorPage(PrivateError.class, "/api/me"),
+                    new org.springframework.boot.web.error.ErrorPage(UnknownError.class, "/unknown"));
+        }
+
+        @org.springframework.web.bind.annotation.GetMapping(value = "/auth/csrf", headers = "X-Error-Probe=controller-throw")
+        void controllerThrow(HttpServletResponse response) throws IOException {
+            response.setHeader("X-Unrelated", "retained");
+            response.getWriter().write("PRIVATE_ERROR_SENTINEL_PARTIAL");
+            var failure = new IllegalStateException("PRIVATE_ERROR_SENTINEL_EXCEPTION");
+            ERROR_FAULT.set(failure);
+            throw failure;
+        }
+
+        @org.springframework.web.bind.annotation.GetMapping(value = "/auth/csrf", headers = "X-Error-Probe=controller-send")
+        void controllerSend(HttpServletResponse response) throws IOException {
+            response.setHeader("X-Unrelated", "retained");
+            response.getWriter().write("PRIVATE_ERROR_SENTINEL_PARTIAL");
+            response.sendError(422, "PRIVATE_ERROR_SENTINEL_MESSAGE");
+        }
+
+        @Bean FilterRegistrationBean<Filter> errorDispatchObserver() {
+            Filter filter = (request, response, chain) -> {
+                var http = (HttpServletRequest) request;
+                if (http.getDispatcherType() == DispatcherType.ERROR) {
+                    Throwable current = (Throwable) http.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
+                    boolean same = false;
+                    for (int i = 0; current != null && i < 16; i++, current = current.getCause()) {
+                        if (current == ERROR_FAULT.get()) same = true;
+                    }
+                    ERROR_DISPATCHES.add(Map.of("path", http.getRequestURI(),
+                            "original", http.getAttribute(RequestDispatcher.ERROR_REQUEST_URI),
+                            "status", http.getAttribute(RequestDispatcher.ERROR_STATUS_CODE), "same_fault", same));
+                }
+                chain.doFilter(request, response);
+            };
+            var registration = new FilterRegistrationBean<>(filter);
+            registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 5);
+            registration.setDispatcherTypes(DispatcherType.REQUEST, DispatcherType.ERROR);
+            return registration;
+        }
+
+        @Bean FilterRegistrationBean<Filter> unexpectedErrorFault() {
+            Filter filter = (request, response, chain) -> {
+                var http = (HttpServletRequest) request;
+                var output = (HttpServletResponse) response;
+                String fault = http.getHeader("X-Error-Probe");
+                if ("forward".equals(fault) && "/actuator/health".equals(http.getRequestURI())) {
+                    http.getRequestDispatcher("/error").forward(request, response);
+                    return;
+                }
+                if (Set.of("/actuator/health", "/api/me").contains(http.getRequestURI())
+                        && ("throw".equals(fault) || "send".equals(fault))) {
+                    output.setHeader("X-Unrelated", "retained");
+                    output.getWriter().write("PRIVATE_ERROR_SENTINEL_PARTIAL");
+                    if ("send".equals(fault)) output.sendError(422, "PRIVATE_ERROR_SENTINEL_MESSAGE");
+                    else {
+                        var failure = switch (http.getHeader("X-Error-Destination") == null ? "" : http.getHeader("X-Error-Destination")) {
+                            case "/actuator/health" -> new HealthError();
+                            case "/api/me" -> new PrivateError();
+                            case "/unknown" -> new UnknownError();
+                            default -> new IllegalStateException("PRIVATE_ERROR_SENTINEL_EXCEPTION");
+                        };
+                        ERROR_FAULT.set(failure);
+                        throw failure;
+                    }
+                    return;
+                }
+                chain.doFilter(request, response);
+            };
+            var registration = new FilterRegistrationBean<>(filter);
+            registration.setOrder(Ordered.LOWEST_PRECEDENCE);
+            registration.setDispatcherTypes(DispatcherType.REQUEST);
+            return registration;
+        }
     }
 
     private static void verifyOwnedListenerBindings() throws Exception {

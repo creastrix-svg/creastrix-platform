@@ -9,6 +9,7 @@ import java.util.function.Function;
 import com.creastrix.platform.observability.Diagnostics;
 import com.creastrix.platform.user.application.AuthenticatedUserService;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -106,6 +107,9 @@ public class AuthenticationConfiguration {
     SecurityFilterChain authenticationDisabled(HttpSecurity http) throws Exception {
         defaults(http);
         http.authorizeHttpRequests(authorize -> authorize
+                .requestMatchers(request -> request.getDispatcherType() == DispatcherType.ERROR
+                        && "/error".equals(request.getRequestURI())).permitAll()
+                .dispatcherTypeMatchers(DispatcherType.ERROR).denyAll()
                 .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                 .anyRequest().denyAll());
         http.addFilterAfter(new OncePerRequestFilter() {
@@ -218,6 +222,9 @@ public class AuthenticationConfiguration {
             http.csrf(configurer -> configurer.csrfTokenRepository(csrf))
                     .sessionManagement(session -> session.sessionFixation(fixation -> fixation.changeSessionId()))
                     .authorizeHttpRequests(authorize -> authorize
+                            .requestMatchers(request -> request.getDispatcherType() == DispatcherType.ERROR
+                                    && "/error".equals(request.getRequestURI())).permitAll()
+                            .dispatcherTypeMatchers(DispatcherType.ERROR).denyAll()
                             .requestMatchers(HttpMethod.GET, "/actuator/health", "/auth/csrf",
                                     properties.entryPath(), properties.callbackPath()).permitAll()
                             .requestMatchers(HttpMethod.POST, "/auth/login", LOGOUT_PATH).permitAll()

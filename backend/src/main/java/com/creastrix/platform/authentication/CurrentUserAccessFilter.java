@@ -20,7 +20,7 @@ public final class CurrentUserAccessFilter extends OncePerRequestFilter {
     private final Clock clock;
     private final BrowserSessionContextRegistry contexts;
 
-    // Disposable-prototype observation only: hooks never supply/replace an admission decision.
+    // Test observation only: hooks never supply/replace an admission decision.
     interface GateObserver {
         default void beforeFinal(HttpServletRequest request, BrowserSessionContextRegistry.Stamp stamp) { }
         default void afterFinal(HttpServletRequest request, BrowserSessionContextRegistry.Stamp stamp, boolean admitted) { }

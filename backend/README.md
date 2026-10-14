@@ -692,6 +692,27 @@ Cookie status is recorded in the [local cookie disposition and retained public g
 `LOCAL_LOGOUT_COMPLETED` only for successful Q revocation (204), not cleanup-only
 409; callback success still observes local selection/publication, not delivery.
 
+## Organization creation admission
+
+Organization creation admits the represented creator from a current User read
+under `FOR NO KEY UPDATE` in the same READ COMMITTED service transaction, before
+either insert or FK reference. Committed inactive status-first denies creation;
+a rolled-back writer or legitimate reactivation can allow it. Admission-first
+holds off other status writers until its transaction ends. This weak lock is
+compatible with FK KEY SHARE, not a new global lock or deadlock-free guarantee.
+The mandatory User read never starts a separate transaction or authenticates
+the caller. Organization plus initial ACTIVE OWNER Membership remain atomic.
+
+Admission is not an ACTIVE-at-commit or permanent owner-User invariant. The same
+transaction can create then perform an authorized suspension/deactivation;
+the Organization and structural Membership may commit with an inactive User.
+Status change before creation denies it and rolls back that atomic batch.
+Other guards still apply: a composed Workspace/RMP creation can reject the batch
+at its existing deferred check. A returned inner object is not a commit.
+No retry, schema change, raw-SQL actor authorization, ownership rewrite,
+authenticated Organization HTTP API or general multi-resource lock policy is
+added. V1–V14, V9 isolation and stronger Workspace/RMP guards are unchanged.
+
 ## Running tests
 
 ```
@@ -905,8 +926,16 @@ Workspace/RMP service is exposed as an authenticated HTTP API. A creator or acto
 those internal services still represents an identity; it is not itself proof
 of the external caller. Raw SQL remains outside actor authentication.
 
-The auth-disabled default serves only minimal `GET /actuator/health`, denying
-other routes without form/basic login or generated-password fallback. OIDC
+The auth-disabled default serves only minimal ordinary `GET /actuator/health`, denying
+other ordinary routes without form/basic login or generated-password fallback. Both
+servlet modes allow only ERROR dispatch to exact default `/error` for terminal
+fixed opaque JSON/no-store rendering with the validated original 400–599 Integer
+status (otherwise 500). Other ERROR destinations and REQUEST/FORWARD `/error`
+remain denied. The renderer leaves committed responses untouched and resets only
+the uncommitted body buffer/stale content length, not unrelated headers/cookies;
+it does not use error details/views, mutate session/Q/principal or initiate provider
+work. This supports the actual default error path only, not custom-path configuration.
+OIDC
 properties, discovery and HTTP handlers are conditional on enabled servlet mode;
 non-web migration/domain contexts require no provider configuration or network.
 The local profile keeps the backend on `127.0.0.1:8080` and trusts only the fixed
@@ -922,7 +951,11 @@ actions are recorded separately below.
 ID/access tokens remain server-side in the session. Local cookies are host-only,
 HttpOnly, SameSite=Lax, Path `/`; Secure=false is confined to explicit loopback
 mode, while defaults remain Secure=true. Idle expiry uses the servlet container
-(30 minutes), absolute expiry uses an injected Clock (8 hours). Local logout
+(30 minutes), absolute expiry uses an injected Clock (8 hours) at private-API
+validation. Until `/api/me` performs the existing 401/invalidation or explicit
+cleanup occurs, an idle-valid absolute-expired principal still gets 409 at a direct
+valid-CSRF login POST or OAuth entry, with no new intent/provider flow. No implicit
+entry expiry cleanup is added. Local logout
 is not global provider logout or immediate revocation after password reset.
 
 <a id="controlled-provider-migration-candidate-author-wip"></a>
@@ -1096,3 +1129,48 @@ CREASTRIX_DB_USERNAME=... \
 CREASTRIX_DB_PASSWORD=... \
 ./mvnw spring-boot:run
 ```
+
+### Connected local authentication pilot
+
+Use this only for the authorized single-instance, nonpublic, nonproduction Cognito
+pilot. The default command above keeps authentication disabled.
+
+Use Java 25 and privately supply the environment for the existing authorized
+nonproduction PostgreSQL database and confidential Cognito Frankfurt client:
+
+- `CREASTRIX_DB_URL`, `CREASTRIX_DB_USERNAME`, `CREASTRIX_DB_PASSWORD`
+- `CREASTRIX_AUTH_ISSUER`, `CREASTRIX_AUTH_CLIENT_ID`, `CREASTRIX_AUTH_CLIENT_SECRET`
+- `CREASTRIX_AUTH_ALLOWED_SUBJECTS`
+
+Keep values out of Git, the frontend, logs and evidence. Cognito and
+`existing-only=true` are already the defaults; do not disable existing-only
+admission. Allow only the exact subject of the current existing issuer/subject
+binding for the authorized ACTIVE User. Empty admission denies everyone;
+Cognito self-registration or email confirmation does not create an internal
+Creastrix account, and unknown or superseded identities are refused.
+
+From `backend` in the approved checkout, with that private environment supplied:
+
+```sh
+./mvnw -Dspring-boot.run.profiles=auth-local spring-boot:run
+```
+
+In a separate terminal, use pinned Node 22.14.0 / npm 10.9.2 from `frontend`:
+
+```sh
+npm ci
+npm run dev
+```
+
+Open `http://localhost:3000`; Vite binds `127.0.0.1:3000` with strict port selection
+and proxies to the backend at `127.0.0.1:8080`. Resolve port conflicts explicitly;
+do not automatically kill processes, bind publicly or choose another origin.
+Build preview has no backend proxy and is disconnected from authentication.
+
+Backend startup can apply Flyway migrations and perform provider discovery.
+This runbook grants no permission to restart the live backend, migrate a user
+database or change admission. Startup and database actions need their own
+authorization; future identity switches also retain the
+[migration prerequisites](../docs/authentication-provider-migration.md#contract-and-prerequisites).
+The [accepted local cookie closure and OPEN public gate](../docs/authentication-pilot.md#open-cookie-follow-up)
+remain separate from startup.

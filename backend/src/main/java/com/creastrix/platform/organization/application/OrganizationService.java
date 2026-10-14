@@ -44,6 +44,12 @@ public class OrganizationService {
      * Creates an Organization together with its creator's initial ACTIVE OWNER
      * Organization Membership in one transaction.
      *
+     * <p>The current User is admitted under a status-conflicting lock before
+     * either insert. Other status writers wait until this transaction ends.
+     * This is action admission, not a permanent or commit-time ACTIVE invariant:
+     * the same transaction may perform a later authorized status change, subject
+     * to all other domain guards. A returned object is not a physical commit.
+     *
      * @throws com.creastrix.platform.user.domain.UserNotFoundException
      *         if the creator User does not exist
      * @throws OrganizationCreatorNotActiveException
@@ -51,7 +57,7 @@ public class OrganizationService {
      */
     @Transactional
     public Organization createOrganization(UUID creatorUserId) {
-        User creator = userService.findUser(creatorUserId);
+        User creator = userService.findUserForStatusAdmission(creatorUserId);
         if (creator.status() != UserStatus.ACTIVE) {
             throw new OrganizationCreatorNotActiveException(creator.id(), creator.status());
         }
