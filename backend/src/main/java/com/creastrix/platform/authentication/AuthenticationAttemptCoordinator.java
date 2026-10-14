@@ -27,8 +27,8 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
  * <p>Publication is not physical HTTP commit, cookie delivery or browser account selection.
  * The one-second budget bounds lock acquisition, not all Servlet I/O or the callback.
  * Do not write diagnostic logs while holding session/publication locks; HTTP observation
- * is staged as fixed codes and emitted outside the security chain. The separate stale
- * success-cookie follow-up remains open.
+ * is staged as fixed codes and emitted outside the security chain. The cookie follow-up
+ * is closed only for the accepted local pilot; the separate public-readiness gate remains open.
  */
 final class AuthenticationAttemptCoordinator implements HttpSessionBindingListener {
     private static final String SESSION_KEY = AuthenticationAttemptCoordinator.class.getName();

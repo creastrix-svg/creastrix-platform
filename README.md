@@ -326,7 +326,9 @@ npm run dev
 ```
 
 Connected development requires exactly `http://localhost:3000` (loopback, strict port)
-and the separately configured loopback backend. Build preview is disconnected and
+and the separately configured loopback backend; use the
+[connected local authentication pilot runbook](backend/README.md#connected-local-authentication-pilot).
+Build preview is disconnected and
 disables authentication; it is not a deployment service.
 Separate checks: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.
 Frontend CI runs locked install, typecheck, lint, tests and build for changes under

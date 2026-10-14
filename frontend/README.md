@@ -18,6 +18,9 @@ npm ci
 npm run dev
 ```
 
+For the authorized Cognito/backend setup, use the canonical
+[connected local authentication pilot runbook](../backend/README.md#connected-local-authentication-pilot).
+
 Connected authentication requires exactly `http://localhost:3000` and the separately
 configured backend on `127.0.0.1:8080`. Vite binds loopback `127.0.0.1:3000` with
 strict port selection. Resolve conflicts explicitly; do not stop unrelated

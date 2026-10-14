@@ -332,7 +332,9 @@ on a fresh `/api/me` alone. Other still-live Qs are not globally linked/revoked.
 Separate PA observer/HOLD and combined foundation/HTTP/CI candidates are not
 composed into this exact S003 transfer.
 
-### Open cookie follow-up
+<a id="open-cookie-follow-up"></a>
+
+### Accepted local cookie closure and open public readiness
 
 **`AUTH-COOKIE-FOLLOWUP-001`: CLOSED FOR THE ACCEPTED LOCAL PILOT SCOPE.**
 The explicit owner/coordinator disposition on 2026-10-14 applies only to the

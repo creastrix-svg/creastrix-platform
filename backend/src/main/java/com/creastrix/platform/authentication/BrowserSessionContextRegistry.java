@@ -23,7 +23,7 @@ import java.util.concurrent.TimeoutException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 
-/** Disposable single-instance feasibility prototype; not integrated production architecture.
+/** Integrated single-instance local-pilot registry; not approved for public operation or deployment.
  * The monitor guards memory only. In particular it never encloses a Servlet call or callback.
  * Authoritative time is sampled from the trusted, nonblocking Clock after memory-lock acquisition.
  */

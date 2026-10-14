@@ -1117,3 +1117,48 @@ CREASTRIX_DB_USERNAME=... \
 CREASTRIX_DB_PASSWORD=... \
 ./mvnw spring-boot:run
 ```
+
+### Connected local authentication pilot
+
+Use this only for the authorized single-instance, nonpublic, nonproduction Cognito
+pilot. The default command above keeps authentication disabled.
+
+Use Java 25 and privately supply the environment for the existing authorized
+nonproduction PostgreSQL database and confidential Cognito Frankfurt client:
+
+- `CREASTRIX_DB_URL`, `CREASTRIX_DB_USERNAME`, `CREASTRIX_DB_PASSWORD`
+- `CREASTRIX_AUTH_ISSUER`, `CREASTRIX_AUTH_CLIENT_ID`, `CREASTRIX_AUTH_CLIENT_SECRET`
+- `CREASTRIX_AUTH_ALLOWED_SUBJECTS`
+
+Keep values out of Git, the frontend, logs and evidence. Cognito and
+`existing-only=true` are already the defaults; do not disable existing-only
+admission. Allow only the exact subject of the current existing issuer/subject
+binding for the authorized ACTIVE User. Empty admission denies everyone;
+Cognito self-registration or email confirmation does not create an internal
+Creastrix account, and unknown or superseded identities are refused.
+
+From `backend` in the approved checkout, with that private environment supplied:
+
+```sh
+./mvnw -Dspring-boot.run.profiles=auth-local spring-boot:run
+```
+
+In a separate terminal, use pinned Node 22.14.0 / npm 10.9.2 from `frontend`:
+
+```sh
+npm ci
+npm run dev
+```
+
+Open `http://localhost:3000`; Vite binds `127.0.0.1:3000` with strict port selection
+and proxies to the backend at `127.0.0.1:8080`. Resolve port conflicts explicitly;
+do not automatically kill processes, bind publicly or choose another origin.
+Build preview has no backend proxy and is disconnected from authentication.
+
+Backend startup can apply Flyway migrations and perform provider discovery.
+This runbook grants no permission to restart the live backend, migrate a user
+database or change admission. Startup and database actions need their own
+authorization; future identity switches also retain the
+[migration prerequisites](../docs/authentication-provider-migration.md#contract-and-prerequisites).
+The [accepted local cookie closure and OPEN public gate](../docs/authentication-pilot.md#open-cookie-follow-up)
+remain separate from startup.
