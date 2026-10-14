@@ -220,6 +220,13 @@ confirmed inactivity, lost admission and absolute expiry still invalidate the
 session, including equivalent encoded paths. An unavailable DB still fails closed
 without claiming invalidation.
 
+The 8-hour absolute limit is enforced at private-API validation, not implicitly
+at login or OAuth entry. An idle-valid session can retain its already-authenticated
+principal after that absolute deadline: a direct valid-CSRF login POST or OAuth
+entry still returns 409 without a new intent or provider flow. `/api/me` then
+returns 401 and performs the existing invalidation; explicit logout cleanup is
+also available. This is the current entry/cleanup boundary, not new expiry cleanup.
+
 ### Callback ownership and cancellation
 
 In this single-instance contract the first callback to acquire admission owns
@@ -398,6 +405,20 @@ state. Callback failure reveals no account/binding/SQL/token detail and makes
 no rollback claim. Auth/API responses are not cached. DB failure denies access
 but is not proof that logout or session invalidation succeeded.
 
+In enabled and disabled servlet modes, only a genuine `DispatcherType.ERROR`
+dispatch to exact default `/error` reaches the terminal opaque renderer. It
+preserves an original Integer status from 400 through 599, otherwise selects 500,
+and returns fixed JSON `{"error":"request_not_completed"}` with `Cache-Control:
+no-store`, including HTML Accept and trace queries. It does not use error details,
+views or content negotiation. Ordinary REQUEST/FORWARD `/error` and every other
+ERROR destination remain denied, including health and private routes. The renderer
+discards only an uncommitted body buffer and stale content length, retaining
+unrelated headers/cookies; a committed response is untouched. Its rendering and
+authorization decision do not inspect or mutate session, Q, principal, domain or
+provider state, issue/delete cookies or resume the failed handler. Standard
+SecurityContext loading elsewhere in the chain is unchanged. Only the actual
+default `/error` setup is supported; custom error paths are not authorized.
+
 ### React client and F boundary
 
 The independently reviewed client is integrated through PR #35. It replaces fictional account data
@@ -480,7 +501,7 @@ this diagnostic change itself neither performed it nor authorized real Auth0 P o
 
 Tokens and authorized-client state exist only on the backend in the owning
 session. Successful login rotates session ID and CSRF. Sessions have 30-minute
-servlet idle expiry and 8-hour absolute expiry; confirmed inactivity or lost
+servlet idle expiry and private-API-enforced 8-hour absolute expiry; confirmed inactivity or lost
 admission invalidates session/client state. Returning a User to ACTIVE does not
 revive an old session. CSRF/bootstrap and logout cleanup remain available.
 

@@ -26,6 +26,9 @@ import java.util.stream.Stream;
 import com.creastrix.platform.user.application.AuthenticatedUserService;
 import com.creastrix.platform.user.application.port.UserIdentityBindingRepository.Identity;
 import jakarta.servlet.Filter;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.RequestDispatcher;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.RepeatedTest;
@@ -138,6 +141,7 @@ class AuthenticationPolicyTest {
                             || filter instanceof DefaultLoginPageGeneratingFilter);
 
             Filter security = context.getBean("springSecurityFilterChain", Filter.class);
+            assertErrorDispatchAuthorization(security);
             for (String path : List.of("/actuator/health", "/actuator/info", "/api/me", "/auth/csrf",
                     "/login", "/oauth2/authorization/cognito")) {
                 MockHttpServletResponse response = new MockHttpServletResponse();
@@ -209,7 +213,94 @@ class AuthenticationPolicyTest {
                             .noneMatch(filter -> filter instanceof BasicAuthenticationFilter
                                     || filter instanceof UsernamePasswordAuthenticationFilter
                                     || filter instanceof DefaultLoginPageGeneratingFilter);
+                    assertErrorDispatchAuthorization(context.getBean("springSecurityFilterChain", Filter.class));
                 });
+    }
+
+    private static void assertErrorDispatchAuthorization(Filter security) throws Exception {
+        for (DispatcherType dispatcher : List.of(DispatcherType.REQUEST, DispatcherType.FORWARD, DispatcherType.ERROR)) {
+            for (String path : List.of("/error", "/error/", "/error/extra", "/%65rror", "/ERROR",
+                    "/actuator/health", "/api/me", "/unknown")) {
+                if (dispatcher != DispatcherType.ERROR && !path.startsWith("/error")) continue;
+                var request = new MockHttpServletRequest("GET", path);
+                request.setDispatcherType(dispatcher);
+                var response = new MockHttpServletResponse();
+                var reached = new AtomicBoolean();
+                security.doFilter(request, response, (ignoredRequest, ignoredResponse) -> reached.set(true));
+                assertThat(reached.get()).as("%s %s", dispatcher, path)
+                        .isEqualTo(dispatcher == DispatcherType.ERROR && "/error".equals(path));
+                assertThat(request.getSession(false)).isNull();
+                assertThat(response.getHeaders("Set-Cookie")).isEmpty();
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @MethodSource("errorStatusAttributes")
+    void opaqueErrorRendererValidatesOnlyIntegerErrorStatuses(Object original, int expected) throws Exception {
+        var request = errorRequest();
+        request.setAttribute(RequestDispatcher.ERROR_STATUS_CODE, original);
+        request.setAttribute(RequestDispatcher.ERROR_MESSAGE, "PRIVATE_ERROR_SENTINEL");
+        request.setAttribute(RequestDispatcher.ERROR_EXCEPTION, new IllegalStateException("PRIVATE_ERROR_SENTINEL"));
+        request.addHeader("Accept", "text/html");
+        request.setQueryString("trace=true&message=true");
+        var response = new MockHttpServletResponse();
+        new OpaqueErrorController().error(request, response);
+        assertThat(response.getStatus()).isEqualTo(expected);
+        assertThat(response.getContentType()).startsWith("application/json");
+        assertThat(response.getHeader("Cache-Control")).isEqualTo("no-store");
+        assertThat(response.getContentAsString()).isEqualTo("{\"error\":\"request_not_completed\"}");
+        assertThat(response.getHeaders("Set-Cookie")).isEmpty();
+        assertThat(response.getHeader("Location")).isNull();
+        assertThat(new OpaqueErrorController()).isInstanceOf(org.springframework.boot.webmvc.error.ErrorController.class);
+    }
+
+    static Stream<Arguments> errorStatusAttributes() {
+        return Stream.of(Arguments.of(400, 400), Arguments.of(422, 422), Arguments.of(500, 500),
+                Arguments.of(599, 599), Arguments.of(null, 500), Arguments.of("422", 500),
+                Arguments.of(422L, 500), Arguments.of(true, 500), Arguments.of(399, 500),
+                Arguments.of(600, 500), Arguments.of(-1, 500), Arguments.of(Integer.MAX_VALUE, 500));
+    }
+
+    private static MockHttpServletRequest errorRequest() {
+        var request = new MockHttpServletRequest("GET", "/error") {
+            @Override public jakarta.servlet.http.HttpSession getSession(boolean create) {
+                throw new AssertionError("Error rendering must not access a session");
+            }
+            @Override public jakarta.servlet.http.HttpSession getSession() {
+                throw new AssertionError("Error rendering must not access a session");
+            }
+            @Override public java.security.Principal getUserPrincipal() {
+                throw new AssertionError("Error rendering must not access a principal");
+            }
+        };
+        request.setDispatcherType(DispatcherType.ERROR);
+        return request;
+    }
+
+    @Test
+    void opaqueErrorRendererLeavesCommittedResponseEntirelyUntouched() throws Exception {
+        var response = new MockHttpServletResponse();
+        response.setStatus(202);
+        response.setHeader("X-Unrelated", "retained");
+        response.setContentType("text/plain;charset=UTF-16");
+        response.addCookie(new Cookie("unrelated", "retained"));
+        response.getWriter().write("already_committed");
+        response.flushBuffer();
+        byte[] content = response.getContentAsByteArray();
+        var headers = response.getHeaderNames().stream().collect(java.util.stream.Collectors.toMap(
+                name -> name, response::getHeaders));
+        var request = new MockHttpServletRequest() {
+            @Override public Object getAttribute(String name) {
+                throw new AssertionError("Committed response must return before reading request attributes");
+            }
+        };
+        new OpaqueErrorController().error(request, response);
+        assertThat(response.getStatus()).isEqualTo(202);
+        assertThat(response.getContentAsByteArray()).isEqualTo(content);
+        assertThat(response.getHeaderNames().stream().collect(java.util.stream.Collectors.toMap(
+                name -> name, response::getHeaders))).isEqualTo(headers);
+        assertThat(response.getCookies()).containsExactly(new Cookie("unrelated", "retained"));
     }
 
     @ParameterizedTest

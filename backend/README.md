@@ -926,8 +926,16 @@ Workspace/RMP service is exposed as an authenticated HTTP API. A creator or acto
 those internal services still represents an identity; it is not itself proof
 of the external caller. Raw SQL remains outside actor authentication.
 
-The auth-disabled default serves only minimal `GET /actuator/health`, denying
-other routes without form/basic login or generated-password fallback. OIDC
+The auth-disabled default serves only minimal ordinary `GET /actuator/health`, denying
+other ordinary routes without form/basic login or generated-password fallback. Both
+servlet modes allow only ERROR dispatch to exact default `/error` for terminal
+fixed opaque JSON/no-store rendering with the validated original 400–599 Integer
+status (otherwise 500). Other ERROR destinations and REQUEST/FORWARD `/error`
+remain denied. The renderer leaves committed responses untouched and resets only
+the uncommitted body buffer/stale content length, not unrelated headers/cookies;
+it does not use error details/views, mutate session/Q/principal or initiate provider
+work. This supports the actual default error path only, not custom-path configuration.
+OIDC
 properties, discovery and HTTP handlers are conditional on enabled servlet mode;
 non-web migration/domain contexts require no provider configuration or network.
 The local profile keeps the backend on `127.0.0.1:8080` and trusts only the fixed
@@ -943,7 +951,11 @@ actions are recorded separately below.
 ID/access tokens remain server-side in the session. Local cookies are host-only,
 HttpOnly, SameSite=Lax, Path `/`; Secure=false is confined to explicit loopback
 mode, while defaults remain Secure=true. Idle expiry uses the servlet container
-(30 minutes), absolute expiry uses an injected Clock (8 hours). Local logout
+(30 minutes), absolute expiry uses an injected Clock (8 hours) at private-API
+validation. Until `/api/me` performs the existing 401/invalidation or explicit
+cleanup occurs, an idle-valid absolute-expired principal still gets 409 at a direct
+valid-CSRF login POST or OAuth entry, with no new intent/provider flow. No implicit
+entry expiry cleanup is added. Local logout
 is not global provider logout or immediate revocation after password reset.
 
 <a id="controlled-provider-migration-candidate-author-wip"></a>
