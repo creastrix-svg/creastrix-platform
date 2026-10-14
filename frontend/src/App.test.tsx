@@ -6,17 +6,21 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { AuthenticationContext, createAuthentication } from './authentication';
+import { READ_TIMEOUT_MS } from './authentication';
 import type { Authentication, Notice, Phase } from './authentication';
 import { EmailConfirmationContext } from './emailConfirmation';
 import { copy } from './i18n';
 import { authenticationFinished, authenticationStarted, createAppStore } from './store';
 import { initialLanguage, LANGUAGE_KEY } from './language';
 import type { Language } from './language';
+import { AUTH_BOUNDARY_KEY } from './authBoundary';
+import { bindAuthenticationLifecycle } from './authenticationLifecycle';
 
 const A = { id: '11111111-1111-4111-8111-111111111111', status: 'ACTIVE' };
 const B = { id: '22222222-2222-4222-8222-222222222222', status: 'ACTIVE' };
 const controllers: Authentication[] = [];
-afterEach(() => { controllers.splice(0).forEach(runtime => runtime.dispose()); delete document.documentElement.dataset.authPrivate; vi.unstubAllEnvs(); });
+const lifecycleDisposers: (() => void)[] = [];
+afterEach(() => { lifecycleDisposers.splice(0).forEach(dispose => dispose()); controllers.splice(0).forEach(runtime => runtime.dispose()); delete document.documentElement.dataset.authPrivate; vi.unstubAllEnvs(); vi.useRealTimers(); });
 
 function show(path = '/', language: Language = 'en') {
   const store = createAppStore(language);
@@ -24,9 +28,9 @@ function show(path = '/', language: Language = 'en') {
   return { ...view, store, user: userEvent.setup() };
 }
 
-function connected(path = '/account', language: Language = 'en', enabled = true) {
-  const requests: { path: RequestInfo | URL; init?: RequestInit; resolve: (response: Response) => void }[] = [];
-  const fetch = vi.fn<typeof globalThis.fetch>((path, init) => new Promise<Response>(resolve => { requests.push({ path, init, resolve }); }));
+function connected(path = '/account', language: Language = 'en', enabled = true, lifecycle = false) {
+  const requests: { path: RequestInfo | URL; init?: RequestInit; resolve: (response: Response) => void; reject: (error: Error) => void }[] = [];
+  const fetch = vi.fn<typeof globalThis.fetch>((path, init) => new Promise<Response>((resolve, reject) => { requests.push({ path, init, resolve, reject }); }));
   const store = createAppStore(language);
   let nonce = 0;
   const runtime = createAuthentication({
@@ -40,14 +44,18 @@ function connected(path = '/account', language: Language = 'en', enabled = true)
     finished: (owner, result) => { store.dispatch(authenticationFinished({ owner, result })); },
   });
   controllers.push(runtime);
-  const started = runtime.start();
+  const binding = lifecycle ? bindAuthenticationLifecycle(runtime) : null;
+  if (binding) lifecycleDisposers.push(binding.dispose);
+  const started = binding ? binding.started : runtime.start();
   const view = render(<StrictMode><Provider store={store}><AuthenticationContext value={runtime}>
-    <MemoryRouter initialEntries={[path]}><App /></MemoryRouter>
+    <EmailConfirmationContext value={lifecycle ? { enabled, fetch } : null}>
+      <MemoryRouter initialEntries={[path]}><App /></MemoryRouter>
+    </EmailConfirmationContext>
   </AuthenticationContext></Provider></StrictMode>);
   const reply = async (index: number, response: Response) => {
     await act(async () => { requests[index].resolve(response); for (let i = 0; i < 24; i++) await Promise.resolve(); });
   };
-  return { ...view, store, runtime, requests, fetch, reply, started, user: userEvent.setup() };
+  return { ...view, store, runtime, requests, fetch, reply, started, binding, user: userEvent.setup() };
 }
 
 describe('public routes, language and keyboard support', () => {
@@ -274,6 +282,243 @@ function confirmationFixture(options: { path?: string; language?: Language; enab
   return { ...view, store, fetch, requests, reply, user, inputs, fill, phase, login, logout, recover, recheck };
 }
 const confirmationCsrf = () => Response.json({ token: 'fixture-confirmation', parameterName: '_csrf', headerName: 'X-CSRF-TOKEN' });
+
+async function enabledConfirmation(language: Language = 'en') {
+  const f = connected('/confirm-email', language, true, true);
+  await f.reply(0, new Response(null, { status: 401 }));
+  await f.started;
+  const t = copy[language].confirmation;
+  const email = screen.getByRole('textbox', { name: t.email }) as HTMLInputElement;
+  const code = screen.getByRole('textbox', { name: t.code }) as HTMLInputElement;
+  await f.user.type(email, 'MixedCase@example.test');
+  await f.user.type(code, 'Code-123');
+  return { ...f, t, email, code };
+}
+
+describe('CFA06 enabled production authentication focus regression (finite DOM, not browser proof)', () => {
+  it.each(['en', 'de'] as const)('retains visible idle fields through passive CHECKING -> anonymous in %s without republishing intent', async language => {
+    const f = await enabledConfirmation(language);
+    const owner = f.store.getState().authentication.owner;
+    const marker = localStorage.getItem(AUTH_BOUNDARY_KEY);
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    expect(f.store.getState().authentication.phase).toBe('CHECKING');
+    expect(f.store.getState().authentication.owner).not.toEqual(owner);
+    expect(document.documentElement.dataset.authPrivate).toBe('closed');
+    expect(f.email).toHaveValue('MixedCase@example.test');
+    expect(f.code).toHaveValue('Code-123');
+    expect(screen.getByRole('button', { name: f.t.confirm })).toBeDisabled();
+    expect(screen.getByRole('button', { name: f.t.resend })).toBeDisabled();
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    expect(f.requests.map(request => request.path)).toEqual(['/api/me', '/api/me']);
+    await f.reply(1, new Response(null, { status: 401 }));
+    expect(f.email).toHaveValue('MixedCase@example.test');
+    expect(f.code).toHaveValue('Code-123');
+    expect(screen.getByRole('button', { name: f.t.confirm })).toBeEnabled();
+    expect(write).not.toHaveBeenCalled();
+    expect(localStorage.getItem(AUTH_BOUNDARY_KEY)).toBe(marker);
+  });
+
+  it.each(['CONFIRMED', 'CODE_REQUEST_ACCEPTED', 'UNKNOWN'] as const)('retains completed %s through passive revalidation without another provider action', async result => {
+    const f = await enabledConfirmation();
+    await f.user.click(screen.getByRole('button', { name: result === 'CODE_REQUEST_ACCEPTED' ? f.t.resend : f.t.confirm }));
+    await f.reply(1, confirmationCsrf());
+    if (result === 'UNKNOWN') await act(async () => { f.requests[2].reject(new Error('fixture-lost-ack')); });
+    else await f.reply(2, Response.json({ result: result === 'CONFIRMED' ? 'confirmed' : 'code_request_accepted' }, { status: result === 'CONFIRMED' ? 200 : 202 }));
+    expect(screen.getByRole('status')).toHaveTextContent(f.t.result[result]);
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    expect(screen.getByRole('status')).toHaveTextContent(f.t.result[result]);
+    await f.reply(3, new Response(null, { status: 401 }));
+    expect(screen.getByRole('status')).toHaveTextContent(f.t.result[result]);
+    expect(f.email).toHaveValue('MixedCase@example.test');
+    expect(f.requests.filter(request => request.init?.method === 'POST')).toHaveLength(1);
+  });
+
+  it.each(['csrf-fetch', 'csrf-body', 'post-fetch', 'post-body'] as const)('focus cancels %s truthfully and stale noncooperative work cannot issue a next POST or overwrite newer resend', async stage => {
+    const f = await enabledConfirmation();
+    let body!: ReadableStreamDefaultController<Uint8Array>;
+    const cancel = vi.fn(() => new Promise<void>(() => undefined));
+    const response = new Response(new ReadableStream<Uint8Array>({ start(controller) { body = controller; }, cancel }));
+    await f.user.click(screen.getByRole('button', { name: f.t.confirm }));
+    if (stage === 'csrf-body') await f.reply(1, response);
+    if (stage.startsWith('post')) await f.reply(1, confirmationCsrf());
+    if (stage === 'post-body') await f.reply(2, response);
+    const before = f.requests.length;
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+      expect(f.requests[1].init?.signal?.aborted).toBe(true);
+      expect(f.email.value).toBe('MixedCase@example.test');
+      expect(f.code.value).toBe('Code-123');
+    });
+    const result = stage.startsWith('post') ? 'UNKNOWN' : 'NOT_SENT';
+    expect(screen.getByRole('status')).toHaveTextContent(f.t.result[result]);
+    fireEvent.submit(document.querySelector('.confirmation-form')!);
+    expect(f.requests).toHaveLength(before + 1);
+    await f.reply(before, new Response(null, { status: 401 }));
+    expect(screen.getByRole('status')).toHaveTextContent(f.t.result[result]);
+    expect(f.email).toHaveValue('MixedCase@example.test');
+    await f.user.click(screen.getByRole('button', { name: f.t.resend }));
+    await f.reply(before + 1, confirmationCsrf());
+    await f.reply(before + 2, Response.json({ result: 'code_request_accepted' }, { status: 202 }));
+    if (stage.endsWith('fetch')) await f.reply(stage === 'csrf-fetch' ? 1 : 2, stage === 'csrf-fetch' ? confirmationCsrf() : Response.json({ result: 'confirmed' }));
+    else {
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(response.body?.locked).toBe(false);
+      expect(() => body.enqueue(new TextEncoder().encode('{"result":"confirmed"}'))).toThrow();
+    }
+    expect(screen.getByRole('status')).toHaveTextContent(f.t.result.CODE_REQUEST_ACCEPTED);
+    expect(f.requests).toHaveLength(before + 3);
+    expect(f.requests.filter(request => request.init?.method === 'POST')).toHaveLength(stage.startsWith('post') ? 2 : 1);
+  });
+
+  it.each(['200', '403', 'error', 'timeout'] as const)('unsafe me %s erases fields/results permanently; nonauthenticated outcomes retain empty provider-only eligibility', async response => {
+    const f = await enabledConfirmation();
+    await f.user.click(screen.getByRole('button', { name: f.t.confirm }));
+    await f.reply(1, confirmationCsrf());
+    await f.reply(2, Response.json({ result: 'confirmed' }));
+    if (response === 'timeout') vi.useFakeTimers();
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    if (response === 'error') await act(async () => { f.requests[3].reject(new Error('fixture-unavailable')); });
+    else if (response === 'timeout') await act(async () => { await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS); });
+    else await f.reply(3, response === '200' ? Response.json(A) : new Response(null, { status: 403 }));
+    expect(f.email).toHaveValue('');
+    expect(f.code).toHaveValue('');
+    expect(screen.queryByText(f.t.result.CONFIRMED)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: f.t.confirm })).toHaveProperty('disabled', response === '200');
+    // Returning to anonymous must not restore a previously retained generation.
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    expect(document.documentElement.dataset.authPrivate).toBe('closed');
+    await f.reply(4, new Response(null, { status: 401 }));
+    expect(f.email).toHaveValue('');
+    expect(f.code).toHaveValue('');
+    expect(screen.getByRole('button', { name: f.t.confirm })).toBeEnabled();
+    expect(f.requests.filter(request => request.init?.method === 'POST')).toHaveLength(1);
+  });
+
+  it.each(['pagehide', 'hidden', 'pageshow', 'peer', 'dispose', 'unmount', 'clear', 'departure'] as const)('%s during passive checking synchronously erases retained fields, never restores them or restarts provider work', async event => {
+    const f = await enabledConfirmation();
+    await f.user.click(screen.getByRole('button', { name: f.t.confirm }));
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    act(() => {
+      if (event === 'pagehide' || event === 'pageshow') window.dispatchEvent(new Event(event));
+      if (event === 'hidden') { visibility.mockReturnValue('hidden'); document.dispatchEvent(new Event('visibilitychange')); }
+      if (event === 'peer') {
+        localStorage.setItem(AUTH_BOUNDARY_KEY, JSON.stringify({ nonce: 'peer-new', phase: 'transition' }));
+        window.dispatchEvent(new StorageEvent('storage', { key: AUTH_BOUNDARY_KEY }));
+      }
+      if (event === 'dispose') f.binding!.dispose();
+      if (event === 'unmount') f.unmount();
+      if (event === 'clear') fireEvent.click(screen.getByRole('button', { name: f.t.cancel }));
+      if (event === 'departure') fireEvent.click(screen.getByRole('link', { name: f.t.backLogin }));
+      expect(f.email.value).toBe('');
+      expect(f.code.value).toBe('');
+    });
+    await f.reply(1, confirmationCsrf());
+    await f.reply(2, new Response(null, { status: 401 }));
+    expect(screen.queryByText(f.t.result.NOT_SENT)).not.toBeInTheDocument();
+    if (event === 'pagehide' || event === 'hidden') {
+      act(() => {
+        visibility.mockReturnValue('visible');
+        window.dispatchEvent(new Event('pageshow'));
+      });
+      await f.reply(3, new Response(null, { status: 401 }));
+    }
+    if (event === 'departure') fireEvent.click(screen.getByRole('link', { name: f.t.link }));
+    if (event !== 'unmount') {
+      expect(screen.getByRole('textbox', { name: f.t.email })).toHaveValue('');
+      expect(screen.getByRole('textbox', { name: f.t.code })).toHaveValue('');
+    }
+    expect(f.requests.filter(request => request.init?.method === 'POST')).toHaveLength(0);
+    if (event === 'dispose') {
+      const count = f.requests.length;
+      act(() => {
+        for (const type of ['focus', 'pageshow', 'pagehide', 'storage']) window.dispatchEvent(new Event(type));
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      expect(f.requests).toHaveLength(count);
+    }
+  });
+
+  it.each(['AUTHENTICATED', 'TRANSITION', 'DENIED', 'UNAVAILABLE', 'RECOVERY_REQUIRED', 'document', 'revision'] as const)('cannot miss unsafe intermediate %s in a React batch that ends at the original anonymous state', async boundary => {
+    const f = await enabledConfirmation();
+    const original = f.store.getState().authentication;
+    act(() => {
+      const owner = { ...original.owner!, document: boundary === 'document' ? 'other-document' : original.owner!.document,
+        revision: boundary === 'revision' ? 'other-revision' : original.owner!.revision };
+      const phase = boundary === 'document' || boundary === 'revision' ? 'CHECKING' : boundary;
+      f.store.dispatch(authenticationStarted({ owner, phase, notice: 'NONE' }));
+      expect(f.email.value).toBe('');
+      expect(f.code.value).toBe('');
+      f.store.dispatch(authenticationStarted({ owner: original.owner!, phase: 'ANONYMOUS', notice: 'SESSION_MISSING' }));
+    });
+    expect(f.email).toHaveValue('');
+    expect(f.code).toHaveValue('');
+    expect(screen.getByRole('button', { name: f.t.confirm })).toBeEnabled();
+    expect(f.requests).toHaveLength(1);
+  });
+
+  it('rapid hidden/visible and pagehide/pageshow in one batch never restore an earlier generation', async () => {
+    const f = await enabledConfirmation();
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    act(() => {
+      visibility.mockReturnValue('hidden'); document.dispatchEvent(new Event('visibilitychange'));
+      visibility.mockReturnValue('visible'); document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('pagehide')); window.dispatchEvent(new Event('pageshow'));
+      expect(f.email.value).toBe('');
+    });
+    await f.reply(f.requests.length - 1, new Response(null, { status: 401 }));
+    expect(f.email).toHaveValue('');
+    expect(f.code).toHaveValue('');
+    expect(f.requests.every(request => request.path === '/api/me')).toBe(true);
+  });
+
+  it('keeps DE not-submitted and UNKNOWN outcomes distinct across explicit actions and repeated passive focus', async () => {
+    const f = await enabledConfirmation('de');
+    await f.user.click(screen.getByRole('button', { name: f.t.confirm }));
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    expect(screen.getByRole('status')).toHaveTextContent(f.t.result.NOT_SENT);
+    expect(screen.getByRole('status')).toHaveTextContent(f.t.wait);
+    await f.reply(2, new Response(null, { status: 401 }));
+    await f.user.click(screen.getByRole('button', { name: f.t.confirm }));
+    await f.reply(3, confirmationCsrf());
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    expect(screen.getByRole('status')).toHaveTextContent(f.t.result.UNKNOWN);
+    await f.reply(5, new Response(null, { status: 401 }));
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    await f.reply(6, new Response(null, { status: 401 }));
+    await f.reply(1, confirmationCsrf());
+    await f.reply(4, Response.json({ result: 'confirmed' }));
+    expect(screen.getByRole('status')).toHaveTextContent(f.t.result.UNKNOWN);
+    expect(f.email).toHaveValue('MixedCase@example.test');
+    expect(f.code).toHaveValue('Code-123');
+    expect(f.requests.filter(request => request.init?.method === 'POST')).toHaveLength(1);
+  });
+
+  it.each(['denied', 'storage-unavailable', 'peer-recovery'] as const)('retains existing fresh-empty provider-only eligibility after enabled %s without restoring prior fields or requiring live auth coordination', async boundary => {
+    const f = await enabledConfirmation();
+    if (boundary === 'denied') {
+      act(() => { window.dispatchEvent(new Event('focus')); });
+      await f.reply(1, new Response(null, { status: 403 }));
+    } else act(() => {
+      if (boundary === 'storage-unavailable') localStorage.removeItem(AUTH_BOUNDARY_KEY);
+      else localStorage.setItem(AUTH_BOUNDARY_KEY, JSON.stringify({ nonce: 'peer-empty', phase: 'transition' }));
+      window.dispatchEvent(new StorageEvent('storage', { key: AUTH_BOUNDARY_KEY }));
+    });
+    expect(f.email).toHaveValue('');
+    expect(f.code).toHaveValue('');
+    expect(screen.getByRole('button', { name: f.t.resend })).toBeEnabled();
+    fireEvent.change(f.email, { target: { value: 'NewCase@example.test' } });
+    const index = f.requests.length;
+    await f.user.click(screen.getByRole('button', { name: f.t.resend }));
+    expect(f.requests[index].path).toBe('/auth/csrf');
+    await f.reply(index, confirmationCsrf());
+    expect(f.requests[index + 1].path).toBe('/auth/resend-confirmation-code');
+    await f.reply(index + 1, Response.json({ result: 'code_request_accepted' }, { status: 202 }));
+    expect(screen.getByRole('status')).toHaveTextContent(f.t.result.CODE_REQUEST_ACCEPTED);
+    expect(f.email).toHaveValue('NewCase@example.test');
+  });
+});
 
 describe('transient confirmation recovery UI (finite DOM mocks, not provider/browser proof)', () => {
   it.each(['en', 'de'] as const)('opens the direct confirmation route with localized title, exactly email/code and no password in %s', language => {

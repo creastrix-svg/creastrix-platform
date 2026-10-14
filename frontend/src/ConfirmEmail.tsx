@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useLayoutEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useStore } from 'react-redux';
 import { Link } from 'react-router';
@@ -11,7 +11,7 @@ import type { RootState } from './store';
 
 export default function ConfirmEmail() {
   const t = copy[useAppSelector(state => state.ui.language)].confirmation;
-  const { phase, notice, owner } = useAppSelector(state => state.authentication);
+  const { phase, notice } = useAppSelector(state => state.authentication);
   const runtime = useContext(AuthenticationContext);
   const transport = useContext(EmailConfirmationContext);
   const store = useStore<RootState>();
@@ -22,65 +22,69 @@ export default function ConfirmEmail() {
   const emailInput = useRef<HTMLInputElement>(null);
   const codeInput = useRef<HTMLInputElement>(null);
   const mounted = useRef(false);
-  const available = useRef(false);
-  const transportRef = useRef(transport);
   const [suspended, setSuspended] = useState(document.visibilityState === 'hidden');
-  const boundary = useMemo(() => ({ eligible, phase, notice, owner, suspended, transport }),
-    [eligible, phase, notice, owner, suspended, transport]);
-  const boundaryRef = useRef(boundary);
-  const [outcome, setOutcome] = useState({ result: 'IDLE' as ConfirmationResult, boundary });
-  // A changed account/lifecycle boundary hides even previously completed results during that render.
-  const result = outcome.boundary === boundary ? outcome.result : 'IDLE';
+  const [result, setResult] = useState<ConfirmationResult>('IDLE');
   const clientRef = useRef<ReturnType<typeof createEmailConfirmation> | null>(null);
   const clearFields = useCallback(() => {
     // DOM clearing is synchronous even when React scheduling or bfcache pauses a commit.
     if (emailInput.current) emailInput.current.value = '';
     if (codeInput.current) codeInput.current.value = '';
   }, []);
-  const invalidate = useCallback(() => { clientRef.current?.cancel(); setOutcome({ result: 'IDLE', boundary: boundaryRef.current }); }, []);
+  const invalidate = useCallback(() => { clientRef.current?.cancel(); setResult('IDLE'); }, []);
 
   useLayoutEffect(() => {
     mounted.current = true;
+    let observed = store.getState().authentication;
+    let hidden = document.visibilityState === 'hidden';
+    let preserving = false;
     const client = createEmailConfirmation({
       enabled: () => {
         const current = store.getState().authentication;
-        const expected = boundaryRef.current;
-        // Redux can change before React commits; an old form must not issue another network step then.
-        return mounted.current && available.current && document.visibilityState !== 'hidden'
-          && current.owner === expected.owner && current.phase === expected.phase && current.notice === expected.notice;
+        // Network ownership never returns with retained fields after a new authentication epoch.
+        return mounted.current && connected && !hidden && document.visibilityState !== 'hidden'
+          && current === observed && current.phase !== 'CHECKING' && current.phase !== 'TRANSITION'
+          && current.phase !== 'AUTHENTICATED' && current.notice !== 'DEV_ONLY';
       },
-      fetch: (path, init) => transportRef.current ? transportRef.current.fetch(path, init) : window.fetch(path, init),
-      changed: next => { if (mounted.current) setOutcome({ result: next, boundary: boundaryRef.current }); },
+      fetch: (path, init) => transport ? transport.fetch(path, init) : window.fetch(path, init),
+      changed: next => { if (mounted.current) setResult(next); },
     });
     clientRef.current = client;
-    return () => {
-      mounted.current = false;
-      available.current = false;
-      client.dispose();
-      if (clientRef.current === client) clientRef.current = null;
+    function clear() {
+      preserving = false;
+      client.cancel();
       clearFields();
-    };
-  }, [store, clearFields]);
-  useLayoutEffect(() => {
-    transportRef.current = transport;
-    boundaryRef.current = boundary;
-    available.current = eligible && !suspended;
-    clientRef.current?.cancel();
-    clearFields();
-  }, [boundary, eligible, suspended, transport, clearFields]);
-  useEffect(() => {
+      if (mounted.current) setResult('IDLE');
+    }
+    clear();
+    // Observe every Redux transition synchronously, including intermediate states React batches away.
+    const unsubscribe = store.subscribe(() => {
+      const next = store.getState().authentication;
+      if (next === observed) return;
+      const previous = observed;
+      observed = next;
+      const sameContext = previous.owner !== null && next.owner !== null
+        && previous.owner.document === next.owner.document && previous.owner.revision === next.owner.revision;
+      const checking = next.phase === 'CHECKING' && next.notice === 'NONE';
+      const anonymous = next.phase === 'ANONYMOUS' && next.notice === 'SESSION_MISSING';
+      const retain = connected && !hidden && document.visibilityState !== 'hidden' && sameContext
+        && ((previous.phase === 'ANONYMOUS' && checking)
+          || (preserving && previous.phase === 'CHECKING' && (checking || anonymous)));
+      if (!retain) { clear(); return; }
+      preserving = checking;
+      // Only form data/outcome survives; cancel before any old CSRF work can advance to POST.
+      const retained = client.pause();
+      if (retained !== null) setResult(retained);
+    });
     function suspend() {
-      available.current = false;
-      clearFields();
-      invalidate();
+      hidden = true;
+      clear();
       setSuspended(true);
     }
     function resume() {
       // Returning restores only an empty form, never provider work or a previous result.
       if (document.visibilityState !== 'hidden') {
-        clearFields();
-        invalidate();
-        available.current = boundaryRef.current.eligible;
+        hidden = false;
+        clear();
         setSuspended(false);
       }
     }
@@ -89,17 +93,28 @@ export default function ConfirmEmail() {
     window.addEventListener('pageshow', resume);
     document.addEventListener('visibilitychange', visibility);
     return () => {
+      mounted.current = false;
+      unsubscribe();
+      client.dispose();
+      if (clientRef.current === client) clientRef.current = null;
+      clearFields();
       window.removeEventListener('pagehide', suspend);
       window.removeEventListener('pageshow', resume);
       document.removeEventListener('visibilitychange', visibility);
     };
-  }, [clearFields, invalidate]);
+  }, [connected, runtime, transport, store, clearFields]);
 
+  function canSubmit() {
+    const current = store.getState().authentication;
+    return connected && !suspended && document.visibilityState !== 'hidden'
+      && current.phase !== 'CHECKING' && current.phase !== 'TRANSITION' && current.phase !== 'AUTHENTICATED';
+  }
   function confirm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canSubmit()) return;
     void clientRef.current?.confirm(emailInput.current?.value ?? '', codeInput.current?.value ?? '');
   }
-  function resend() { void clientRef.current?.resend(emailInput.current?.value ?? ''); }
+  function resend() { if (canSubmit()) void clientRef.current?.resend(emailInput.current?.value ?? ''); }
   function cancel() { clearFields(); invalidate(); }
   const disabled = !eligible || suspended || result === 'PENDING';
   const message = result === 'IDLE' ? (!connected ? t.disconnected : phase === 'AUTHENTICATED' ? t.authenticated
@@ -123,7 +138,7 @@ export default function ConfirmEmail() {
           <button className="button" type="button" onClick={cancel}>{t.cancel}</button>
         </div>
       </form>
-      <p className="boundary-note" role="status" aria-live="polite">{message}</p>
+      <p className="boundary-note" role="status" aria-live="polite">{phase === 'CHECKING' && result !== 'IDLE' ? t.wait + ' ' : ''}{message}</p>
       <Link className="text-link" to="/login" onClick={cancel}>{t.backLogin}<span aria-hidden="true">→</span></Link>
       <p className="small boundary-note">{t.transient}</p>
     </section>

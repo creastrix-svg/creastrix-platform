@@ -154,13 +154,36 @@ to a fresh ordinary OIDC login under unchanged exact admission.
 not a signup/password SDK. Email/code stay in local form/request memory, cleared
 on departure/suspension; no URL/query/history/storage/Redux persistence is used.
 Each explicit action obtains fresh `/auth/csrf` once, then makes one bounded POST.
-Edits/cancellation/navigation/account or lifecycle changes discard stale completion.
+Edits/cancellation/navigation and unsafe account or lifecycle changes discard stale completion.
 Only exact 200 `confirmed` is confirmation; resend acknowledgement is conditional
 and technical uncertainty is not rollback. Backend caps bytes/concurrency/retention,
 uses finite global/hashed-target throttles independent of Q and performs no
 provider/log I/O under those locks. Alias stealing and auto-login are disabled;
 the submitted email identifier is not normalized or used for Creastrix linking.
 Synthetic tests alone do not prove actual provider/browser recovery.
+
+The bounded CFA06 frontend correction separates form retention from authentication
+and network ownership. Visible anonymous fields and settled results survive only
+passive same-document/same-shared-revision ANONYMOUS → CHECKING → ANONYMOUS
+revalidation. Focus retains the fresh owned `/api/me`, reducer checks and synchronous
+private curtain; confirmation/resend are paused during CHECKING. A synchronous
+store subscription processes every transition, including unsafe intermediate
+states hidden by React batching. Peer/document changes, hide/pagehide/pageshow,
+departure/unmount, explicit clear and TRANSITION/AUTHENTICATED or unsafe outcomes
+erase the prior generation without later restoration. DENIED, UNAVAILABLE and
+RECOVERY_REQUIRED still permit only the existing new empty provider-confirmation
+form, without live-Q gating or expanded Creastrix admission.
+
+Cancellation before POST invocation reports NOT_SENT for the provider action;
+CSRF HTTP work may already have occurred. From POST invocation onward, a thrown
+or rejected transport, delayed response headers or pending body cannot prove
+non-submission: passive cancellation is UNKNOWN, not rollback. A recorded terminal
+result is retained before callbacks/finally can cancel its remaining resources.
+No retained fields/results revive old requests, issue a next POST or authorize
+automatic continuation/retry. The extracted production lifecycle binder is shared
+with finite enabled-controller/store regressions, not a new real-browser/provider
+or broader cookie-safety proof. Backend security, provider admission and public
+readiness gates are unchanged.
 
 Fresh isolated recovery author checks passed focused 528/528, diagnostic catalog
 163/163, final full 1826/1826 with zero failures/errors/skipped and package,

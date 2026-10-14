@@ -209,7 +209,7 @@ confirmation page. It has only transient email/code fields and explicit Confirm,
 Resend, Cancel and Back to login actions; it does not collect a password or create
 a provider/internal account. Exact input case is retained. Form/request data is
 not written to URL/query/history, Redux, storage or logs and is cleared on
-unmount/suspension. Edits, cancellation, navigation and account/lifecycle changes
+unmount/suspension. Edits, cancellation, navigation and unsafe account/lifecycle changes
 invalidate older results. Disconnected preview/known authenticated or transitioning
 state cannot submit; no live-Q/echo/canStart prerequisite is added.
 
@@ -228,6 +228,27 @@ The limited owner EMAIL disposition is in the
 [runbook](../docs/authentication-provider-migration.md#limited-email-gate-disposition);
 it did not itself approve recovery code or close native/cookie/publication gates.
 The later independent review and PR #37 integration are separate evidence.
+
+The bounded CFA06 correction retains a visible anonymous form's fields and settled
+result only through passive, same-document/same-shared-revision
+ANONYMOUS → CHECKING → ANONYMOUS revalidation. Focus still starts a fresh owned
+`/api/me` and closes the private curtain; confirmation actions are disabled during
+CHECKING. Every authentication transition is observed synchronously, so an unsafe
+intermediate state cannot disappear inside a React batch. Peer revision/document
+changes, hidden/pagehide/pageshow, departure/unmount, explicit clearing,
+TRANSITION/AUTHENTICATED, DENIED, UNAVAILABLE and RECOVERY_REQUIRED erase the old
+form/result permanently. The latter three retain the existing eligibility for a
+new empty provider-only form; no live-Q prerequisite or broader admission is added.
+
+Passive revalidation cancels old confirmation work before it can advance. CSRF
+fetch/body cancellation is NOT_SENT: the provider action was not submitted, not
+a claim that no HTTP request occurred. Once POST invocation begins, including a
+throwing transport or delayed headers/body, cancellation is UNKNOWN because the
+provider action may have happened. Already-recorded terminal results are not
+downgraded before cleanup. Retention never restores old network ownership or
+continues/retries an action automatically. The small production lifecycle binder
+is shared with enabled-controller/store DOM regressions; these finite mocks are
+not new native/browser, Cognito/email, cookie-race or rollout evidence.
 
 Fresh isolated author verification of this recovery frontend passed 234/234 in
 seven Vitest files, typecheck, lint and build; all 140 preceding testcase

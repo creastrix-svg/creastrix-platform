@@ -314,4 +314,69 @@ describe('bounded provider-only confirmation transport (finite mocks, not real p
     expect(f.requests).toHaveLength(1);
     expect(f.changed.mock.calls.map(([result]) => result)).toEqual(['PENDING']);
   });
+
+  it.each(['csrf-fetch', 'csrf-body', 'post-fetch', 'post-body'] as const)('passive pause during %s separates not-submitted provider work from UNKNOWN and never revives old ownership', async stage => {
+    const f = fixture();
+    const body = streamedResponse(200, new Promise<void>(() => undefined));
+    const old = f.client.confirm('old@example.test', 'old-code');
+    if (stage === 'csrf-body') await f.reply(0, body.response);
+    if (stage.startsWith('post')) await f.reply(0, csrf());
+    if (stage === 'post-body') await f.reply(1, body.response);
+    expect(f.client.pause()).toBe(stage.startsWith('post') ? 'UNKNOWN' : 'NOT_SENT');
+    await old;
+    const oldRequestCount = f.requests.length;
+    const next = f.client.resend('new@example.test');
+    await f.reply(oldRequestCount, csrf());
+    await f.reply(oldRequestCount + 1, accepted());
+    await next;
+    const calls = [...f.changed.mock.calls];
+    if (stage.endsWith('fetch')) await f.reply(stage === 'csrf-fetch' ? 0 : 1, stage === 'csrf-fetch' ? csrf() : confirmed());
+    else expect(body.complete(stage === 'csrf-body' ? JSON.stringify({ token: 't', parameterName: '_csrf', headerName: 'X-CSRF-TOKEN' }) : '{"result":"confirmed"}')).toBe(false);
+    await tick();
+    expect(f.changed.mock.calls).toEqual(calls);
+    expect(f.changed).toHaveBeenLastCalledWith('CODE_REQUEST_ACCEPTED');
+    expect(f.requests).toHaveLength(oldRequestCount + 2);
+    if (stage.endsWith('body')) expect(body.cancel).toHaveBeenCalledTimes(1);
+    expect(f.client.pause()).toBeNull();
+  });
+
+  it.each(['CONFIRMED', 'CODE_REQUEST_ACCEPTED', 'UNKNOWN'] as const)('records terminal %s before a callback pauses the still-active operation, before finally', async result => {
+    const f = fixture();
+    let retained: ConfirmationResult | null = null;
+    f.changed.mockImplementation(next => { if (next === result) retained = f.client.pause(); });
+    const run = result === 'CODE_REQUEST_ACCEPTED' ? f.client.resend('case@example.test') : f.client.confirm('case@example.test', '123');
+    await f.reply(0, csrf());
+    if (result === 'UNKNOWN') f.requests[1].response.reject(new Error('fixture-lost-ack'));
+    else await f.reply(1, result === 'CONFIRMED' ? confirmed() : accepted());
+    await run;
+    expect(retained).toBe(result);
+    expect(f.changed.mock.calls.map(([next]) => next)).toEqual(['PENDING', result]);
+  });
+
+  it.each(['throw', 'reject'] as const)('POST invocation is already UNKNOWN when transport %s before acknowledgement', async mode => {
+    const f = fixture();
+    const run = f.client.confirm('case@example.test', '123');
+    let retained: ConfirmationResult | null = null;
+    f.fetch.mockImplementationOnce(() => {
+      retained = f.client.pause();
+      if (mode === 'throw') throw new Error('fixture-transport-throw');
+      return Promise.reject(new Error('fixture-transport-reject'));
+    });
+    await f.reply(0, csrf());
+    await run;
+    expect(retained).toBe('UNKNOWN');
+    expect(f.fetch).toHaveBeenCalledTimes(2);
+    expect(f.changed.mock.calls.map(([next]) => next)).toEqual(['PENDING']);
+  });
+
+  it('does not replace an acknowledged terminal result when its observer throws before finally', async () => {
+    const f = fixture();
+    f.changed.mockImplementation(result => { if (result === 'CONFIRMED') throw new Error('fixture-observer-failed'); });
+    const run = f.client.confirm('case@example.test', '123');
+    await f.reply(0, csrf());
+    await f.reply(1, confirmed());
+    await run;
+    expect(f.changed.mock.calls.map(([result]) => result)).toEqual(['PENDING', 'CONFIRMED']);
+    expect(f.client.pause()).toBeNull();
+  });
 });
