@@ -125,16 +125,26 @@ The 2026-10-09
 [post-merge Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37962373086)
 passed 135 tests, typecheck, lint and build. It is a separate unit/static/build
 gate, not a browser run. Both PR and post-merge npm installations reported one
-untriaged HIGH vulnerability warning; separate triage is required before public
-deployment. Successful CI is not a security-clean dependency graph.
+HIGH vulnerability warning; those historical results are retained.
 
-`AUTH-COOKIE-FOLLOWUP-001` remains **OPEN**. S003 is integrated through PR #34;
+<a id="dependency-follow-up"></a>
+
+The accompanying single-record lockfile update pins `source-map-js` 1.2.2 for
+[GHSA-68fv-2mgg-jv7q / CVE-2026-93749](https://github.com/advisories/GHSA-68fv-2mgg-jv7q).
+Isolated author verification passed 234 tests, typecheck, lint, build and both
+development/omit-dev lockfile audits with zero findings; evidence is retained in
+`frontend-high-triage-20261014-YiOqAj/ISOLATED-REPORT.md`.
+Installed environments need reinstallation/restart to use the patched version.
+Independent review, publication and deployment status remain separate.
+Audit zero covers known advisories for that lock snapshot, not full security.
+
+The [local cookie disposition and retained public gate](../docs/authentication-pilot.md#open-cookie-follow-up) records scoped local closure. S003 is integrated through PR #34;
 finite local F and bounded Auth0 P are complete. Cognito owner transfer completed
 separately on 2026-10-13. Real unverified/admitted backend refusal remains NOT RUN;
 the owner accepted a narrower EMAIL evidence combination for owner-only local
-source readiness, not that missing real scenario or public access. Final follow-up
-disposition and public-access/rollout gates remain open. L1 and future business-write limits
-are unchanged. This client changed no dependencies, backend, workflows or domain decisions.
+source readiness, not that missing real scenario or public access. The original follow-up
+is closed only for the accepted local pilot scope; `AUTH-PUBLIC-READINESS-001` remains OPEN for public-access/rollout. L1 and future business-write limits
+are unchanged. The PR #35 client changed no dependencies, backend, workflows or domain decisions.
 
 Use the existing WebStorm/project settings; do not commit IDE state. Ignored
 dependencies/build output may remain locally. [Frontend CI](../.github/workflows/frontend-ci.yml)
@@ -142,7 +152,9 @@ has separate frontend/workflow path filters; no tests or CI were run by this
 documentation change. See the [root context](../README.md#frontend-ui-foundation)
 and [authentication contract](../docs/authentication-pilot.md#react-client-and-f-boundary).
 
-## Selected provider boundary (author WIP)
+<a id="selected-provider-boundary-author-wip"></a>
+
+## Integrated selected provider boundary
 
 The frontend keeps its native POST to `/auth/login`; it does not choose the
 provider, store provider tokens or collect a password. Backend configuration
@@ -162,16 +174,18 @@ The local backend selects Cognito existing-only for that one owner through priva
 environment; default AUTH0 configuration is unchanged and Auth0 is retained, not
 a current alias. The updated DE/EN pilot notice reflects that local fact only.
 
-Code remains unpublished feature WIP against accepted main
-`fda0657246aa00fc259ea286dffd45de91415d9a`. Historical independent frontend 140,
+Source is integrated by [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37) as
+`e5b58d43a9dc07c76efc905bc63d8269feaa40fe`. Historical independent frontend 140,
 backend 1690/package and native 417/scoped views remain separate; overall IDE
 schema/background completion is UNKNOWN/INCOMPLETE. Real unverified/admitted
 backend refusal is NOT RUN, and hosted-provider refusal before code/token is not
 that proof. This alignment does not rerun browser/provider tests, rebuild the
-live backend or close AUTH-COOKIE-FOLLOWUP-001. Final review/publication are
-separate gates; public access and rollout remain unauthorized.
+live backend or extend the accepted local cookie scope. PR #37
+publication/integration is complete; public access and rollout remain unauthorized.
 
-## Email-confirmation recovery (author WIP)
+<a id="email-confirmation-recovery-author-wip"></a>
+
+## Integrated email-confirmation recovery
 
 `/confirm-email` is reachable from `/login` and directly after closing the hosted
 confirmation page. It has only transient email/code fields and explicit Confirm,
@@ -194,7 +208,8 @@ Creastrix access. Existing login/logout/private-state ownership is unchanged.
 Mock-fetch/DOM tests do not prove actual Cognito email delivery or browser recovery.
 Auth0 remains retained. The limited owner EMAIL disposition is in the
 [runbook](../docs/authentication-provider-migration.md#limited-email-gate-disposition);
-it does not approve this new code or close native/cookie/publication gates.
+it did not itself approve recovery code or close native/cookie/publication gates.
+The later independent review and PR #37 integration are separate evidence.
 
 Fresh isolated author verification of this recovery frontend passed 234/234 in
 seven Vitest files, typecheck, lint and build; all 140 preceding testcase
@@ -204,5 +219,7 @@ These remain mocked fetch/DOM/static/build results, not browser or CI proof.
 Separate scoped native, independent source/JAR review and owner recovery/fresh
 OIDC results on 2026-10-14 are recorded in the
 [dated recovery evidence](../docs/authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
-Overall IDE background/schema remains UNKNOWN/INCOMPLETE; code is still feature
-WIP, with final narrow review/publication and public-access gates separate.
+Overall IDE background/schema remains UNKNOWN/INCOMPLETE. The separate PR #37
+post-merge [Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38534930663)
+passed 234/234, locked install, typecheck, lint and build. It did not rerun browser
+F or settle global IDE health. Public-access readiness remains OPEN; local cookie closure is separately scoped.

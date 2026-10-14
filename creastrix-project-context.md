@@ -119,7 +119,7 @@ reviewed bounded coverage; its separate 2026-10-05
 passed 1513 tests and tests/package BUILD SUCCESS with PostgreSQL 18.4 / Flyway
 V1 → V12. These historical checks do not activate live privileges.
 No next frontend, commerce or maintenance slice is selected.
-`AUTH-COOKIE-FOLLOWUP-001` stays OPEN. Separate S003 source, scoped browser and
+The [local cookie disposition and retained public gate](docs/authentication-pilot.md#open-cookie-follow-up) records scoped local closure. Separate S003 source, scoped browser and
 runtime evidence are distinguished in the
 [authentication boundary](docs/authentication-pilot.md#s003-evidence-and-open-gates).
 They do not supply the missing live Platform Access wiring or close its gates.
@@ -191,7 +191,7 @@ historical and were not rewritten. These are external dated results, not new
 runtime, IDE or CI execution for this transfer. PA observer/HOLD and separate
 combined foundation/HTTP/CI candidates are not composed into this change.
 
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN for explicit final disposition and pre-public-access gates.
+The [local cookie disposition and retained public gate](docs/authentication-pilot.md#open-cookie-follow-up) records accepted local-only closure; public/staff/business-write/deployment/multi-instance readiness remains unauthorized.
 The 2026-09-14 temporary local-pilot acceptance did not automatically accept the
 later B-to-A consequence or public operation. Finite local React/dev-proxy/browser F
 subsequently completed; bounded Auth0 P later completed separately. Natural frequency, account takeover and the separate post-commit
@@ -218,20 +218,23 @@ Source/unit/build and native IDE results remain separate from that browser proof
 The 2026-10-09
 [post-merge Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37962373086)
 passed 135 tests, typecheck, lint and build; it did not run the browser matrix.
-The npm installation's one HIGH warning remains untriaged/open and requires
-separate triage before public deployment; successful CI is not full security.
+The npm installation reported one HIGH warning; that historical result is retained.
+See the [lockfile follow-up and installed-environment limits](frontend/README.md#dependency-follow-up)
+for the accompanying `source-map-js` 1.2.2 update and isolated verification.
 Bounded Auth0 P completed separately on 2026-10-11; the local Cognito owner transfer
 completed separately on 2026-10-13, without public rollout. G1/G2 and L1
 remain distinct; stale UI response rejection does not close the old cross-Q server
 limitation or cover future business writes. Storage unavailability fails closed;
 completion/lifecycle events never republish the shared intent marker. Early native
-login refusal may show opaque backend JSON outside React. No dependency/backend,
-Workspace/RMP API/forms, signup/social login or business decision changes are included.
+login refusal may show opaque backend JSON outside React. The PR #35 client included no dependency/backend,
+Workspace/RMP API/forms, signup/social login or business decision changes.
 The connected origin is fixed `http://localhost:3000`, with loopback strict port;
 build preview is disconnected. See the [frontend guide](frontend/README.md).
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN pending explicit final disposition and pre-public-access gates.
+See the [local cookie disposition and retained public gate](docs/authentication-pilot.md#open-cookie-follow-up) for accepted local-only closure and OPEN public readiness obligations.
 
-### Controlled Cognito owner migration: accepted decision, author WIP
+<a id="controlled-cognito-owner-migration-accepted-decision-author-wip"></a>
+
+### Integrated controlled Cognito owner migration and recovery
 
 The owner accepted ordinary external Cognito self-registration in Frankfurt with
 closed exact-pair Creastrix admission, not public Creastrix signup or access.
@@ -244,8 +247,9 @@ User/Profile/status/eligibility generation and rights. No email auto-linking or
 simultaneously active aliases are accepted. Owner existing-only resolution denies
 unknown and superseded pairs before account creation.
 
-The code is unpublished feature-branch WIP, not coverage integrated into the
-accepted main baseline `fda0657246aa00fc259ea286dffd45de91415d9a`. Separately,
+The reviewed migration/recovery source is integrated through [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37)
+at accepted main `e5b58d43a9dc07c76efc905bc63d8269feaa40fe`. This is the bounded owner-only
+local/nonproduction slice, not complete authentication or public rollout. Separately,
 the authorized 2026-10-13 local operator action verified backup/restore, applied
 V13 and acknowledged one owner switch with independent read-back. The same
 User UUID/Profile/status/generation/rights/business rows, both historical pairs
@@ -263,23 +267,23 @@ hosted UNCONFIRMED refusal and synthetic raw-Boolean rejection remain different
 proofs. On 2026-10-13 the owner explicitly accepted their combination with verified
 owner login for limited owner-only nonproduction source readiness, not reproduction
 of the missing real signed-false case, public access or approval of new recovery
-code. The exact disposition is retained in the runbook. Final review and publication
-are separate gates. The previous status-only alignment did not rerun backend
+code. The exact disposition is retained in the runbook. Later independent review
+and PR #37 publication/integration are distinct completed gates. The previous status-only alignment did not rerun backend
 tests or perform another provider/database action.
 The [runbook](docs/authentication-provider-migration.md) retains authorization,
 identity proof, backup and stopped-app prerequisites for future switches.
 Own SES à la carte remains a separate selected setup, not an already connected
 sender or SES Essentials. Social/TOTP, public access/rollout and
-AUTH-COOKIE-FOLLOWUP-001 closure remain outside this candidate.
+OPEN public-readiness obligations remain outside that migration action.
 
-The separate recovery WIP adds explicit transient `/confirm-email` confirmation
+The integrated recovery slice adds explicit transient `/confirm-email` confirmation
 and resend for anonymous selected-Cognito requests, with exact Host/Origin and
 fresh standard session CSRF but no live-Q/echo prerequisite. Bounded backend-only
 ConfirmSignUp/ResendConfirmationCode preserve the entered email case and never
 link identities, create internal accounts/Workspace/grants or log in automatically.
 Provider email confirmation still needs a fresh ordinary OIDC flow and exact
 Creastrix admission. Author tests, native IDE and actual provider/browser recovery
-remain separate gates; no rollout or public self-admission is implied. Auth0 is
+have distinct evidence; no rollout or public self-admission is implied. Auth0 is
 retained and defaults unchanged; cookie/native/publication gates are not closed
 by the limited EMAIL disposition.
 
@@ -292,9 +296,13 @@ owned-Testcontainers evidence, not native/browser or CI proof. Original target/l
 resources were preserved. Separate scoped native, focused independent source/JAR
 review and real owner recovery/fresh OIDC results on 2026-10-14 are recorded in the
 [dated recovery evidence](docs/authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
-Overall IDE background/schema remains UNKNOWN/INCOMPLETE. Final narrow review,
-publication/CI, main integration and rollout are separate; source WIP and local
-operator results are not accepted-main coverage.
+Overall IDE background/schema remains UNKNOWN/INCOMPLETE. PR #37 preserved the
+reviewed tree; separate post-merge [Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38534930693)
+passed 1826/1826 with zero failures/errors/skipped and tests/package BUILD SUCCESS;
+[Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38534930663)
+passed 234/234, locked install, typecheck, lint and build. These are integration CI,
+not new browser/native proofs. Local operator results remain distinct; rollout
+and broader cookie safety are not authorized by source integration.
 
 ## Domain Principles
 

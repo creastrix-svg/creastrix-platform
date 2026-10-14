@@ -505,7 +505,7 @@ and requires cached artifacts. Separate accepted S independent evidence reports
 Those earlier results have different scopes and authorship; they are not new runs
 for this documentation or substitutes for the subsequent reviewed PR #33 integration
 and its separate CI above. Historical test/CI results below remain historical.
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN. Integrated S003 has scoped
+The [local cookie disposition and retained public gate](../docs/authentication-pilot.md#open-cookie-follow-up) records scoped local closure. Integrated S003 has scoped
 browser/server evidence and an exact-candidate full/package result, as recorded
 in the [authentication verification boundary](../docs/authentication-pilot.md#s003-evidence-and-open-gates).
 None supplies missing staff HTTP/MFA wiring or composes the separate PA observer/HOLD.
@@ -664,7 +664,7 @@ logout or restart; only observed absolute expiry is labelled SESSION_EXPIRED.
 Commit-unknown identity resolution requires the unchanged reconciliation through
 a new full login. Diagnostics themselves provide no durable audit guarantee or
 stale-cookie protection; the S003 Q registry below is a separate admission mechanism.
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN. Its logout path emits
+Cookie status is recorded in the [local cookie disposition and retained public gate](../docs/authentication-pilot.md#open-cookie-follow-up). The logout path emits
 `LOCAL_LOGOUT_COMPLETED` only for successful Q revocation (204), not cleanup-only
 409; callback success still observes local selection/publication, not delivery.
 
@@ -786,7 +786,7 @@ The [authentication contract](../docs/authentication-pilot.md#verification-gates
 records the real late-failure RED/GREEN boundary, later native IDE and independent
 results, and exact PR/merge CI evidence. These author runs are not those later
 checks or browser/Auth0 proof. No tests were rerun for this documentation change;
-the follow-up stays OPEN.
+the current local closure and OPEN public-readiness gate are recorded separately.
 
 An atomic per-logical-session callback lease captures its saved flow before
 provider/DB work; only its owner can publish authorized-client/session state.
@@ -871,9 +871,9 @@ The 2026-10-09
 passed 1618 tests, zero failures/errors/skipped and tests/package BUILD SUCCESS
 with PostgreSQL 18.4 / Flyway V1 → V12. These are historical server checks, not
 the frontend/browser matrix or new execution for this documentation change.
-`AUTH-COOKIE-FOLLOWUP-001` remains OPEN for explicit final disposition and
-pre-public-access/invitation gates; the subsequent local Cognito transfer does
-not close them or establish public rollout.
+The [local cookie disposition and retained public gate](../docs/authentication-pilot.md#open-cookie-follow-up) distinguishes accepted
+local-only closure from OPEN public-access/invitation/rollout obligations.
+The local Cognito transfer alone does not close those obligations.
 
 Only `GET /api/me` exposes the current account, after session, current exact
 issuer/subject admission, ACTIVE and final captured-stamp checks. No existing
@@ -901,7 +901,9 @@ mode, while defaults remain Secure=true. Idle expiry uses the servlet container
 (30 minutes), absolute expiry uses an injected Clock (8 hours). Local logout
 is not global provider logout or immediate revocation after password reset.
 
-### Controlled provider migration candidate (author WIP)
+<a id="controlled-provider-migration-candidate-author-wip"></a>
+
+### Integrated controlled provider migration
 
 `CREASTRIX_AUTH_PROVIDER` is the closed AUTH0/COGNITO choice (AUTH0 default).
 Only one confidential code-flow registration is configured. Cognito pins the
@@ -933,9 +935,9 @@ actor authorization, an HTTP linking API or a new core domain entity.
 
 The [runbook](../docs/authentication-provider-migration.md) retains explicit
 authorization, fresh identity-control proof, backup, review and stopped-single-app
-prerequisites for any future switch. The accepted main baseline remains
-`fda0657246aa00fc259ea286dffd45de91415d9a`; this code is unpublished feature WIP,
-not integrated main or public rollout. Separately, the authorized 2026-10-13 local
+prerequisites for any future switch. The reviewed migration/recovery slice was
+integrated by [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37) as `e5b58d43a9dc07c76efc905bc63d8269feaa40fe`;
+this is source integration, not public rollout. Separately, the authorized 2026-10-13 local
 operation applied V13 after backup/restore proof and acknowledged one switch
 with independent read-back. UUID/Profile/status/generation/rights/business rows
 and both history pairs were preserved. The private local runtime selects Cognito,
@@ -954,14 +956,16 @@ control do not reproduce that real signed-false scenario. The owner's explicit
 success and UNCONFIRMED/unadmitted hosted refusal; it applies only to nonproduction
 owner-pilot source readiness, not public access or approval of new recovery code.
 See the [exact disposition](../docs/authentication-provider-migration.md#limited-email-gate-disposition).
-Final status review/publication remain separately gated.
+PR #37 final review, source publication and post-merge CI are complete; public-operation gates remain separate.
 Auth0 tenant/client/account/private configuration remain retained, not a
 current alias. Local logout does not revoke provider/all-device sessions. Own SES,
-social/TOTP and cookie-follow-up closure remain separate. Historical candidate
+social/TOTP and OPEN public-readiness obligations remain separate. Historical candidate
 tests used isolated copies, synthetic OIDC and owned databases; this alignment
 does not rebuild the running owner's `backend/target` or touch the live database.
 
-### Cognito email-confirmation recovery (author WIP)
+<a id="cognito-email-confirmation-recovery-author-wip"></a>
+
+### Integrated Cognito email-confirmation recovery
 
 Only anonymous requests in selected COGNITO mode can POST JSON to
 `/auth/confirm-email` (`email`, `code`) or `/auth/resend-confirmation-code` (`email`).
@@ -1019,8 +1023,11 @@ Testcontainers did not rebuild the live owner's target or use the live database.
 Separate 2026-10-14 native recovery 91/91 and HTTP 195/195, focused independent source/JAR
 review and real owner recovery/fresh OIDC results are recorded in the
 [dated recovery evidence](../docs/authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
-Overall IDE background/schema remains UNKNOWN/INCOMPLETE; final narrow review
-and publication/CI remain separate. The package contains no external test SPI.
+Overall IDE background/schema remains UNKNOWN/INCOMPLETE. Separate post-merge
+[Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38534930693)
+for PR #37 passed 1826/1826, zero failures/errors/skipped and tests/package
+BUILD SUCCESS; this is not a browser/native rerun. The package contains no external
+test SPI. Public-operation gates remain OPEN; local cookie closure is separately scoped.
 
 ## Running the application
 
