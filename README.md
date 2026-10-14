@@ -173,7 +173,9 @@ Author verification, native IDE execution, independent re-review, PR CI and
 post-merge CI are distinct evidence; none closes the cookie follow-up.
 The bounded React/Redux client, dev proxy and finite local browser F are now
 independently reviewed and integrated through PR #35, as summarized below.
-The real Auth0 walkthrough P, tenant setup and rollout have not been performed.
+A separate bounded real Auth0 owner walkthrough P completed on 2026-10-11
+(registration/verification, local logout, repeat login and password reset with the same internal User).
+That historical external evidence is not a Cognito run or public rollout.
 Login does not create a Workspace. No Workspace/RMP HTTP API, linking, social
 login or commerce implementation is included. Verified local login with a synthetic
 IdP is not complete authentication/MVP delivery or real-provider verification.
@@ -201,8 +203,9 @@ failures/errors/skipped, and package BUILD SUCCESS on 2026-10-07. Separate root
 dispositions accepted scoped browser and server evidence while retaining the
 original incomplete/failed orchestration reports. These are dated external
 evidence, not fresh IDE or CI results for this documentation change. The subsequent
-finite local React/dev-proxy/browser F is described below; real Auth0 P and rollout
-remain unverified.
+finite local React/dev-proxy/browser F is described below. The later bounded Auth0 P
+and the 2026-10-13 local Cognito owner transfer are separate evidence; neither
+closes the follow-up or constitutes public rollout.
 `AUTH-COOKIE-FOLLOWUP-001` stays OPEN for explicit final disposition and pre-public-access gates;
 source transfer and historical evidence do not close it or authorize public access.
 
@@ -227,8 +230,64 @@ browser or delivery order. The 2026-10-09
 passed 135 tests, typecheck, lint and build; CI does not execute that browser matrix.
 Its npm installation reported one unresolved HIGH warning, requiring separate
 triage before public deployment, not a security-clean dependency graph.
-Real Auth0 P, signup/social login, Workspace/RMP API/forms, public operation and
-rollout remain absent. `AUTH-COOKIE-FOLLOWUP-001` stays OPEN.
+The bounded Auth0 owner P completed separately. The local owner was subsequently
+transferred to Cognito on 2026-10-13; social login, Workspace/RMP API/forms,
+public operation and rollout remain absent.
+`AUTH-COOKIE-FOLLOWUP-001` stays OPEN.
+
+### Controlled Cognito Migration Candidate
+
+The accepted integrated `main` baseline is `fda0657246aa00fc259ea286dffd45de91415d9a`.
+The Cognito code remains unpublished feature-branch WIP, separate from that
+baseline and from the separately authorized local operator actions below.
+This candidate adds a selected AUTH0/COGNITO registration,
+Cognito signed-ID-token-only validation and existing-only owner resolution.
+Auth0 remains the default and retains its original claim checks. V13 adds one
+current pair per User, immutable historical pairs and exact migration receipts;
+the offline operation must preserve the internal UUID/Profile/status/generation
+and existing rights. Unknown or superseded owner identities do not create Users.
+See the [migration runbook](docs/authentication-provider-migration.md).
+
+On 2026-10-13 a separately authorized local operation verified backup/restore,
+applied V13 and acknowledged one owner switch with independent read-back. It
+retained the same User UUID/Profile/status/generation/rights and business rows,
+both historical pairs and one receipt. The local existing-only runtime admits
+only the owner's exact Cognito identity. Real owner login, local logout (204
+then `/api/me` 401), repeat login and login after the owner-reported password
+change returned the same ACTIVE account. Auth0 tenant/client/account and private
+configuration are retained, not a current authentication alias.
+
+External Cognito self-registration remains distinct from closed Creastrix
+admission. Real unverified/admitted backend refusal is **NOT RUN**; hosted-provider
+UNCONFIRMED refusal is not that signed-claim proof. On 2026-10-13 the owner explicitly
+accepted the narrower combination of verified owner login, UNCONFIRMED/unadmitted
+provider refusal and synthetic admitted raw-Boolean controls for owner-only local
+pilot source readiness. This is not public signup/admission expansion or new-code
+approval; see the [limited evidence disposition](docs/authentication-provider-migration.md#limited-email-gate-disposition).
+Historical synthetic/independent runtime checks and native 417 tests retain their
+own scopes; overall IDE schema/background completion remains UNKNOWN/INCOMPLETE.
+Final review and publication require separate gates; own SES, public access and
+rollout are not delivered. `AUTH-COOKIE-FOLLOWUP-001` stays OPEN.
+
+The recovery WIP adds a transient `/confirm-email` page, reachable from `/login`
+or directly after closing the provider confirmation page. Anonymous selected-Cognito
+confirmation/resend require exact Host/Origin and fresh standard session CSRF,
+not a live Q/echo prerequisite. They use only bounded backend ConfirmSignUp and
+ResendConfirmationCode calls with the existing confidential client. No password,
+signup, automatic login, identity linking or internal account/Workspace creation
+is added. Confirming a provider email does not grant Creastrix access: a fresh
+ordinary OIDC login and exact admission remain necessary. Author tests alone do
+not prove real recovery/browser execution.
+
+Fresh isolated recovery author checks passed focused 528/528, diagnostic catalog
+163/163, full 1826/1826 and package; frontend 234/234, typecheck, lint and build.
+All preceding backend 1690 and frontend 140 testcase identities are preserved.
+These remain source/mock/owned-PostgreSQL results, not native/browser or CI proof.
+Separate scoped native, independent source/JAR review and owner recovery/fresh
+OIDC results on 2026-10-14 are recorded in the
+[dated recovery evidence](docs/authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
+Overall IDE background/schema remains UNKNOWN/INCOMPLETE. Final narrow review,
+publication/CI, main integration and public-operation gates remain separate.
 
 Using Node 22.14.0 / npm 10.9.2, run from `frontend`:
 

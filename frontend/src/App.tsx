@@ -2,6 +2,7 @@ import { useContext, useEffect, useLayoutEffect, useRef } from 'react';
 import type { FormEvent } from 'react';
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router';
 import { AuthenticationContext } from './authentication';
+import ConfirmEmail from './ConfirmEmail';
 import { useAppDispatch, useAppSelector } from './hooks';
 import { copy } from './i18n';
 import { languageSelected } from './store';
@@ -84,6 +85,7 @@ function Login() {
             <button className="button primary" type="submit" disabled={!runtime || phase !== 'ANONYMOUS' || notice === 'DEV_ONLY'}>{t.continueLogin}</button>
           </form>}
         <AccountActions /><p className="small boundary-note">{t.nativeErrorNote}</p>
+        <Link className="text-link" to="/confirm-email">{t.confirmation.link}<span aria-hidden="true">→</span></Link>
       </section>
       <section className="demo-invite"><h2>{t.futureMethods}</h2><div className="methods">
         {[t.signup, t.google, t.apple].map(method => <button type="button" key={method} disabled aria-describedby="methods-note">{method}<span aria-hidden="true">—</span></button>)}
@@ -125,7 +127,8 @@ export default function App() {
   const previousPath = useRef(pathname);
   const main = useRef<HTMLElement>(null);
   const currentPath = pathname.replace(/\/+$/, '').toLowerCase() || '/';
-  const title = currentPath === '/' ? t.home : currentPath === '/login' ? t.login : currentPath === '/account' ? t.account : t.notFoundEyebrow;
+  const title = currentPath === '/' ? t.home : currentPath === '/login' ? t.login : currentPath === '/account' ? t.account
+    : currentPath === '/confirm-email' ? t.confirmation.page : t.notFoundEyebrow;
 
   useEffect(() => { document.documentElement.lang = language; document.title = title + ' · Creastrix'; }, [language, title]);
   useEffect(() => {
@@ -147,7 +150,7 @@ export default function App() {
       </div>
     </header>
     <div className="demo-strip"><span className="badge">{t.pilotLabel}</span><span>{t.pilotBoundary}</span></div>
-    <main id="main" ref={main} tabIndex={-1}><Routes><Route path="/" element={<Home />} /><Route path="/login" element={<Login />} /><Route path="/account" element={<Account />} /><Route path="*" element={<NotFound />} /></Routes></main>
+    <main id="main" ref={main} tabIndex={-1}><Routes><Route path="/" element={<Home />} /><Route path="/login" element={<Login />} /><Route path="/confirm-email" element={<ConfirmEmail />} /><Route path="/account" element={<Account />} /><Route path="*" element={<NotFound />} /></Routes></main>
     <footer><span>{t.footer}</span><span>{t.footerNote}</span></footer>
   </div>;
 }

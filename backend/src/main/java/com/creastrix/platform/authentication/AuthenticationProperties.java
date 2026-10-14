@@ -10,7 +10,26 @@ import com.creastrix.platform.user.application.port.UserIdentityBindingRepositor
 /** Immutable, restart-controlled admission for one explicitly configured issuer. */
 public record AuthenticationProperties(
         String issuer, String clientId, String clientSecret, String browserOrigin,
-        Set<String> allowedSubjects, boolean secureCookie) {
+        Set<String> allowedSubjects, boolean secureCookie, Provider provider, boolean existingOnly) {
+
+    public enum Provider {
+        AUTH0("auth0"), COGNITO("cognito");
+        private final String registrationId;
+        Provider(String registrationId) { this.registrationId = registrationId; }
+        public String registrationId() { return registrationId; }
+        public static Provider configured(String value) {
+            for (Provider candidate : values()) {
+                if (candidate.name().equals(value)) return candidate;
+            }
+            throw new IllegalArgumentException("creastrix.auth.provider must be AUTH0 or COGNITO");
+        }
+    }
+
+    /** Preserves the original Auth0 registration policy until an explicit restart/switch. */
+    public AuthenticationProperties(String issuer, String clientId, String clientSecret, String browserOrigin,
+                                    Set<String> allowedSubjects, boolean secureCookie) {
+        this(issuer, clientId, clientSecret, browserOrigin, allowedSubjects, secureCookie, Provider.AUTH0, false);
+    }
 
     public static final Duration FLOW_LIFETIME = Duration.ofMinutes(5);
     public static final Duration CLOCK_SKEW = Duration.ofSeconds(60);
@@ -20,6 +39,7 @@ public record AuthenticationProperties(
     public AuthenticationProperties {
         Objects.requireNonNull(issuer, "creastrix.auth.issuer");
         Objects.requireNonNull(browserOrigin, "creastrix.auth.browser-origin");
+        Objects.requireNonNull(provider, "creastrix.auth.provider");
         requireNonblank(issuer, "creastrix.auth.issuer");
         requireNonblank(clientId, "creastrix.auth.client-id");
         requireNonblank(clientSecret, "creastrix.auth.client-secret");
@@ -38,11 +58,16 @@ public record AuthenticationProperties(
 
     /** Called only by runtime wiring. HTTP issuers are possible only in test-owned bean wiring. */
     public void validateRuntime(boolean localProfile) {
-        URI provider = configurationUri(issuer, "creastrix.auth.issuer");
-        if (!"https".equals(provider.getScheme()) || provider.getHost() == null
-                || !provider.getHost().endsWith(".eu.auth0.com") || provider.getPort() != -1
-                || provider.getUserInfo() != null || provider.getRawQuery() != null
-                || provider.getRawFragment() != null || !"/".equals(provider.getRawPath())) {
+        if (provider == Provider.COGNITO && !existingOnly) {
+            throw new IllegalArgumentException("Cognito owner mode requires creastrix.auth.existing-only=true");
+        }
+        URI uri = configurationUri(issuer, "creastrix.auth.issuer");
+        boolean shape = provider == Provider.AUTH0
+                ? uri.getHost() != null && uri.getHost().endsWith(".eu.auth0.com") && "/".equals(uri.getRawPath())
+                : "cognito-idp.eu-central-1.amazonaws.com".equals(uri.getHost())
+                    && uri.getRawPath().matches("/eu-central-1_[A-Za-z0-9]+");
+        if (!"https".equals(uri.getScheme()) || !shape || uri.getPort() != -1
+                || uri.getUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null) {
             throw new IllegalArgumentException("creastrix.auth.issuer must be an exact standard EU HTTPS issuer");
         }
         if (localProfile) {
@@ -75,8 +100,11 @@ public record AuthenticationProperties(
     }
 
     public String browserAuthority() { return URI.create(browserOrigin).getRawAuthority(); }
-    public String callbackUri() { return browserOrigin + "/login/oauth2/code/auth0"; }
-    public String entryUri() { return browserOrigin + "/oauth2/authorization/auth0"; }
+    public String registrationId() { return provider.registrationId(); }
+    public String callbackPath() { return "/login/oauth2/code/" + registrationId(); }
+    public String entryPath() { return "/oauth2/authorization/" + registrationId(); }
+    public String callbackUri() { return browserOrigin + callbackPath(); }
+    public String entryUri() { return browserOrigin + entryPath(); }
     public String successUri() { return browserOrigin + "/account"; }
     public String failureUri() { return browserOrigin + "/login?auth=failed"; }
 

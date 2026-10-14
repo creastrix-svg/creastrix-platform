@@ -7,8 +7,8 @@ local nonpublic pilot, not an APPROVED domain specification or public release.
 Backend result B passed author, native IDE, independent R2 re-review and CI gates;
 the distinct evidence is recorded below under verification gates.
 S003 and finite local React/dev-proxy/browser F are also integrated through
-PR #34 and PR #35, with their distinct evidence recorded below. Real Auth0
-walkthrough P remains unperformed; backend tests alone do not prove browser login.
+PR #34 and PR #35, with their distinct evidence recorded below. A separate bounded
+real Auth0 owner walkthrough P completed on 2026-10-11; backend tests alone do not prove browser login.
 Historical server, frontend/browser and CI checks do not close
 the follow-up, establish a new APPROVED domain specification or authorize public access.
 
@@ -16,10 +16,10 @@ the follow-up, establish a new APPROVED domain specification or authorize public
 
 The confidential backend uses the standard authorization-code OIDC flow with
 S256 PKCE, `openid profile email`, `prompt=login` and `max_age=0`. It preserves
-Spring signature, issuer, audience/azp, timestamps, state, nonce and UserInfo
+Spring signature, issuer, audience/azp, timestamps, state, nonce and, for Auth0, UserInfo
 subject validation. Raw `email_verified` must be JSON boolean; raw `auth_time`
 must be a finite, nonnegative integral numeric date, before claim conversion.
-Both returned claim sources must provide a nonblank email and verified=true;
+Every required claim source must provide a nonblank email and verified=true;
 the ID-token authentication time must fall between the saved request start
 minus 60 seconds and now plus 60 seconds. The complete flow expires at 5 minutes.
 Protocol, freshness and identity-allowlist checks precede binding access or creation.
@@ -30,10 +30,58 @@ There is no email merge, browser-selected UUID authority, reactivation, linking,
 or automatic Workspace creation. Inactive Users retain their identity and fail
 login. The mandatory [User Profile](domain/user-profile.md) remains unchanged.
 
-V11 adds one technical binding table, immediate exact-pair uniqueness, separate
+V11 originally added one technical binding table, immediate exact-pair uniqueness, separate
 User uniqueness, a non-cascading User foreign key and immutable retained rows.
 It is not a new core domain entity or a manual-delta command state machine.
 Legacy Users are not backfilled. Privileged raw SQL is not actor-authorized.
+
+### Controlled Cognito exception (feature WIP; local owner transferred)
+
+The owner accepted one selected registration: AUTH0 (default) or COGNITO.
+The Cognito candidate pins an original Frankfurt regional pool issuer and client,
+requires `token_use=id` and validates only the signed ID token. Cognito UserInfo
+is deliberately not requested: its string verification flags are not coerced
+into trusted booleans. Auth0 keeps the prior raw checks of returned ID/UserInfo
+sources. Subject is opaque, not a UUID. Protocol/state/nonce, verified email,
+auth_time/five-minute freshness and exact admission still precede resolution.
+
+V13 replaces only the historical-per-User cardinality with one current selector,
+retaining V11's global pair ownership and immutable history. Initial ordinary
+registration atomically creates User/Profile/history/current; owner existing-only
+mode rejects unknown and superseded pairs without creating another account.
+Superseded history is never a current alias, including on private account reads.
+The offline exact-old/new operation atomically appends history/receipt and changes
+the selector without changing User UUID, Profile, status, eligibility generation,
+rights or business references. Exact replay proves the recorded operation, not
+that no subsequent authorized switch occurred. No email linking is introduced.
+
+The exception remains unpublished feature WIP, separate from accepted main
+`fda0657246aa00fc259ea286dffd45de91415d9a`. A separately authorized local operation
+on 2026-10-13 verified backup/restore, applied V13 and acknowledged one exact
+owner switch with independent read-back. User UUID/Profile/status/generation,
+rights/business rows, both historical pairs and one receipt were retained.
+The private local runtime now selects Cognito existing-only for one exact owner
+identity; source defaults remain AUTH0. Real owner login, local logout (204 and
+private 401), repeat login and login after the owner-reported password change
+(private 200, same ACTIVE User) are bounded external operator evidence, not tests
+performed by this alignment or public rollout.
+
+See the [operator runbook](authentication-provider-migration.md) for the local
+result and limited owner EMAIL-gate disposition. Real unverified/admitted backend
+refusal remains NOT RUN. Hosted
+Cognito refusal before code/token is provider-level evidence, not a signed
+false-claim backend control; synthetic false/missing/string tests and verified
+owner success remain separate. The owner's 2026-10-13 acceptance of their combination
+is confined to nonproduction owner-pilot source readiness, not public access or
+approval of new recovery code. Historical independent runtime checks and native
+417 tests/scoped views are not fresh runs; overall IDE schema/background completion
+remains UNKNOWN/INCOMPLETE. Final review/publication require separate gates.
+Any future switch still requires separate authorization, identity proof,
+backup/preflight and a stopped single application. Auth0 remains retained, not a
+current alias; controlled return requires another operation/receipt, restart and
+fresh login, not dump restore or old cookies. External Cognito self-registration
+does not authorize unknown Creastrix identities. Own SES, social/TOTP and public
+rollout remain outside this alignment. AUTH-COOKIE-FOLLOWUP-001 remains OPEN.
 
 Resolution rejects an ambient transaction. An owned bounded worker leases a
 connection and starts one physical READ COMMITTED transaction; the existing
@@ -63,11 +111,48 @@ derives trusted destinations from Host/Forwarded headers. No CORS is enabled.
 | --- | --- |
 | `GET /auth/csrf` | JSON token, `_csrf` parameter name, `X-CSRF-TOKEN` header name; eligible anonymous bootstrap issues Q once, later requests echo it; this is not login |
 | `POST /auth/login` | Exact Origin + form `_csrf`, explicit intent and admissible Q/session stamp; authenticated or inadmissible pair gets 409; valid initiation gets fixed 303 |
+| `POST /auth/confirm-email` | Anonymous selected-Cognito JSON `email/code`, exact Host/Origin and fresh standard session CSRF; known provider confirmation alone selects 200 `confirmed`, not local login |
+| `POST /auth/resend-confirmation-code` | Anonymous selected-Cognito JSON `email`, same security boundary; generic conditional 202 `code_request_accepted`, not existence or delivery proof |
 | `GET /oauth2/authorization/auth0` | One live session intent required before the standard OIDC redirect |
 | `GET /login/oauth2/code/auth0` | Protocol-gated callback; no local Origin required on this GET; busy/already-authenticated conflict uses fixed failure 303 |
 | `GET /api/me` | Current session/admission/ACTIVE plus final captured-stamp admission after DB lookup; only own `id/status`, no identity-provider claims or tokens |
 | `POST /auth/logout` | Exact Origin + CSRF; revoke presented Q generation and clean caller SID; 204 for Q revocation, cleanup-only 409 for unknown/expired Q |
 | `GET /actuator/health` | Minimal health; other management and unknown routes denied |
+
+In the selected Cognito candidate only, the entry/callback suffix is `cognito`
+instead of `auth0`. The unselected registration routes are denied; the namespaces,
+Host/Origin, decoded-segment matching, fixed destinations and cleanup stay the same.
+
+The provider-only confirmation routes do not require live Q, echo or `canStart`;
+unknown/expired Q is not a reason to automatically logout/reset or deny recovery
+when ordinary CSRF is valid. Authenticated callers are rejected before provider
+work and without changing their principal/session. AUTH0/unselected mode remains
+closed. Confirmation does not create User/Profile/binding/selector/receipt,
+LOGIN_INTENT, an authenticated session, Workspace or grants. It only leads back
+to a fresh ordinary OIDC login under unchanged exact admission.
+
+`/confirm-email` is a transient React page accessible directly or from `/login`,
+not a signup/password SDK. Email/code stay in local form/request memory, cleared
+on departure/suspension; no URL/query/history/storage/Redux persistence is used.
+Each explicit action obtains fresh `/auth/csrf` once, then makes one bounded POST.
+Edits/cancellation/navigation/account or lifecycle changes discard stale completion.
+Only exact 200 `confirmed` is confirmation; resend acknowledgement is conditional
+and technical uncertainty is not rollback. Backend caps bytes/concurrency/retention,
+uses finite global/hashed-target throttles independent of Q and performs no
+provider/log I/O under those locks. Alias stealing and auto-login are disabled;
+the submitted email identifier is not normalized or used for Creastrix linking.
+Synthetic tests alone do not prove actual provider/browser recovery.
+
+Fresh isolated recovery author checks passed focused 528/528, diagnostic catalog
+163/163, final full 1826/1826 with zero failures/errors/skipped and package,
+PostgreSQL 18.4 / Flyway V1 → V13; frontend 234/234 plus typecheck/lint/build.
+All preceding backend 1690/frontend 140 testcase identities remain. Failed
+attempts and external helper corrections are retained. These source/mock/owned-DB
+results are not native/browser or CI proof. Separate scoped native, focused
+independent source/JAR review and owner recovery/fresh OIDC results on 2026-10-14
+are recorded in the [dated recovery evidence](authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
+Overall IDE background/schema remains UNKNOWN/INCOMPLETE; final narrow review,
+publication/CI, cookie-follow-up and public-operation gates remain separate.
 
 Security boundaries and OAuth/MVC routing use Spring's segment-aware
 `PathPatternRequestMatcher` semantics, including allowed percent-encoded letters
@@ -230,7 +315,8 @@ to `http://localhost:3000/oauth2/authorization/auth0`, callback success to
 `http://localhost:3000/account`, failure to
 `http://localhost:3000/login?auth=failed`. No user redirect parameter is accepted;
 session IDs are never URL-encoded. `/login` and `/account` HTML belong to the
-React client, not backend. Login is a top-level form POST, not fetch-follow to Auth0.
+React client, not backend. Login is a top-level form POST, not fetch-follow to the provider.
+The Cognito candidate derives the fixed entry Location from the single selected registration.
 
 API errors are opaque JSON: 401 for absent/expired session, 403 for confirmed
 inactive/denied access or invalid security input, 503 for unavailable current
@@ -327,14 +413,17 @@ revive an old session. CSRF/bootstrap and logout cleanup remain available.
 Cookie defaults: host-only, HttpOnly, SameSite=Lax, Path `/`, Secure=true,
 cookie-only tracking. Only explicit `auth-local` permits Secure=false on the
 fixed loopback HTTP setup. This is not a public deployment configuration.
-The profile requires exact standard EU Auth0 HTTPS issuer and external client
-credentials. Admission subjects are immutable for the process lifetime; empty
+The profile defaults to the exact standard EU Auth0 HTTPS issuer. The selected
+Cognito candidate requires the original `https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_<pool>`
+issuer and existing-only mode; external client credentials stay backend-only.
+Admission subjects are immutable for the process lifetime; empty
 admission denies all. Changes use controlled restart. Auth-disabled/non-web
 contexts require no provider credentials or discovery and offer no generated
 password, form login or basic-auth alternative.
 
-Local logout does not log out Auth0 globally. Password reset/provider block does
-not guarantee immediate revocation of an existing local session. Already sent
+Local logout does not log out the selected Auth0 or Cognito provider globally.
+Password reset/provider block does not guarantee immediate revocation of an
+existing local session. Already sent
 responses cannot be recalled. The integrated React client handles stale responses
 without updating a newer account, clears cached identity on errors/logout and
 verifies a fresh `/api/me` after explicit recovery. A fresh read alone is not a
@@ -434,7 +523,7 @@ These are distinct completed checks, not new executions by this documentation ch
   actual PostgreSQL 18.4 (`postgres:18.4-alpine`) and successful Flyway V1 → V11.
 
 Backend B is verified within this local nonpublic contract. The later finite local
-F gate completed separately; real Auth0 P remains unverified.
+F gate completed separately; bounded Auth0 P later completed separately on 2026-10-11.
 AUTH-COOKIE-FOLLOWUP-001 remains OPEN under the final disposition and
 pre-public-access gates above. No next implementation slice or rollout is selected.
 
@@ -500,6 +589,8 @@ passed 135 tests, typecheck, lint and build. CI is not a browser matrix run.
 The npm installation reported one untriaged HIGH warning; separate triage is
 required before public deployment. Successful CI is not full dependency security.
 Finite local F is complete; AUTH-COOKIE-FOLLOWUP-001 remains OPEN for explicit
-final disposition. Real Auth0 P remains unperformed and unverified. Public access,
-invitations and rollout remain unverified and unauthorized. No new runtime or CI
-ran for this documentation change.
+final disposition. Bounded Auth0 P completed separately on 2026-10-11; the local
+Cognito owner transfer and ordinary owner walkthrough completed separately on
+2026-10-13 within the bounds above. Real unverified/admitted backend refusal
+remains NOT RUN. Public access, invitations and rollout remain unverified and
+unauthorized. No new backend runtime or CI ran for this status alignment.

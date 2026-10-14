@@ -1815,6 +1815,104 @@ class AuthenticationPolicyTest {
                 .build();
     }
 
+    @Test
+    void cognitoRuntimeIsExactFrankfurtExistingOnlyAndRoutesAreProviderDerived() {
+        AuthenticationProperties cognito = cognitoProperties("https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_SyntheticPool", true);
+        cognito.validateRuntime(true);
+        assertThat(cognito.callbackUri()).isEqualTo("http://localhost:3000/login/oauth2/code/cognito");
+        assertThat(cognito.entryUri()).isEqualTo("http://localhost:3000/oauth2/authorization/cognito");
+        assertThat(cognito.registrationId()).isEqualTo("cognito");
+        assertThat(properties().provider()).isEqualTo(AuthenticationProperties.Provider.AUTH0);
+        assertThat(properties().existingOnly()).isFalse();
+        assertThatIllegalArgumentException().isThrownBy(() -> cognitoProperties(cognito.issuer(), false).validateRuntime(true));
+        assertThat(cognito.toString()).isEqualTo("AuthenticationProperties[redacted]");
+    }
+
+    @Test
+    void runtimeBeanBindingSelectsOneCognitoRegistrationWithExistingOnlyAdmission() {
+        String issuer = "https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_SyntheticPool";
+        new WebApplicationContextRunner()
+                .withUserConfiguration(AuthenticationConfiguration.class, AccountController.class)
+                .withInitializer(context -> context.getEnvironment().setActiveProfiles("auth-local"))
+                .withPropertyValues("creastrix.auth.enabled=true", "creastrix.auth.provider=COGNITO",
+                        "creastrix.auth.existing-only=true", "creastrix.auth.issuer=" + issuer,
+                        "creastrix.auth.client-id=client", "creastrix.auth.client-secret=synthetic-secret",
+                        "creastrix.auth.browser-origin=http://localhost:3000", "creastrix.auth.allowed-subjects[0]=" + SUBJECT,
+                        "server.servlet.session.cookie.secure=false")
+                .withBean(AuthenticatedUserService.class, () -> mock(AuthenticatedUserService.class))
+                .withBean(ClientRegistrationRepository.class, () -> new InMemoryClientRegistrationRepository(
+                        ClientRegistration.withRegistrationId("cognito").clientId("client").clientSecret("synthetic-secret")
+                                .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+                                .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                                .redirectUri("http://localhost:3000/login/oauth2/code/cognito")
+                                .scope("openid", "profile", "email").issuerUri(issuer)
+                                .authorizationUri("https://synthetic.example/authorize").tokenUri("https://synthetic.example/token")
+                                .jwkSetUri("https://synthetic.example/jwks").userInfoUri("https://synthetic.example/userinfo")
+                                .userNameAttributeName("sub").build()))
+                .run(context -> {
+                    assertThat(context).hasNotFailed().hasSingleBean(AuthenticationProperties.class)
+                            .hasSingleBean(SecurityFilterChain.class).hasSingleBean(CreastrixOidcUserService.class);
+                    AuthenticationProperties selected = context.getBean(AuthenticationProperties.class);
+                    assertThat(selected.provider()).isEqualTo(AuthenticationProperties.Provider.COGNITO);
+                    assertThat(selected.existingOnly()).isTrue();
+                    assertThat(selected.callbackUri()).isEqualTo("http://localhost:3000/login/oauth2/code/cognito");
+                    assertThat(selected.admits(new Identity(issuer, SUBJECT))).isTrue();
+                    assertThat(context.getBean(ClientRegistrationRepository.class).findByRegistrationId("auth0")).isNull();
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Pool",
+            "https://cognito-idp.eu-central-1.amazonaws.com/eu-west-1_Pool",
+            "https://cognito-idp.eu-central-1.amazonaws.com/", "https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_Pool/",
+            "https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_Pool?query=1",
+            "https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_Pool#fragment",
+            "https://cognito-idp.eu-central-1.amazonaws.com:443/eu-central-1_Pool",
+            "https://user@cognito-idp.eu-central-1.amazonaws.com/eu-central-1_Pool",
+            "http://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_Pool",
+            "https://cognito-idp.eu-central-1.amazonaws.com.example/eu-central-1_Pool",
+            "https://issuer-cognito-idp.eu-central-1.amazonaws.com/eu-central-1_Pool"})
+    void cognitoRuntimeRejectsOtherRegionShapeOrIssuerAlias(String issuer) {
+        assertThatIllegalArgumentException().isThrownBy(() -> cognitoProperties(issuer, true).validateRuntime(true));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"cognito", "AUTH0,COGNITO", "", "OTHER", " COGNITO"})
+    void providerChoiceIsClosedAndDoesNotNormalizeOrEnableMultipleRegistrations(String provider) {
+        assertThatIllegalArgumentException().isThrownBy(() -> AuthenticationProperties.Provider.configured(provider));
+    }
+
+    @Test
+    void cognitoSignedSourceRequiresIdTokenAndNeverAdoptsUserInfoClaims() {
+        AuthenticationProperties cognito = cognitoProperties("https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_SyntheticPool", true);
+        Map<String, Object> claims = verifiedClaims();
+        claims.put("iss", cognito.issuer());
+        claims.put("token_use", "id");
+        assertThat(CreastrixOidcUserService.verifiedIdentity(provider(claims, null), cognito, STARTED, NOW))
+                .isEqualTo(new Identity(cognito.issuer(), SUBJECT)); // subject is opaque, not a UUID
+        assertRejected(() -> CreastrixOidcUserService.verifiedIdentity(provider(claims, userInfoClaims()), cognito, STARTED, NOW));
+        for (Object use : new Object[] {null, "access", "ID", 1, true}) {
+            claims.put("token_use", use);
+            assertRejected(() -> CreastrixOidcUserService.verifiedIdentity(provider(claims, null), cognito, STARTED, NOW));
+        }
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidVerifiedEmailClaims")
+    void cognitoIdOnlyStillRequiresStrictVerifiedEmail(String claim, Object value) {
+        AuthenticationProperties cognito = cognitoProperties("https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_SyntheticPool", true);
+        Map<String, Object> claims = verifiedClaims();
+        claims.put("iss", cognito.issuer());
+        claims.put("token_use", "id");
+        claims.put(claim, value);
+        assertRejected(() -> CreastrixOidcUserService.verifiedIdentity(provider(claims, null), cognito, STARTED, NOW));
+    }
+
+    private static AuthenticationProperties cognitoProperties(String issuer, boolean existingOnly) {
+        return new AuthenticationProperties(issuer, "client", "secret", "http://localhost:3000", Set.of(SUBJECT), false,
+                AuthenticationProperties.Provider.COGNITO, existingOnly);
+    }
+
     private static AuthenticationProperties properties() {
         return properties(ISSUER, "http://localhost:3000", Set.of(SUBJECT), false);
     }

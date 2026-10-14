@@ -100,7 +100,7 @@ class DiagnosticsIntegrationTest {
         assertThat(jdbc.queryForObject("SHOW server_version_num", Integer.class)).isEqualTo(180004);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history "
                 + "WHERE success AND version IS NOT NULL ORDER BY installed_rank", String.class))
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
 
         UUID userId = transaction.execute(status -> {
             UUID id = users.createUser().id();
@@ -113,6 +113,73 @@ class DiagnosticsIntegrationTest {
         assertThat(profileCount(userId)).isOne();
         assertMessages(event("USER_CREATE", "COMMITTED"));
         assertNoLoggedIdentifiers(userId);
+    }
+
+    @Test
+    void cognitoRouteLabelsNeverDiscloseQueryClaimsOrIdentityValues() throws Exception {
+        String privateValue = "synthetic-private-oauth-value-" + UUID.randomUUID();
+        for (String path : List.of("/oauth2/authorization/cognito", "/%6fauth2/authorization/cognito",
+                "/login/oauth2/code/cognito", "/login/oauth2/code/%63ognito")) {
+            capture.list.clear();
+            var request = new org.springframework.mock.web.MockHttpServletRequest("GET", path);
+            request.setQueryString("code=" + privateValue + "&state=" + privateValue);
+            var response = new org.springframework.mock.web.MockHttpServletResponse();
+            new HttpDiagnosticsFilter().doFilter(request, response, (input, output) -> response.setStatus(303));
+            String expected = path.contains("authorization") ? "route=OAUTH_ENTRY" : "route=CALLBACK";
+            assertThat(messages().stream().anyMatch(message -> message.contains(expected))).isTrue();
+            assertThat(messages().stream().anyMatch(message -> message.contains(privateValue)
+                    || message.contains(path) || message.contains("code=") || message.contains("state="))).isFalse();
+            assertThat(capture.list).allSatisfy(event -> assertThat(event.getThrowableProxy()).isNull());
+        }
+    }
+
+    @Test
+    void emailConfirmationRouteLabelsDoNotExposeBodyQueryOrProviderDetails() throws Exception {
+        String privateValue = "synthetic-private-confirmation-value-" + UUID.randomUUID();
+        for (String path : List.of("/auth/confirm-email", "/auth/%63onfirm-email",
+                "/auth/resend-confirmation-code", "/auth/%72esend-confirmation-code")) {
+            capture.list.clear();
+            var request = new org.springframework.mock.web.MockHttpServletRequest("POST", path);
+            request.setQueryString("email=" + privateValue + "&code=" + privateValue);
+            request.setContent(privateValue.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            var response = new org.springframework.mock.web.MockHttpServletResponse();
+            boolean resend = path.contains("resend") || path.contains("%72esend");
+            var reason = resend ? Diagnostics.Reason.CONFIRMATION_CODE_REQUESTED
+                    : Diagnostics.Reason.EMAIL_CONFIRMED;
+            new HttpDiagnosticsFilter().doFilter(request, response, (input, output) -> {
+                Diagnostics.mark(Diagnostics.Event.EMAIL_CONFIRMATION_RESULT, reason);
+                // Staging a closed result does not perform log output inside the provider/request boundary.
+                assertMessages();
+                response.setStatus(resend ? 202 : 200);
+            });
+            String expected = resend ? "route=RESEND_CONFIRMATION_CODE" : "route=CONFIRM_EMAIL";
+            assertThat(messages().stream().anyMatch(message -> message.contains(expected))).isTrue();
+            assertThat(messages().getFirst()).isEqualTo("event=EMAIL_CONFIRMATION_RESULT reason=" + reason);
+            assertThat(messages().stream().anyMatch(message -> message.contains(privateValue)
+                    || message.contains(path) || message.contains("email=") || message.contains("code="))).isFalse();
+            assertThat(capture.list).allSatisfy(event -> assertThat(event.getThrowableProxy()).isNull());
+        }
+    }
+
+    @Test
+    void confirmationDenialRateLimitAndUnknownProviderOutcomeUseClosedReasons() throws Exception {
+        for (var reason : List.of(Diagnostics.Reason.EMAIL_NOT_CONFIRMED,
+                Diagnostics.Reason.CONFIRMATION_RATE_LIMITED, Diagnostics.Reason.PROVIDER_REQUEST_UNAVAILABLE)) {
+            capture.list.clear();
+            var request = new org.springframework.mock.web.MockHttpServletRequest("POST", "/auth/confirm-email");
+            var response = new org.springframework.mock.web.MockHttpServletResponse();
+            new HttpDiagnosticsFilter().doFilter(request, response, (input, output) -> {
+                Diagnostics.mark(Diagnostics.Event.EMAIL_CONFIRMATION_RESULT, reason);
+                assertMessages();
+                response.setStatus(reason == Diagnostics.Reason.EMAIL_NOT_CONFIRMED ? 400
+                        : reason == Diagnostics.Reason.CONFIRMATION_RATE_LIMITED ? 429 : 503);
+            });
+            assertThat(messages().getFirst()).isEqualTo("event=EMAIL_CONFIRMATION_RESULT reason=" + reason);
+            assertThat(capture.list.getFirst().getLevel()).isEqualTo(
+                    reason == Diagnostics.Reason.PROVIDER_REQUEST_UNAVAILABLE
+                            ? ch.qos.logback.classic.Level.WARN : ch.qos.logback.classic.Level.INFO);
+            assertThat(capture.list).allSatisfy(event -> assertThat(event.getThrowableProxy()).isNull());
+        }
     }
 
     @Test

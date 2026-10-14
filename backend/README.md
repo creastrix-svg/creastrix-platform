@@ -338,8 +338,9 @@ is claimed here.
 
 Intentionally not implemented yet:
 
-- real provider walkthrough P, MFA and public user-facing login (backend B,
-  S003 and finite local React/browser F are integrated within the pilot boundary);
+- MFA and public user-facing login (backend B, S003 and finite local React/browser F
+  are integrated; bounded Auth0 and local Cognito owner walkthroughs are separate
+  external results, not public-provider coverage);
 - concrete User Profile personal fields, which remain unimplemented until the
   approved specification defines them;
 - domain mutation HTTP APIs for User, Organization, or Workspace (the integrated
@@ -692,8 +693,8 @@ removal, and User-owned as well as Organization-owned creation versus a
 concurrent User `ACTIVE` → non-`ACTIVE` status change), each of which must
 leave the Workspace foundation intact.
 
-The all-current history assertions in this checkout target V1 → V12, with
-separate populated V11 → V12 coverage. The historical populated V10 → V11
+The author candidate's all-current history assertions target V1 → V13, with
+separate populated V12 → V13 and historical V11 → V12 coverage. The historical populated V10 → V11
 identity-binding proof retains target=11; historical target=8/9/10 proofs remain
 pinned. The S/W evidence above is separate from the earlier post-merge CI runs;
 this text does not extend their historical V1 → V11 result to V12.
@@ -760,7 +761,9 @@ passed 658/658, failures/errors/skipped 0/0/0, tests/package BUILD SUCCESS,
 PostgreSQL 18.4 and Flyway V1 → V11. This is the single-instance local nonpublic
 backend pilot, not a complete user-facing login or rollout.
 The [bounded authentication contract](../docs/authentication-pilot.md)
-separates backend B, completed finite local React/browser F and unperformed real Auth0 P.
+separates backend B, completed finite local React/browser F and the later bounded
+2026-10-11 real Auth0 owner P and the separately authorized 2026-10-13 local
+Cognito owner transfer described below. Neither is public rollout.
 
 Historical AUTH-001-R1 author verification passed AuthenticationPolicyTest 91/91,
 UserAuthenticationIntegrationTest 20/20, AuthenticationHttpIntegrationTest
@@ -869,7 +872,8 @@ passed 1618 tests, zero failures/errors/skipped and tests/package BUILD SUCCESS
 with PostgreSQL 18.4 / Flyway V1 → V12. These are historical server checks, not
 the frontend/browser matrix or new execution for this documentation change.
 `AUTH-COOKIE-FOLLOWUP-001` remains OPEN for explicit final disposition and
-pre-public-access/invitation gates; real Auth0 P and rollout remain unperformed.
+pre-public-access/invitation gates; the subsequent local Cognito transfer does
+not close them or establish public rollout.
 
 Only `GET /api/me` exposes the current account, after session, current exact
 issuer/subject admission, ACTIVE and final captured-stamp checks. No existing
@@ -887,14 +891,136 @@ separate fixed loopback dev proxy; the backend does not create it.
 It requires external `CREASTRIX_AUTH_ISSUER`, `CREASTRIX_AUTH_CLIENT_ID`, and
 `CREASTRIX_AUTH_CLIENT_SECRET`; `CREASTRIX_AUTH_ALLOWED_SUBJECTS` is an exact
 issuer-scoped list, empty meaning no admitted users. Change admission only by
-controlled restart, which also discards in-memory sessions. No real provider
-setup or application launch is authorized by this documentation.
+controlled restart, which also discards in-memory sessions. No new real provider
+setup or application launch is authorized by this documentation; prior local
+actions are recorded separately below.
 
 ID/access tokens remain server-side in the session. Local cookies are host-only,
 HttpOnly, SameSite=Lax, Path `/`; Secure=false is confined to explicit loopback
 mode, while defaults remain Secure=true. Idle expiry uses the servlet container
 (30 minutes), absolute expiry uses an injected Clock (8 hours). Local logout
 is not global provider logout or immediate revocation after password reset.
+
+### Controlled provider migration candidate (author WIP)
+
+`CREASTRIX_AUTH_PROVIDER` is the closed AUTH0/COGNITO choice (AUTH0 default).
+Only one confidential code-flow registration is configured. Cognito pins the
+original Frankfurt regional issuer and client and requires
+`CREASTRIX_AUTH_EXISTING_ONLY=true`. Its signed ID token alone supplies the claims:
+raw Boolean verified email, nonblank email, numeric auth_time and `token_use=id`.
+UserInfo is not requested; Auth0's prior returned-source checks stay unchanged.
+Entry/callback paths derive from the selected registration; fixed destinations,
+PKCE, state/nonce, Q/SID, CSRF, freshness and deadline checks remain.
+
+V13 retains immutable V11 history and adds `user_identity_current` and
+`user_identity_migration_receipts`. Ordinary initial creation has four atomic
+rows: User, Profile, history and selector. Current exact-pair lookup never treats
+superseded history as an active alias. Existing-only mode denies missing/superseded
+owner bindings before creation. Exact pair ownership is global; one selector per
+User references that User's history. A switch requires an exact immutable receipt;
+history without an atomic selector/receipt and a receipt without its selector
+result fail at commit. V1–V12 and pinned earlier fixtures are unchanged.
+
+The parameterized [offline SQL](src/main/resources/db/operations/migrate_owner_identity.sql)
+uses a caller-owned READ COMMITTED transaction, 5-second lock, 10-second statement
+and 15-second transaction limits. Expected User/status/Profile/generation and
+old pair must match. User/Profile/generation/rights do not change. Exact replay
+returns the stored operation without another switch; conflicts and already-owned
+target pairs refuse. Unknown commit is reconciled by the same operation/payload,
+not an absent SELECT, a new operation or compensating history deletion.
+This is structural persistence and an offline operator procedure, not raw-SQL
+actor authorization, an HTTP linking API or a new core domain entity.
+
+The [runbook](../docs/authentication-provider-migration.md) retains explicit
+authorization, fresh identity-control proof, backup, review and stopped-single-app
+prerequisites for any future switch. The accepted main baseline remains
+`fda0657246aa00fc259ea286dffd45de91415d9a`; this code is unpublished feature WIP,
+not integrated main or public rollout. Separately, the authorized 2026-10-13 local
+operation applied V13 after backup/restore proof and acknowledged one switch
+with independent read-back. UUID/Profile/status/generation/rights/business rows
+and both history pairs were preserved. The private local runtime selects Cognito,
+existing-only and one exact owner subject; committed defaults remain AUTH0.
+Owner login, local logout/private 401, repeat login and new-password login/private
+200 with the same ACTIVE User are recorded external results, not new runs here.
+
+Historical independent isolated backend verification passed 1690 tests/package;
+native compilation and 417 tests plus scoped file views are separate. Overall
+IDE schema/background completion is still UNKNOWN/INCOMPLETE. Real
+unverified/admitted backend refusal remains NOT RUN: a hosted-provider refusal
+before code/token does not exercise signed `email_verified=false` rejection.
+Synthetic false/missing/string claim tests and the verified-owner positive
+control do not reproduce that real signed-false scenario. The owner's explicit
+2026-10-13 limited EMAIL-gate disposition combines those controls with real owner
+success and UNCONFIRMED/unadmitted hosted refusal; it applies only to nonproduction
+owner-pilot source readiness, not public access or approval of new recovery code.
+See the [exact disposition](../docs/authentication-provider-migration.md#limited-email-gate-disposition).
+Final status review/publication remain separately gated.
+Auth0 tenant/client/account/private configuration remain retained, not a
+current alias. Local logout does not revoke provider/all-device sessions. Own SES,
+social/TOTP and cookie-follow-up closure remain separate. Historical candidate
+tests used isolated copies, synthetic OIDC and owned databases; this alignment
+does not rebuild the running owner's `backend/target` or touch the live database.
+
+### Cognito email-confirmation recovery (author WIP)
+
+Only anonymous requests in selected COGNITO mode can POST JSON to
+`/auth/confirm-email` (`email`, `code`) or `/auth/resend-confirmation-code` (`email`).
+The existing early security boundary checks exact Host/Origin and rejects an
+already authenticated principal before provider work or session mutation; standard
+session CSRF remains mandatory. Provider-only recovery does not require Q, echo or
+`canStart` and never logs out, resets Q, records LOGIN_INTENT or relaxes OIDC/private
+API admission. The ordinary `/auth/csrf` contract is unchanged.
+
+The server uses its existing client ID/secret at the fixed Frankfurt Cognito API
+endpoint, only ConfirmSignUp/ResendConfirmationCode with HMAC-SHA256 SecretHash.
+ConfirmSignUp explicitly sends `ForceAliasCreation=false`; no Session, metadata,
+signup, authentication/admin action, caller endpoint or automatic login is accepted.
+The entered identifier's case is preserved. Alias/username attributes and pool
+case-sensitivity are not inferred from matching emails. Provider results never
+create or mutate User/Profile, bindings/selectors/receipts, principal/client,
+Workspace or grants. Auth0 default/validation remain unchanged.
+
+The request/response byte cap is 16 KiB; identifiers are 1–128 code points and
+confirmation codes 1–2048, without whitespace/control characters. A 5-second
+whole provider deadline (including response reads), at most 2-second connect,
+disabled redirects and one submitted body bound the call. No-queue admission
+allows at most four charged workers, 20 total and three per hashed target per
+60-second window; at most 256 target records retire after five minutes when
+not in flight. These are process-local limits, not cluster-wide rate limiting.
+A caller timeout does not free an unfinished worker's slot before its actual
+cleanup. Process-local global/target quotas use ephemeral hashed targets with
+finite retention/capacity, independent of Q or cookie reset; provider work and log
+output do not occur under quota locks. Fixed-length streaming prevents automatic
+body replay after a submitted request; pre-body connection establishment is not
+claimed to be a single TCP attempt. No global JDK network policy is changed.
+An installed global CookieHandler is refused, and an instance rejecting Authenticator
+is used. Arbitrary concurrent changes to JVM-global handlers are outside this
+single-application contract, not silently overwritten by this code.
+
+Known confirmation success selects 200 `{"result":"confirmed"}`; resend selects
+conditional generic 202 `{"result":"code_request_accepted"}`, not delivery proof.
+Unknown/confirmed/disabled targets, code mismatch/expiry, alias conflicts and
+recipient-dependent provider quota errors share opaque refusal/conditional resend
+acknowledgement. A local limiter alone selects 429; a provider quota is not an
+email-existence/state disclosure. Technical failure/timeout is an unknown provider outcome, never a
+claim of rollback or nonapplication. Diagnostics accept only closed event/reason/
+route codes, not email/code/secret/provider bodies or exception text. Returning
+to `/login` requires a fresh ordinary OIDC flow. Author mock-API/HTTP tests are
+not an actual AWS email-delivery or browser-recovery walkthrough.
+
+Fresh isolated author verification passed focused 528/528, the separately
+authorized diagnostic-catalog check 163/163 and final full 1826/1826 in 33 suites,
+with zero failures/errors/skipped and package BUILD SUCCESS. All 1690 preceding
+testcase identities remain. Actual logs establish PostgreSQL 18.4 / Flyway V1 → V13;
+pinned earlier-version upgrade fixtures remain. Initial lint/focused/full failures
+and external-parser corrections are retained in author evidence, not rewritten
+as PASS. Disposable copies, synthetic providers and new owned loopback
+Testcontainers did not rebuild the live owner's target or use the live database.
+Separate 2026-10-14 native recovery 91/91 and HTTP 195/195, focused independent source/JAR
+review and real owner recovery/fresh OIDC results are recorded in the
+[dated recovery evidence](../docs/authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
+Overall IDE background/schema remains UNKNOWN/INCOMPLETE; final narrow review
+and publication/CI remain separate. The package contains no external test SPI.
 
 ## Running the application
 

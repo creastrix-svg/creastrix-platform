@@ -3,8 +3,9 @@
 FRONTEND-BOOTSTRAP-001 established this separately built React/TypeScript/Vite
 application in the existing repository. [PR #35](https://github.com/creastrix-svg/creastrix-platform/pull/35)
 integrated the independently reviewed bounded authentication client and finite
-local React/dev-proxy/browser F. Real Auth0 walkthrough P remains unperformed and
-unverified; public access and rollout remain unverified and unauthorized.
+local React/dev-proxy/browser F. A separate bounded real Auth0 owner walkthrough P
+completed on 2026-10-11; this historical evidence is not a Cognito transfer.
+Public access and rollout remain unverified and unauthorized.
 
 ## Local use
 
@@ -118,7 +119,7 @@ review accepted the finite local F matrix from actual React/Vite/backend,
 synthetic OIDC and isolated native Chrome runs, including both late-success A
 branches, explicit recovery, late-failure preservation and stale UI responses.
 Earlier INCOMPLETE attempts and helper failures retain their original outcomes.
-Real Auth0 P has not been performed.
+Bounded Auth0 P subsequently completed separately on 2026-10-11.
 
 The 2026-10-09
 [post-merge Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37962373086)
@@ -128,8 +129,11 @@ untriaged HIGH vulnerability warning; separate triage is required before public
 deployment. Successful CI is not a security-clean dependency graph.
 
 `AUTH-COOKIE-FOLLOWUP-001` remains **OPEN**. S003 is integrated through PR #34;
-finite local F is complete, but final follow-up disposition, real Auth0 P and
-public-access/rollout gates remain separate. L1 and future business-write limits
+finite local F and bounded Auth0 P are complete. Cognito owner transfer completed
+separately on 2026-10-13. Real unverified/admitted backend refusal remains NOT RUN;
+the owner accepted a narrower EMAIL evidence combination for owner-only local
+source readiness, not that missing real scenario or public access. Final follow-up
+disposition and public-access/rollout gates remain open. L1 and future business-write limits
 are unchanged. This client changed no dependencies, backend, workflows or domain decisions.
 
 Use the existing WebStorm/project settings; do not commit IDE state. Ignored
@@ -137,3 +141,68 @@ dependencies/build output may remain locally. [Frontend CI](../.github/workflows
 has separate frontend/workflow path filters; no tests or CI were run by this
 documentation change. See the [root context](../README.md#frontend-ui-foundation)
 and [authentication contract](../docs/authentication-pilot.md#react-client-and-f-boundary).
+
+## Selected provider boundary (author WIP)
+
+The frontend keeps its native POST to `/auth/login`; it does not choose the
+provider, store provider tokens or collect a password. Backend configuration
+selects exactly one registration and returns either the Auth0 or Cognito entry
+and callback paths. The existing proxy namespaces already route
+`/oauth2/authorization/cognito` and `/login/oauth2/code/cognito`, including accepted
+encoded segments, without rewriting headers, URI/query, Location or cookies.
+Config-unit checks are not a real Cognito/browser proxy proof.
+
+Hosted Cognito self-registration and provider email/recovery are separate from
+the owner's exact closed Creastrix admission. No separate React signup form,
+social provider, Workspace creation or rollout is delivered by this client.
+The [controlled migration runbook](../docs/authentication-provider-migration.md)
+records the separately authorized 2026-10-13 local owner transfer: same internal
+ACTIVE User, local logout/private refusal, repeat login and new-password login.
+The local backend selects Cognito existing-only for that one owner through private
+environment; default AUTH0 configuration is unchanged and Auth0 is retained, not
+a current alias. The updated DE/EN pilot notice reflects that local fact only.
+
+Code remains unpublished feature WIP against accepted main
+`fda0657246aa00fc259ea286dffd45de91415d9a`. Historical independent frontend 140,
+backend 1690/package and native 417/scoped views remain separate; overall IDE
+schema/background completion is UNKNOWN/INCOMPLETE. Real unverified/admitted
+backend refusal is NOT RUN, and hosted-provider refusal before code/token is not
+that proof. This alignment does not rerun browser/provider tests, rebuild the
+live backend or close AUTH-COOKIE-FOLLOWUP-001. Final review/publication are
+separate gates; public access and rollout remain unauthorized.
+
+## Email-confirmation recovery (author WIP)
+
+`/confirm-email` is reachable from `/login` and directly after closing the hosted
+confirmation page. It has only transient email/code fields and explicit Confirm,
+Resend, Cancel and Back to login actions; it does not collect a password or create
+a provider/internal account. Exact input case is retained. Form/request data is
+not written to URL/query/history, Redux, storage or logs and is cleared on
+unmount/suspension. Edits, cancellation, navigation and account/lifecycle changes
+invalidate older results. Disconnected preview/known authenticated or transitioning
+state cannot submit; no live-Q/echo/canStart prerequisite is added.
+
+Each explicit action fetches fresh standard `/auth/csrf` once, then performs one
+same-origin POST under a 30-second whole-action deadline. Success/CSRF bodies are
+streamed with an 8192-byte cap before decoding; incomplete, invalid UTF-8 and
+malformed responses fail closed. Strict success schemas
+distinguish confirmed 200 from conditional resend 202; HTML/arbitrary 200 and
+technical/transport uncertainty are never confirmation/delivery proof. No automatic
+retry, logout, Q reset or login occurs. The anonymous selected-Cognito backend
+boundary is authoritative; ordinary OIDC and exact admission are still needed for
+Creastrix access. Existing login/logout/private-state ownership is unchanged.
+Mock-fetch/DOM tests do not prove actual Cognito email delivery or browser recovery.
+Auth0 remains retained. The limited owner EMAIL disposition is in the
+[runbook](../docs/authentication-provider-migration.md#limited-email-gate-disposition);
+it does not approve this new code or close native/cookie/publication gates.
+
+Fresh isolated author verification of this recovery frontend passed 234/234 in
+seven Vitest files, typecheck, lint and build; all 140 preceding testcase
+identities remain. The first lint attempt failed on render-time ref use and was
+retained in external evidence; lifecycle-owned initialization was then verified.
+These remain mocked fetch/DOM/static/build results, not browser or CI proof.
+Separate scoped native, independent source/JAR review and owner recovery/fresh
+OIDC results on 2026-10-14 are recorded in the
+[dated recovery evidence](../docs/authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
+Overall IDE background/schema remains UNKNOWN/INCOMPLETE; code is still feature
+WIP, with final narrow review/publication and public-access gates separate.

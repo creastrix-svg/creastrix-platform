@@ -65,8 +65,6 @@ public class AuthenticationConfiguration {
     static final String LOGIN_INTENT = AuthenticationConfiguration.class.getName() + ".intent";
     static final String FLOW_STARTED = AuthenticationConfiguration.class.getName() + ".started";
     private static final String ENTRY_BASE = "/oauth2/authorization";
-    private static final String ENTRY_PATH = ENTRY_BASE + "/auth0";
-    private static final String CALLBACK_PATH = "/login/oauth2/code/auth0";
     private static final String LOGOUT_PATH = "/auth/logout";
 
     // Match decoded path segments exactly as Spring's OAuth filters and MVC do;
@@ -75,8 +73,14 @@ public class AuthenticationConfiguration {
     private static final PathPatternRequestMatcher AUTH_ROUTES = PathPatternRequestMatcher.withDefaults().matcher("/auth/**");
     private static final PathPatternRequestMatcher ENTRY_ROUTES = PathPatternRequestMatcher.withDefaults().matcher("/oauth2/**");
     private static final PathPatternRequestMatcher CALLBACK_ROUTES = PathPatternRequestMatcher.withDefaults().matcher("/login/oauth2/**");
-    private static final PathPatternRequestMatcher ENTRY = PathPatternRequestMatcher.withDefaults().matcher(ENTRY_PATH);
-    private static final PathPatternRequestMatcher CALLBACK = PathPatternRequestMatcher.withDefaults().matcher(CALLBACK_PATH);
+    private static final PathPatternRequestMatcher CONFIRM_EMAIL = PathPatternRequestMatcher.withDefaults()
+            .matcher(CognitoEmailConfirmationController.CONFIRM_PATH);
+    private static final PathPatternRequestMatcher RESEND_CONFIRMATION = PathPatternRequestMatcher.withDefaults()
+            .matcher(CognitoEmailConfirmationController.RESEND_PATH);
+
+    static boolean emailConfirmationRoute(HttpServletRequest request) {
+        return CONFIRM_EMAIL.matches(request) || RESEND_CONFIRMATION.matches(request);
+    }
 
     @Bean
     static BeanFactoryPostProcessor authenticationModeValidation(Environment environment) {
@@ -84,6 +88,13 @@ public class AuthenticationConfiguration {
             String mode = environment.getProperty("creastrix.auth.enabled", "false");
             if (!("true".equalsIgnoreCase(mode) || "false".equalsIgnoreCase(mode))) {
                 throw new IllegalArgumentException("Authentication mode must be explicitly true or false (creastrix.auth.enabled)");
+            }
+            if ("true".equalsIgnoreCase(mode)) {
+                AuthenticationProperties.Provider.configured(environment.getProperty("creastrix.auth.provider", "AUTH0"));
+                String existingOnly = environment.getProperty("creastrix.auth.existing-only", "false");
+                if (!("true".equalsIgnoreCase(existingOnly) || "false".equalsIgnoreCase(existingOnly))) {
+                    throw new IllegalArgumentException("creastrix.auth.existing-only must be explicitly true or false");
+                }
             }
         };
     }
@@ -95,6 +106,13 @@ public class AuthenticationConfiguration {
         http.authorizeHttpRequests(authorize -> authorize
                 .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                 .anyRequest().denyAll());
+        http.addFilterAfter(new OncePerRequestFilter() {
+            @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                    FilterChain chain) throws ServletException, IOException {
+                if (emailConfirmationRoute(request)) jsonError(response, 403);
+                else chain.doFilter(request, response);
+            }
+        }, SecurityContextHolderFilter.class);
         return http.build();
     }
 
@@ -123,6 +141,12 @@ public class AuthenticationConfiguration {
 
         @Bean
         @ConditionalOnMissingBean
+        CognitoEmailConfirmationService cognitoEmailConfirmation(AuthenticationProperties properties) {
+            return new CognitoEmailConfirmationService(properties);
+        }
+
+        @Bean
+        @ConditionalOnMissingBean
         AuthenticationProperties authenticationProperties(Environment environment) {
             var binder = Binder.get(environment);
             var subjects = binder.bind("creastrix.auth.allowed-subjects", Bindable.setOf(String.class)).orElse(Set.of());
@@ -132,7 +156,9 @@ public class AuthenticationConfiguration {
                     environment.getRequiredProperty("creastrix.auth.client-id"),
                     environment.getRequiredProperty("creastrix.auth.client-secret"),
                     environment.getRequiredProperty("creastrix.auth.browser-origin"), subjects,
-                    environment.getProperty("server.servlet.session.cookie.secure", Boolean.class, true));
+                    environment.getProperty("server.servlet.session.cookie.secure", Boolean.class, true),
+                    AuthenticationProperties.Provider.configured(environment.getProperty("creastrix.auth.provider", "AUTH0")),
+                    environment.getProperty("creastrix.auth.existing-only", Boolean.class, false));
             properties.validateRuntime(local);
             return properties;
         }
@@ -141,7 +167,7 @@ public class AuthenticationConfiguration {
         @ConditionalOnMissingBean(ClientRegistrationRepository.class)
         ClientRegistrationRepository authenticationClients(AuthenticationProperties properties) {
             return new InMemoryClientRegistrationRepository(ClientRegistrations.fromIssuerLocation(properties.issuer())
-                    .registrationId("auth0").clientId(properties.clientId()).clientSecret(properties.clientSecret())
+                    .registrationId(properties.registrationId()).clientId(properties.clientId()).clientSecret(properties.clientSecret())
                     .scope("openid", "profile", "email").redirectUri(properties.callbackUri()).build());
         }
 
@@ -150,6 +176,10 @@ public class AuthenticationConfiguration {
             var factory = new OidcIdTokenDecoderFactory();
             factory.setClaimTypeConverterFactory(registration -> raw -> {
                 if (!properties.issuer().equals(raw.get("iss"))) {
+                    throw CreastrixOidcUserService.rejected();
+                }
+                if (properties.provider() == AuthenticationProperties.Provider.COGNITO
+                        && !"id".equals(raw.get("token_use"))) {
                     throw CreastrixOidcUserService.rejected();
                 }
                 return CreastrixOidcUserService.strictClaims(
@@ -162,6 +192,10 @@ public class AuthenticationConfiguration {
         CreastrixOidcUserService authenticationUsers(AuthenticatedUserService users,
                                                     AuthenticationProperties properties, Clock clock) {
             var delegate = new OidcUserService();
+            // Only the selected Cognito mode skips UserInfo. Spring still validates the signed ID token.
+            if (properties.provider() == AuthenticationProperties.Provider.COGNITO) {
+                delegate.setRetrieveUserInfo(request -> false);
+            }
             delegate.setClaimTypeConverterFactory(registration -> CreastrixOidcUserService.strictClaims(
                     new ClaimTypeConverter(OidcUserService.createDefaultClaimTypeConverters()), false));
             return new CreastrixOidcUserService(delegate, users, properties, clock);
@@ -173,7 +207,7 @@ public class AuthenticationConfiguration {
                 AuthenticatedUserService internalUsers, Clock clock, BrowserSessionContextRegistry contexts) throws Exception {
             defaults(http);
             var requests = new TimedAuthorizationRequests(clock);
-            var authorizedClients = new OwnedAuthorizedClients();
+            var authorizedClients = new OwnedAuthorizedClients(properties.registrationId());
             var resolver = new DefaultOAuth2AuthorizationRequestResolver(clients, ENTRY_BASE);
             resolver.setAuthorizationRequestCustomizer(builder -> {
                 OAuth2AuthorizationRequestCustomizers.withPkce().accept(builder);
@@ -188,8 +222,13 @@ public class AuthenticationConfiguration {
                     .sessionManagement(session -> session.sessionFixation(fixation -> fixation.changeSessionId()))
                     .authorizeHttpRequests(authorize -> authorize
                             .requestMatchers(HttpMethod.GET, "/actuator/health", "/auth/csrf",
-                                    ENTRY_PATH, CALLBACK_PATH).permitAll()
+                                    properties.entryPath(), properties.callbackPath()).permitAll()
                             .requestMatchers(HttpMethod.POST, "/auth/login", LOGOUT_PATH).permitAll()
+                            .requestMatchers(HttpMethod.POST, CognitoEmailConfirmationController.CONFIRM_PATH,
+                                    CognitoEmailConfirmationController.RESEND_PATH).access((authentication, context) ->
+                                        new org.springframework.security.authorization.AuthorizationDecision(
+                                            properties.provider() == AuthenticationProperties.Provider.COGNITO
+                                                && authentication.get() instanceof AnonymousAuthenticationToken))
                             .requestMatchers(HttpMethod.GET, "/api/me").authenticated()
                             .anyRequest().denyAll())
                     .oauth2Login(oauth -> oauth
@@ -249,6 +288,9 @@ public class AuthenticationConfiguration {
 
     static final class OwnedAuthorizedClients implements OAuth2AuthorizedClientRepository {
         private final HttpSessionOAuth2AuthorizedClientRepository delegate = new HttpSessionOAuth2AuthorizedClientRepository();
+        private final String registration;
+        OwnedAuthorizedClients() { this("auth0"); }
+        OwnedAuthorizedClients(String registration) { this.registration = registration; }
 
         @Override
         public <T extends OAuth2AuthorizedClient> T loadAuthorizedClient(String registration, Authentication principal,
@@ -284,7 +326,7 @@ public class AuthenticationConfiguration {
             if (attempt != null && attempt.ownsPublication()) {
                 // A framework session-strategy failure may follow client save, while our lock is held.
                 try {
-                    delegate.removeAuthorizedClient("auth0", null, request, response);
+                    delegate.removeAuthorizedClient(registration, null, request, response);
                     attempt.requireSession().removeAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY);
                 }
                 catch (IllegalStateException invalidated) {
@@ -424,12 +466,16 @@ public class AuthenticationConfiguration {
         private final Clock clock;
         private final TimedAuthorizationRequests requests;
         private final BrowserSessionContextRegistry contexts;
+        private final PathPatternRequestMatcher entryMatcher;
+        private final PathPatternRequestMatcher callbackMatcher;
         RequestBoundary(AuthenticationProperties properties, Clock clock, TimedAuthorizationRequests requests,
                         BrowserSessionContextRegistry contexts) {
             this.properties = properties;
             this.clock = clock;
             this.requests = requests;
             this.contexts = contexts;
+            this.entryMatcher = PathPatternRequestMatcher.withDefaults().matcher(properties.entryPath());
+            this.callbackMatcher = PathPatternRequestMatcher.withDefaults().matcher(properties.callbackPath());
         }
         @Override
         protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -437,8 +483,8 @@ public class AuthenticationConfiguration {
             response.setHeader("Cache-Control", "no-store");
             response.setHeader("Pragma", "no-cache");
             response.setHeader("Referrer-Policy", "no-referrer");
-            boolean entry = ENTRY.matches(request);
-            boolean callback = CALLBACK.matches(request);
+            boolean entry = entryMatcher.matches(request);
+            boolean callback = callbackMatcher.matches(request);
             boolean boundary = AUTH_ROUTES.matches(request) || PRIVATE_API.matches(request)
                     || ENTRY_ROUTES.matches(request) || CALLBACK_ROUTES.matches(request);
             if (boundary && !properties.browserAuthority().equals(request.getHeader("Host"))) {
@@ -459,6 +505,15 @@ public class AuthenticationConfiguration {
                 return;
             }
             var authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (emailConfirmationRoute(request) && (!"POST".equals(request.getMethod())
+                    || properties.provider() != AuthenticationProperties.Provider.COGNITO
+                    || authentication != null && authentication.isAuthenticated()
+                        && !(authentication instanceof AnonymousAuthenticationToken))) {
+                // Reject before CSRF can create/replace a token. Do not touch a principal, client or session.
+                Diagnostics.mark(Diagnostics.Event.ACCESS_DENIED, Diagnostics.Reason.REQUEST_BOUNDARY_REJECTED);
+                jsonError(response, 403);
+                return;
+            }
             if (entry && authentication != null && authentication.isAuthenticated()
                     && !(authentication instanceof AnonymousAuthenticationToken)) {
                 // Entry is not callback navigation; keep the fixed JSON conflict for this endpoint.
