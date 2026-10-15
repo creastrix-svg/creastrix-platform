@@ -5,6 +5,7 @@ import type { Language } from './language';
 import { sameOwner } from './authBoundary';
 import type { Owner } from './authBoundary';
 import type { Notice, Outcome, Phase } from './authentication';
+import productDemoReducer from './product/demoStore';
 
 const uiSlice = createSlice({
   name: 'ui',
@@ -43,7 +44,7 @@ export function createAppStore(language: Language, persist = rememberLanguage) {
     effect: action => { persist(action.payload); },
   });
   return configureStore({
-    reducer: { ui: uiSlice.reducer, authentication: authenticationSlice.reducer },
+    reducer: { ui: uiSlice.reducer, authentication: authenticationSlice.reducer, productDemo: productDemoReducer },
     preloadedState: { ui: { language } },
     middleware: getDefault => getDefault().prepend(preferenceListener.middleware),
   });

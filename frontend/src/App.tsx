@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useRef } from 'react';
+import { lazy, Suspense, useContext, useEffect, useLayoutEffect, useRef } from 'react';
 import type { FormEvent } from 'react';
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router';
 import { AuthenticationContext } from './authentication';
@@ -6,6 +6,9 @@ import ConfirmEmail from './ConfirmEmail';
 import { useAppDispatch, useAppSelector } from './hooks';
 import { copy } from './i18n';
 import { languageSelected } from './store';
+import { isProductPath } from './product/routes';
+
+const ProductExperience = lazy(() => import('./product/ProductExperience'));
 
 function useCopy() { return copy[useAppSelector(state => state.ui.language)]; }
 
@@ -124,20 +127,26 @@ export default function App() {
   const dispatch = useAppDispatch();
   const t = copy[language];
   const { pathname } = useLocation();
+  const productPath = isProductPath(pathname);
   const previousPath = useRef(pathname);
   const main = useRef<HTMLElement>(null);
   const currentPath = pathname.replace(/\/+$/, '').toLowerCase() || '/';
   const title = currentPath === '/' ? t.home : currentPath === '/login' ? t.login : currentPath === '/account' ? t.account
     : currentPath === '/confirm-email' ? t.confirmation.page : t.notFoundEyebrow;
 
-  useEffect(() => { document.documentElement.lang = language; document.title = title + ' · Creastrix'; }, [language, title]);
+  useEffect(() => { if (!productPath) { document.documentElement.lang = language; document.title = title + ' · Creastrix'; } }, [language, title, productPath]);
   useEffect(() => {
-    if (previousPath.current !== pathname) { main.current?.focus(); window.scrollTo({ top: 0, behavior: 'instant' }); previousPath.current = pathname; }
-  }, [pathname]);
+    if (previousPath.current !== pathname) {
+      if (!productPath) { main.current?.focus(); window.scrollTo({ top: 0, behavior: 'instant' }); }
+      previousPath.current = pathname;
+    }
+  }, [pathname, productPath]);
   useLayoutEffect(() => {
     // Reopening follows the current DOM commit, never an old result awaiting React rendering.
     if (auth.phase === 'AUTHENTICATED' && auth.owner && auth.user) runtime?.reveal(auth.owner);
   }, [auth, runtime]);
+
+  if (productPath) return <Suspense fallback={<p role="status">Creastrix…</p>}><ProductExperience /></Suspense>;
 
   return <div className="shell">
     <a className="skip-link" href="#main">{t.skip}</a>
