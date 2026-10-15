@@ -248,6 +248,16 @@ The connected origin is fixed `http://localhost:3000`, with loopback strict port
 build preview is disconnected. See the [frontend guide](frontend/README.md).
 See the [local cookie disposition and retained public gate](docs/authentication-pilot.md#open-cookie-follow-up) for accepted local-only closure and OPEN public readiness obligations.
 
+FRONTEND-PRODUCT-001 adds an isolated `/products/loop` product UI and minimal
+`/preview/*` demo/info views using the owner's final visual design.
+Seven storefront locales, scoped system/light/dark appearance, local photo/3D
+media with expanded free rotation, native-scroll recommendations and memory-only
+public cart/favorites are distinct from the unchanged DE/EN authentication state.
+Creastrix retains the seller/merchant context; Loop Studio is a demo design author.
+No product/Workspace HTTP API, personalisation editor/AI, order/payment, provider
+change, domain approval or rollout is implied. Existing auth routes/lifecycle are
+unchanged; browser verification, review and integration are separate gates.
+
 <a id="controlled-cognito-owner-migration-accepted-decision-author-wip"></a>
 
 ### Integrated controlled Cognito owner migration and recovery

@@ -7,6 +7,138 @@ local React/dev-proxy/browser F. A separate bounded real Auth0 owner walkthrough
 completed on 2026-10-11; this historical evidence is not a Cognito transfer.
 Public access and rollout remain unverified and unauthorized.
 
+## Product experience — FRONTEND-PRODUCT-001
+
+FRONTEND-PRODUCT-001 adds a standalone
+`/products/loop` storefront with scoped system/light/dark appearance and a native
+DE/EN/RU/PL/ES/FR/IT language selector. Storefront language stays in public
+document-memory state; it never expands or rewrites the authentication DE/EN
+preference or its storage. It translates the owner's final product mockup,
+not the Lovable redesign or an embedded HTML/iframe. The original external HTML
+is unchanged. The new footer, native smooth rails and main-photo thumbnails are
+explicit owner-approved exceptions to that reference.
+
+The opaque theme-aware header is sticky, with a compact two-row mobile layout.
+Its measured height supplies local anchor/focus clearance; resize does not scroll
+the page. Search/cart popups and the icon menu remain below the modal layer.
+
+Variant-owned images and four self-contained GLBs live in `public/product`.
+Cobalt keeps its three original photos; coral, chalk and the cobalt/chalk demo
+combination each have one separately approved AI example. Every colour selects
+its own approximate open-pot GLB/material; the old `loop.glb` is retained unused.
+These are visual samples, not manufacturing geometry or product evidence.
+Photo/3D share a viewport-centred keyboard modal, with focus
+restoration and background inertness. `@google/model-viewer` 4.0.0 is a pinned,
+lazy renderer loaded only on 3D selection, with an explicit loading/error fallback.
+No CDN, external model/environment image, AR or backend work is added. The 3D
+chunk is separate from ordinary storefront and authentication code. Expanded
+view adds public-API quaternion arcball rotation, roll, pinch/twist, bounded zoom,
+reset and keyboard controls only after actual load. Inline has bounded orbit
+controls and a reset to the normal product view. Fullscreen captures the actual
+numeric inline orbit/target and attributes before free rotation; closing restores
+that view and its bounds, not the free pose. Fullscreen Reset/Home restores that
+expanded session's start without overwriting the captured inline selection.
+One viewer survives host/language changes for the same source. Colour changes
+retain the selected Photo/3D intent while a keyed gallery resets source-owned
+photo index, errors, loading and viewer pose. 3D loads that colour's own model,
+ignores old load/error events and offers explicit Photos recovery if unavailable,
+without silently switching modes. Controls clean up pointer capture,
+listeners and queued frames before restoring inline. The reference's 4.0.0 renderer
+avoids the observed 4.4.0 non-AR orientation-update regression without a private
+patch; this older renderer/Three peer choice still requires real browser/WebGL
+verification and does not establish general dependency security.
+Inline instructions stay available through `aria-describedby` without covering
+the model; fullscreen retains its visible rotation guidance.
+Main photos, thumbnails, gallery images and model import/load show only natural
+pending spinners, with cached-ready handling and bounded terminal fallbacks.
+Only media actions requiring the pending asset are disabled; close, navigation,
+colour selection and unrelated cart/theme controls remain usable. Photo failures
+and explicit retries belong to the exact variant/source, not neighbouring images.
+The thumbnail strip retains its height for zero, one or three photos; missing or
+failed assets use noninteractive placeholders, and a single photo has no arrows.
+
+Public Redux sample cart/favorite state is memory-only, unrelated to credentials,
+account identity or private authentication state. A separate version-1 bounded
+`creastrix.product.loop.preferences` record remembers only selected colour,
+per-colour purchase quantity, Photo/3D intent and description disclosure across
+refresh. An explicit valid URL colour wins; invalid/duplicate colour queries use
+cobalt. Unknown versions/fields, malformed or oversized records fall back safely;
+quantities are safe integers clamped to each sample stock. A cart-exhausted zero
+restores as one for the new empty cart. Denied/full storage keeps in-memory use.
+No account, authentication, cart, favorite, locale or appearance value is persisted
+by this adapter; existing locale/theme behavior and auth lifecycle are unchanged.
+Preferences are local to this browser origin, not account synchronization or
+cross-tab ordering. The native description summary switches localized Show more /
+Show less with the saved open state; both labels reserve one shared width at
+weight 600, hover only underlines and keyboard focus remains visible.
+The owner requires future
+authenticated cart/favorites to be stored by the backend for the internal User;
+that needs a separate identity/target slice and is not delivered here. Browser
+preference storage is not a substitute; guest-cart merge is not simulated.
+Quantity is whole-digit input,
+bounded by each sample stock (24/8/15/6), not nine; cart totals use integer cents.
+Sample variants have one or two swatch colours with a shared exact-half diagonal
+background in the card and both cart views. The cobalt/chalk combination has its
+own demo identity, €28 price and six-unit stock; no seller editor or catalog API
+is implemented. Five separate star buttons open a demo review form with the
+chosen 1–5 rating and validated variant; the review text remains a separate link
+to the list. Both routes provide a concrete return to that product/variant.
+The form has an editable rating and text; invalid/missing ratings remain unselected.
+It publishes nothing and submits no request or persistent data. Star-prefix hover
+is decoration, not a submitted or stored rating; quantity and swatch feedback do
+not resize controls.
+One product-level favorite stores the variant selected at add time. Changing colour
+does not overwrite that representative; remove/re-add captures the new selection.
+The saved card shows its name and actual photo or swatch, and opens the captured
+variant through a validated query. Unknown or duplicate variant queries use cobalt.
+No account storage, persistent favorite or seller/backend API is introduced.
+The icon-only appearance popup uses menu-radio keyboard navigation and localized
+accessible names, without changing authentication appearance. Chalk's sample
+€24.00-to-€19.90 comparison produces a checked, rounded17% demo tag; all totals
+and saved prices use current integer cents. This is not live offer/pricing logic.
+Refresh starts a new empty demo cart. Header hover/focus preview supports editing
+and removal. Its bounded last-five item list alone scrolls; header, total and
+View cart remain outside that scroll area, including short viewports.
+Click/touch opens `/preview/cart`. The small `/preview/*` routes and
+`/products/loop/reviews` are demo/info views, not a marketplace API or real reviews.
+Both recommendation rails keep their DOM items and use native horizontal scrolling,
+snap/swipe and edge controls; motion requests are instant under reduced motion.
+
+Storefront routes retain the shell DOM and use React Router links. One feature-owned
+focus/scroll hook covers path and query navigation and bounded document-memory
+Back/Forward positions; the original auth shell does not also scroll these routes.
+Titles/descriptions follow the current route/language. The nonpublic pilot is
+`noindex,nofollow`, with no fabricated canonical/hreflang or Product/Offer/review
+structured data. SSR/SSG and public catalog SEO need a separate decision.
+Fixed media frames and out-of-flow quantity-limit notices avoid layout jumps.
+One-shot favorite-add, cart-add badge and photo-change effects respect reduced
+motion. Existing photo hover and button colour feedback are preserved.
+
+Search suggestions are immediate local matching/ranking of all seven storefront
+fixture text: exact/prefix names first, at most five, with IME-aware combobox
+keyboard control and no query logging, behavioral analytics, polling or fake HTTP.
+Search submit uses the same matcher. A future real endpoint would need a roughly
+200–300 ms debounce, cancellation plus latest-result ownership, bounded results
+and distinct loading/error/empty states; no such endpoint is implemented here.
+
+Creastrix remains the MVP seller/merchant; Loop Studio is only a demo design author.
+Personalisation opens an honest later-slice explanation, not an editor, AI service
+or manufacturing approval. No checkout, payment, product/Workspace API, linking,
+new domain model or rollout is delivered. Existing `/`, `/login`, `/confirm-email`,
+`/account`, authentication lifecycle and fixed development proxy are unchanged.
+
+The disconnected built preview can be run on the separately agreed loopback port:
+
+```sh
+npm run build
+npm run preview -- --host 127.0.0.1 --port 4173 --strictPort
+```
+
+This does not connect authentication or use the existing port-3000 development
+server. Component/Redux, static and build checks are distinct from responsive
+browser/3D/visual verification; the latter is a separate coordinator gate. Source
+changes, independent review, publication and integration remain separate states.
+
 ## Local use
 
 Use pinned Node **22.14.0** / npm **10.9.2**, without upgrading the locked packages.
