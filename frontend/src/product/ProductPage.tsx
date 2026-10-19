@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../hooks';
-import { isVariantId, money, photoDescription, swatchBackground, variantById, variants } from './catalog';
+import { isVariantId, money, photoDescription, variantById, variants } from './catalog';
 import type { VariantId } from './catalog';
 import { productCopy } from './copy';
 import { cartAdded, favoriteToggled, productDescriptionChanged, productMediaModeSelected, productVariantSelected, purchaseQuantityChanged } from './demoStore';
@@ -45,7 +45,17 @@ function ProductCard({ variantId, selectVariant }: { variantId: VariantId; selec
         </div>
         <ProductPrice cents={variant.cents} previousCents={variant.previousCents} language={language} t={t} />
         <fieldset className="product-colors"><legend>{t.color} <strong>{variant.name[language]}</strong></legend><div>
-          {variants.map(color => <button type="button" key={color.id} className="product-swatch" data-check-tone={color.checkTone} aria-label={color.name[language]} aria-pressed={variantId === color.id} onClick={() => selectVariant(color.id)}><span style={{ background: swatchBackground(color.colors) }}>{variantId === color.id && <Icon name="check" />}</span></button>)}
+          {variants.map(color => <button type="button" key={color.id} className="product-swatch" data-check-tone={color.checkTone} aria-label={color.name[language]} aria-pressed={variantId === color.id} onClick={() => selectVariant(color.id)}>
+            <span>
+              <svg className="product-swatch-color" viewBox="0 0 28 28" aria-hidden="true">
+                <circle cx="14" cy="14" r="13.5" fill={color.colors[0]} />
+                {/* A rotated half-disc keeps the diagonal split inside the same circular contour. */}
+                {color.colors.length === 2 && <path d="M14 .5a13.5 13.5 0 0 1 0 27Z" transform="rotate(45 14 14)" fill={color.colors[1]} />}
+                <circle cx="14" cy="14" r="13.5" fill="none" stroke="#8885" />
+              </svg>
+              {variantId === color.id && <Icon name="check" />}
+            </span>
+          </button>)}
         </div></fieldset>
         <PurchaseControls key={variantId} variantId={variantId} />
         <div className="product-seller"><span className="product-studio-mark" aria-hidden="true"><Icon name="store" /></span><div><strong>Loop Studio</strong><small>{t.studioBadge} · {t.seller}</small></div><Link to="/preview/studio" aria-label={t.studioLink}><Icon name="arrow" /></Link></div>

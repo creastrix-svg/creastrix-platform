@@ -3,6 +3,7 @@ import { useLocation } from 'react-router';
 import type { ProductCopy } from './copy';
 import { concepts } from './catalog';
 import type { StorefrontLocale } from './locale';
+import { checkoutCopy } from './checkoutCopy';
 
 export function useProductMetadata(t: ProductCopy, locale: StorefrontLocale) {
   const { pathname: rawPath, search } = useLocation();
@@ -13,6 +14,7 @@ export function useProductMetadata(t: ProductCopy, locale: StorefrontLocale) {
   else if (pathname === '/products/loop/reviews') { title = t.reviews; description = t.reviewsBody; }
   else if (pathname === '/products/loop/reviews/new') { title = t.reviewFormTitle; description = t.reviewDemoNote; }
   else if (pathname === '/preview/cart') { title = t.cart; description = t.cartBoundary; }
+  else if (pathname === '/preview/checkout') { title = checkoutCopy[locale].title; description = checkoutCopy[locale].prototypeNote; }
   else if (pathname === '/preview/saved') { title = t.favorites; description = t.savedNote; }
   else if (pathname === '/preview/collection') { title = t.collection; description = t.searchNote; }
   else if (pathname === '/preview/studio') { title = 'Loop Studio'; description = t.studioBody; }

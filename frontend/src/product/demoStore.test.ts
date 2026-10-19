@@ -104,7 +104,7 @@ describe('public memory-only product state', () => {
     expect(cartCount(store.getState().productDemo)).toBe(23);
     expect(cartTotal(store.getState().productDemo)).toBe(55_800);
     store.dispatch(cartLineRemoved('cobalt'));
-    expect(store.getState().productDemo).toEqual({ favorite: 'cobalt', cart: [{ variant: 'coral', quantity: 3 }], locale: null, addSerial: 2, selectedVariant: 'cobalt', purchaseQuantities: defaultPurchase, descriptionOpen: false, mediaMode: 'photo' });
+    expect(store.getState().productDemo).toEqual({ favorite: 'cobalt', cart: [{ variant: 'coral', quantity: 3 }], cartOrder: ['cobalt', 'coral'], cartRemoved: { cobalt: { quantity: 20, revision: 4 } }, locale: null, addSerial: 2, selectedVariant: 'cobalt', purchaseQuantities: defaultPurchase, descriptionOpen: false, mediaMode: 'photo', cartChange: { revision: 4, kind: 'removed', variant: 'cobalt' } });
   });
   it('has no account/persistence coupling and remount starts empty', () => {
     const persist = vi.fn(), store = createAppStore('en', persist);
@@ -118,7 +118,7 @@ describe('public memory-only product state', () => {
     store.dispatch(authenticationStarted({ owner, phase: 'CHECKING', notice: 'NONE' }));
     store.dispatch(authenticationFinished({ owner, result: { phase: 'AUTHENTICATED', notice: 'NONE', user: { id: '11111111-1111-4111-8111-111111111111', status: 'ACTIVE' } } }));
     store.dispatch(authenticationStarted({ owner: { ...owner, epoch: 2 }, phase: 'TRANSITION', notice: 'NONE' }));
-    expect(store.getState().productDemo).toEqual({ favorite: 'cobalt', cart: [{ variant: 'cobalt', quantity: 12 }], locale: null, addSerial: 1, selectedVariant: 'cobalt', purchaseQuantities: defaultPurchase, descriptionOpen: false, mediaMode: 'photo' });
-    expect(createAppStore('en', persist).getState().productDemo).toEqual({ favorite: null, cart: [], locale: null, addSerial: 0, selectedVariant: 'cobalt', purchaseQuantities: defaultPurchase, descriptionOpen: false, mediaMode: 'photo' });
+    expect(store.getState().productDemo).toEqual({ favorite: 'cobalt', cart: [{ variant: 'cobalt', quantity: 12 }], cartOrder: ['cobalt'], cartRemoved: {}, locale: null, addSerial: 1, selectedVariant: 'cobalt', purchaseQuantities: defaultPurchase, descriptionOpen: false, mediaMode: 'photo', cartChange: { revision: 1, kind: 'other' } });
+    expect(createAppStore('en', persist).getState().productDemo).toEqual({ favorite: null, cart: [], cartOrder: [], cartRemoved: {}, locale: null, addSerial: 0, selectedVariant: 'cobalt', purchaseQuantities: defaultPurchase, descriptionOpen: false, mediaMode: 'photo', cartChange: { revision: 0, kind: 'other' } });
   });
 });

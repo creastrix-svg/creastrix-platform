@@ -10,7 +10,9 @@ import { useProductMetadata } from './metadata';
 import { useProductLocale } from './useProductLocale';
 import { useAppearance } from './appearance';
 import StorefrontNavigation from './StorefrontNavigation';
-import { CartView, CollectionView, ConceptView, FavoritesView, InfoView, NotFoundView, ReviewFormView, ReviewsView } from './PreviewViews';
+import CartView from './CartView';
+import CheckoutView from './CheckoutView';
+import { CollectionView, ConceptView, FavoritesView, InfoView, NotFoundView, ReviewFormView, ReviewsView } from './PreviewViews';
 import './product.css';
 import { rememberProductPreferences, serializeProductPreferences } from './preferences';
 
@@ -45,7 +47,7 @@ export default function ProductExperience() {
       <StorefrontNavigation appearance={appearance} onAppearance={setAppearance} />
       <main className="product-main product-width" id="product-main" tabIndex={-1} ref={main}><Routes>
         <Route path="/products/loop" element={<ProductPage />} /><Route path="/products/loop/reviews" element={<ReviewsView />} /><Route path="/products/loop/reviews/new" element={<ReviewFormView />} />
-        <Route path="/preview/cart" element={<CartView />} /><Route path="/preview/saved" element={<FavoritesView />} />
+        <Route path="/preview/cart" element={<CartView />} /><Route path="/preview/checkout" element={<CheckoutView />} /><Route path="/preview/saved" element={<FavoritesView />} />
         <Route path="/preview/search" element={<CollectionView search />} /><Route path="/preview/collection" element={<CollectionView />} />
         <Route path="/preview/items/:id" element={<ConceptView />} /><Route path="/preview/info/:topic" element={<InfoView />} /><Route path="/preview/studio" element={<InfoView studio />} />
         <Route path="*" element={<NotFoundView />} />

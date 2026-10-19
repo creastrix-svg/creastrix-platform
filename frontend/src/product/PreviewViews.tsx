@@ -4,9 +4,8 @@ import { useAppDispatch, useAppSelector } from '../hooks';
 import { concepts, isVariantId, mediaForVariant, money, photoDescription, photos, swatchBackground, variantById } from './catalog';
 import type { VariantId } from './catalog';
 import { productCopy } from './copy';
-import { cartLineRemoved, cartQuantityChanged, cartTotal, favoriteRemoved } from './demoStore';
+import { favoriteRemoved } from './demoStore';
 import { Icon } from './Icon';
-import QuantityInput from './QuantityInput';
 import { ConceptCard } from './Carousel';
 import { searchExamples } from './search';
 import { useProductLocale } from './useProductLocale';
@@ -15,21 +14,6 @@ function Back({ productReturn = false }: { productReturn?: boolean }) {
   const t = productCopy[useProductLocale()];
   const selected = useAppSelector(state => state.productDemo.selectedVariant);
   return <Link to={'/products/loop?variant=' + selected} state={productReturn ? { productReturn: true } : null} className="product-back"><span className="product-flip"><Icon name="arrow" /></span>{t.back}</Link>;
-}
-
-export function CartView() {
-  const language = useProductLocale(), t = productCopy[language];
-  const demo = useAppSelector(state => state.productDemo), dispatch = useAppDispatch();
-  return <div className="product-preview-page"><Back productReturn /><h1>{t.cart}</h1>
-    {demo.cart.length === 0 ? <p className="product-empty">{t.emptyCart}</p> : <div className="product-cart-layout"><div>
-      {demo.cart.map(line => { const variant = variantById(line.variant); return <article className="product-cart-line" key={line.variant} aria-label={'Loop · ' + variant.name[language]}>
-        {mediaForVariant(line.variant).photos[0] ? <img src={mediaForVariant(line.variant).photos[0]} alt={photoDescription(t.photoAlt, variant.name[language])} width="120" height="96" /> : <span className="product-cart-swatch" style={{ background: swatchBackground(variant.colors) }} aria-label={t.noPhoto} />}
-        <div className="product-cart-line-copy"><Link to={'/products/loop?variant=' + line.variant}>Loop</Link><span>{variant.name[language]}</span><button type="button" className="product-text-button" onClick={() => dispatch(cartLineRemoved(line.variant))} aria-label={`${t.remove} · ${variant.name[language]}`}>{t.remove}</button></div>
-        <QuantityInput label={`${t.quantity} · ${variant.name[language]}`} value={line.quantity} max={variant.stock} onChange={quantity => dispatch(cartQuantityChanged({ variant: line.variant, quantity }))} t={t} />
-        <strong className="product-cart-price">{money(variant.cents * line.quantity, language)}</strong>
-      </article>; })}
-    </div><aside className="product-cart-summary"><span>{t.total}</span><strong>{money(cartTotal(demo), language)}</strong><Link className="product-primary" state={{ productReturn: true }} to={'/products/loop?variant=' + demo.selectedVariant}>{t.continue}<Icon name="arrow" /></Link></aside></div>}
-  </div>;
 }
 
 export function FavoritesView() {
