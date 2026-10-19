@@ -10,6 +10,7 @@ import { copy } from '../i18n';
 import type { Language } from '../language';
 import ProductExperience from './ProductExperience';
 import { productCopy } from './copy';
+import { checkoutCopy } from './checkoutCopy';
 import { cartAdded } from './demoStore';
 import Carousel from './Carousel';
 import indexSource from '../../index.html?raw';
@@ -444,9 +445,16 @@ describe('product card and public demo controls', () => {
     const option = screen.getByRole('button', { name: 'Cobalt & chalk' });
     await user.click(option);
     expect(option).toHaveAttribute('aria-pressed', 'true');
-    const swatch = option.querySelector('span')!;
-    expect(swatch.style.background).toContain('linear-gradient(135deg');
-    expect(swatch.style.background).toContain('50%');
+    const swatch = option.querySelector('.product-swatch-color')!;
+    expect(swatch).toHaveAttribute('viewBox', '0 0 28 28');
+    expect(swatch).toHaveAttribute('aria-hidden', 'true');
+    expect(swatch.querySelector('circle')).toHaveAttribute('fill', '#244bcc');
+    expect(swatch.querySelector('path')).toHaveAttribute('fill', '#f0eee8');
+    expect(swatch.querySelector('path')).toHaveAttribute('d', 'M14 .5a13.5 13.5 0 0 1 0 27Z');
+    expect(swatch.querySelector('path')).toHaveAttribute('transform', 'rotate(45 14 14)');
+    swatch.querySelectorAll('circle').forEach(circle => {
+      expect(circle).toHaveAttribute('cx', '14'); expect(circle).toHaveAttribute('cy', '14'); expect(circle).toHaveAttribute('r', '13.5');
+    });
     expect(screen.getByAltText(photoDescription(t.photoAlt, 'Cobalt & chalk'))).toHaveAttribute('src', mediaForVariant('cobalt-chalk').photos[0]);
     expect(screen.getByRole('button', { name: t.model })).toBeEnabled();
     expect(document.querySelector('model-viewer')).toBeNull();
@@ -467,7 +475,7 @@ describe('product card and public demo controls', () => {
     const quantity = within(article).getByRole('textbox', { name: t.quantity + ' · Cobalt & chalk' });
     fireEvent.change(quantity, { target: { value: '999' } });
     expect(quantity).toHaveValue('6');
-    const increase = within(article).getByRole('button', { name: t.increase });
+    const increase = within(article).getByRole('button', { name: t.increase + ' · Cobalt & chalk' });
     expect(increase).toBeDisabled(); await user.click(increase);
     expect(store.getState().productDemo.cart).toEqual([{ variant: 'cobalt-chalk', quantity: 6 }, { variant: 'cobalt', quantity: 1 }]);
   });
@@ -579,7 +587,10 @@ describe('product card and public demo controls', () => {
     expect(store.getState().productDemo.cart[0].quantity).toBe(20);
     expect(screen.getAllByText('€480.00').length).toBeGreaterThan(0);
     await user.click(screen.getByRole('button', { name: t.remove + ' · Cobalt blue' }));
-    expect(screen.getByText(t.emptyCart)).toBeVisible();
+    expect(screen.queryByText(t.emptyCart)).toBeNull();
+    expect(screen.getByRole('textbox', { name: t.quantity + ' · Cobalt blue' })).toHaveValue('0');
+    expect(screen.getByRole('textbox', { name: t.quantity + ' · Cobalt blue' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: t.cartRestore + ' · Cobalt blue' })).toBeVisible();
     expect(store.getState().productDemo.cart).toHaveLength(0);
   });
   it('offers an editable/removable hover/focus cart preview and preserves click navigation', async () => {
@@ -726,14 +737,18 @@ describe('product card and public demo controls', () => {
 });
 
 describe('remembered public variant and explicit URL round-trips', () => {
-  it.each(['back', 'continue'] as const)('returns the latest two-tone selection through cart %s despite an older explicit entry variant', async action => {
+  it.each(['cart', 'checkout'] as const)('returns the latest two-tone selection through %s despite an older explicit entry variant', async action => {
     const { user, t } = show('/products/loop?variant=coral', 'en', false, true);
     await user.click(screen.getByRole('button', { name: 'Cobalt & chalk' }));
     await user.click(screen.getByRole('button', { name: t.add }));
     await user.click(within(screen.getByRole('banner')).getByRole('link', { name: t.cart }));
     const line = screen.getByRole('article', { name: 'Loop · Cobalt & chalk' });
     expect(within(line).getByRole('link', { name: 'Loop' })).toHaveAttribute('href', '/products/loop?variant=cobalt-chalk');
-    const link = screen.getByRole('link', { name: action === 'back' ? t.back : t.continue });
+    if (action === 'checkout') {
+      await user.click(screen.getByRole('link', { name: checkoutCopy.en.proceed }));
+      await user.click(screen.getByRole('link', { name: checkoutCopy.en.backToCart }));
+    }
+    const link = screen.getByRole('link', { name: t.continue });
     expect(link).toHaveAttribute('href', '/products/loop?variant=cobalt-chalk');
     await user.click(link);
     expect(screen.getByRole('button', { name: 'Cobalt & chalk' })).toHaveAttribute('aria-pressed', 'true');
@@ -781,9 +796,9 @@ describe('remembered public variant and explicit URL round-trips', () => {
 
 describe('purchase draft and exact cart return', () => {
   it.each([
-    ['back', 'cobalt-chalk', 2, true], ['continue', 'cobalt-chalk', 3, true], ['history', 'cobalt-chalk', 2, true],
-    ['back', 'coral', 3, true], ['continue', 'coral', 3, true], ['history', 'coral', 3, true],
-    ['back', 'coral', 4, false], ['history', 'coral', 4, false],
+    ['header', 'cobalt-chalk', 2, true], ['continue', 'cobalt-chalk', 3, true], ['history', 'cobalt-chalk', 2, true],
+    ['header', 'coral', 3, true], ['continue', 'coral', 3, true], ['history', 'coral', 3, true],
+    ['header', 'coral', 4, false], ['history', 'coral', 4, false], ['checkout', 'cobalt-chalk', 2, true],
   ] as const)('returns %s for %s with quantity %i, expanded height and exact fractional departure (add=%s)', async (action, variant, quantity, add) => {
     const position = returnScrollFixture();
     try {
@@ -797,8 +812,12 @@ describe('purchase draft and exact cart return', () => {
       const before = store.getState().productDemo, cart = structuredClone(before.cart), serial = before.addSerial;
       position.depart(1375.5);
       await user.click(action === 'continue' && add ? within(document.querySelector<HTMLElement>('.product-buy-feedback')!).getByRole('link', { name: t.viewCart }) : within(screen.getByRole('banner')).getByRole('link', { name: t.cart }));
+      if (action === 'checkout') {
+        await user.click(screen.getByRole('link', { name: checkoutCopy.en.proceed }));
+        await user.click(screen.getByRole('link', { name: checkoutCopy.en.backToCart }));
+      }
       position.scroll.mockClear();
-      await user.click(action === 'history' ? screen.getByRole('button', { name: 'History back' }) : screen.getByRole('link', { name: action === 'back' ? t.back : t.continue }));
+      await user.click(action === 'history' ? screen.getByRole('button', { name: 'History back' }) : screen.getByRole('link', { name: t.continue }));
       expect(screen.getByRole('button', { name: variantById(variant).name.en })).toHaveAttribute('aria-pressed', 'true');
       expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue(String(quantity));
       expect(document.querySelector('.product-description details')).toHaveAttribute('open');
@@ -823,7 +842,7 @@ describe('purchase draft and exact cart return', () => {
     expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue('3');
     fireEvent.change(screen.getByRole('textbox', { name: t.quantity }), { target: { value: '' } });
     fireEvent.click(within(screen.getByRole('banner')).getByRole('link', { name: t.cart }));
-    await user.click(screen.getByRole('link', { name: t.back }));
+    await user.click(screen.getByRole('link', { name: t.continue }));
     expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue('1');
     fireEvent.change(screen.getByRole('textbox', { name: t.quantity }), { target: { value: '-9' } });
     await user.click(screen.getByRole('button', { name: 'Cobalt & chalk' }));
@@ -837,7 +856,7 @@ describe('purchase draft and exact cart return', () => {
       await user.click(within(screen.getByRole('banner')).getByRole('link', { name: t.cart }));
       fireEvent.change(screen.getByRole('textbox', { name: t.quantity + ' · Coral' }), { target: { value: String(cartQuantity) } });
       const serial = store.getState().productDemo.addSerial;
-      await user.click(screen.getByRole('link', { name: t.back }));
+      await user.click(screen.getByRole('link', { name: t.continue }));
       expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue(expected);
       expect(store.getState().productDemo.cart).toEqual([{ variant: 'coral', quantity: cartQuantity }]);
       expect(store.getState().productDemo.addSerial).toBe(serial);
@@ -845,7 +864,7 @@ describe('purchase draft and exact cart return', () => {
     expect(screen.getByRole('textbox', { name: t.quantity })).toBeDisabled(); expect(screen.getByRole('button', { name: t.add })).toBeDisabled();
     await user.click(within(screen.getByRole('banner')).getByRole('link', { name: t.cart }));
     await user.click(screen.getByRole('button', { name: t.remove + ' · Coral' }));
-    await user.click(screen.getByRole('link', { name: t.back }));
+    await user.click(screen.getByRole('link', { name: t.continue }));
     expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue('1');
     expect(screen.getByRole('button', { name: t.add })).toBeEnabled(); expect(store.getState().productDemo.cart).toEqual([]);
   });
@@ -853,7 +872,7 @@ describe('purchase draft and exact cart return', () => {
     const position = returnScrollFixture();
     try {
       const { user, t } = show('/preview/cart'); position.depart(180); position.scroll.mockClear();
-      await user.click(screen.getByRole('link', { name: t.back }));
+      await user.click(screen.getByRole('link', { name: t.continue }));
       expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue('1'); expect(position.top).toBe(0);
       expect(position.scroll).toHaveBeenCalledExactlyOnceWith({ left: 0, top: 0, behavior: 'instant' });
       expect(document.querySelector('.product-description details')).not.toHaveAttribute('open');
@@ -890,7 +909,7 @@ describe('sale totals and local demonstration review form', () => {
     expect(document.querySelector('.product-saved-card')).toHaveTextContent('€19.90');
     await user.click(within(screen.getByRole('banner')).getByRole('link', { name: t.cart }));
     expect(screen.getByRole('article', { name: 'Loop · Chalk' })).toHaveTextContent('€39.80');
-    await user.click(screen.getByRole('link', { name: t.back }));
+    await user.click(screen.getByRole('link', { name: t.continue }));
     expect(screen.getByRole('button', { name: 'Chalk' })).toHaveAttribute('aria-pressed', 'true');
     expect(document.querySelector('.product-price-badge')).toHaveTextContent('−17%');
     await user.click(screen.getByRole('button', { name: 'Cobalt blue' }));
@@ -1158,6 +1177,7 @@ describe('bounded storefront navigation, accessibility and nonpublic metadata', 
   });
   it.each([
     ['/preview/cart', 'Your cart', productCopy.en.cartBoundary],
+    ['/preview/checkout', checkoutCopy.en.title, checkoutCopy.en.prototypeNote],
     ['/preview/saved', 'Saved products', productCopy.en.savedNote],
     ['/preview/search?q=Mini', productCopy.en.results + ' · Mini', productCopy.en.searchNote],
     ['/preview/collection', productCopy.en.collection, productCopy.en.searchNote],

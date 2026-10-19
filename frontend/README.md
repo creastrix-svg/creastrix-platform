@@ -77,8 +77,9 @@ that needs a separate identity/target slice and is not delivered here. Browser
 preference storage is not a substitute; guest-cart merge is not simulated.
 Quantity is whole-digit input,
 bounded by each sample stock (24/8/15/6), not nine; cart totals use integer cents.
-Sample variants have one or two swatch colours with a shared exact-half diagonal
-background in the card and both cart views. The cobalt/chalk combination has its
+Sample variants have one or two swatch colours with an exact-half diagonal split.
+The product picker uses a vector circle for a smooth contour; cart fallbacks use
+the same colours in a diagonal background. The cobalt/chalk combination has its
 own demo identity, €28 price and six-unit stock; no seller editor or catalog API
 is implemented. Five separate star buttons open a demo review form with the
 chosen 1–5 rating and validated variant; the review text remains a separate link
@@ -101,6 +102,42 @@ and removal. Its bounded last-five item list alone scrolls; header, total and
 View cart remain outside that scroll area, including short viewports.
 Click/touch opens `/preview/cart`. The small `/preview/*` routes and
 `/products/loop/reviews` are demo/info views, not a marketplace API or real reviews.
+
+CART-UI-001 provides a separate responsive cart view with variant-owned media,
+current unit prices (including the existing Chalk comparison), numeric sample
+stock, line subtotals and distinct product-line/unit counts. Continue shopping
+replaces the cart's top Back link and keeps the existing product-return preference
+and scroll contract, including a visit to the checkout prototype. Shared memory-only presentation slots
+keep deleted rows in place, with disabled zero quantity/subtotal and a readable
+muted appearance. Each row has an independent, one-use Restore for its previous
+quantity; unrelated edits/removals do not invalidate it. Explicit re-add of the
+same variant uses the new quantity and retires only its old restore token, without
+duplicates, merging or exceeding stock. Removed rows never enter active totals,
+badges or the minicart, including when all rows are removed. Fixed-width cart
+counters do not grow with colour labels. Unit price, quantity and line subtotal
+share three aligned columns, also below the product heading on phones; sale prices
+stay within the unit-price column. Cart limit notices expand around the centre
+counter without widening the page. Full-cart and minicart quantity buttons include
+the variant in their accessible names. The same keyed Remove/Restore action
+retains focus without scrolling, with hidden live status and no top Undo area.
+Only removed rows offer a separate X to discard their presentation slot and
+Restore snapshot. Active quantities/totals and other snapshots are unaffected;
+a later explicit add creates a new row. Focus moves to the nearest surviving
+row action or Continue shopping, without scrolling. This never deletes a product
+from the catalogue or an account.
+When the summary moves below the items, it stays right-aligned and at most 360px
+wide, shrinking to fit phones rather than stretching its Checkout link across a tablet.
+The summary's Checkout link opens `/preview/checkout`; it is disabled when only
+removed rows remain. Direct access with an empty active cart offers a return to
+the cart instead of a form. The checkout prototype shows the active selection,
+current item subtotal and a local contact/address preview. Use fictitious details:
+form state disappears on departure or when the active cart becomes empty. Nothing
+is submitted, persisted or placed into Redux. Required/email browser validation is
+only presentation validation, not address verification. Shipping, tax calculation,
+orders and payment are not implemented; the subtotal is not a final payable total.
+No timers or artificial loading are added. Account persistence, guest merge and
+backend cart/favorite APIs remain outside this interface-only slice.
+
 Both recommendation rails keep their DOM items and use native horizontal scrolling,
 snap/swipe and edge controls; motion requests are instant under reduced motion.
 

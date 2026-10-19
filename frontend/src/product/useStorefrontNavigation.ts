@@ -19,8 +19,12 @@ export function useStorefrontNavigation(main: RefObject<HTMLElement | null>) {
     const old = previous.current, changed = old !== null && old.key !== location.key;
     const oldPoint = old ? positions.get(old.key) : undefined;
     const productPage = location.pathname.replace(/\/+$/, '') === '/products/loop';
-    const cartPage = location.pathname.replace(/\/+$/, '') === '/preview/cart';
-    const returnTo = cartPage && oldPoint?.product ? { left: oldPoint.left, top: oldPoint.top, variant: oldPoint.product } : positions.get(location.key)?.returnTo;
+    const route = location.pathname.replace(/\/+$/, ''), oldRoute = old?.pathname.replace(/\/+$/, '');
+    const cartPage = route === '/preview/cart';
+    // Carry the product departure through the local cart/checkout loop, not unrelated routes.
+    const checkoutLoop = [route, oldRoute].every(path => path === '/preview/cart' || path === '/preview/checkout');
+    const returnTo = cartPage && oldPoint?.product ? { left: oldPoint.left, top: oldPoint.top, variant: oldPoint.product }
+      : positions.get(location.key)?.returnTo ?? (checkoutLoop ? oldPoint?.returnTo : undefined);
     const selected = main.current?.querySelector<HTMLElement>('[data-product-variant]')?.dataset.productVariant;
     const explicitReturn = action === 'PUSH' && old?.pathname.replace(/\/+$/, '') === '/preview/cart' && productPage && !location.hash && location.state?.productReturn === true;
     const departure = oldPoint?.returnTo;
