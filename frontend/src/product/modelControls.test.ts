@@ -76,6 +76,8 @@ it('restores captured actual inline orbit, target, orientation and bounds instea
   const actual = { theta: 1.1, phi: .9, radius: 2.7 }, pivot = { x: .4, y: .2, z: -.1 };
   nativeDrag(actual, pivot);
   api.enter(pad); expect(viewer).not.toHaveAttribute('camera-controls'); expect(viewer).toHaveAttribute('tabindex', '-1');
+  expect(viewer.getCameraOrbit()).toEqual({ ...actual, radius: actual.radius * 1.2 });
+  expect(viewer.getCameraTarget()).toEqual(pivot);
   api.roll('left'); api.zoom(.85); frame();
   api.exit(); expect(viewer).toHaveAttribute('camera-controls'); expect(viewer).toHaveAttribute('touch-action', 'pan-y');
   expect(viewer.getCameraOrbit()).toEqual(actual); expect(viewer.getCameraTarget()).toEqual(pivot);
@@ -84,22 +86,30 @@ it('restores captured actual inline orbit, target, orientation and bounds instea
   api.destroy();
 });
 
-it('resets the inline normal home separately from the current fullscreen start, without losing the pre-open inline selection', () => {
+it.each(['reset control', 'Home key'])('%s uses the original product view in fullscreen and on return, even after further free rotation', action => {
   const { viewer, pad, api, nativeDrag } = fixture();
+  const home = viewer.getCameraOrbit(), center = viewer.getCameraTarget();
+  api.enter(pad);
+  const expandedHome = viewer.getCameraOrbit();
+  const limits = ['min-camera-orbit', 'max-camera-orbit'].map(attr => viewer.getAttribute(attr));
+  api.exit();
   const selected = { theta: 1.1, phi: .8, radius: 2.5 }, pivot = { x: .2, y: .4, z: -.1 };
   nativeDrag(selected, pivot);
   api.enter(pad);
-  const start = { ...viewer.getCameraOrbit() }, target = viewer.getCameraTarget();
   api.roll('left'); api.zoom(.7); frame();
-  api.reset(); frame();
-  expect(viewer.getCameraOrbit()).toEqual(start); expect(viewer.getCameraTarget()).toEqual(target);
+  if (action === 'Home key') fireEvent.keyDown(pad, { key: 'Home' }); else api.reset();
+  frame();
+  expect(viewer.getCameraOrbit()).toEqual(expandedHome); expect(viewer.getCameraTarget()).toEqual(center);
   expect(viewer).toHaveAttribute('orientation', '0rad 0rad 0rad');
-  api.exit(); expect(viewer.getCameraOrbit()).toEqual(selected); expect(viewer.getCameraTarget()).toEqual(pivot);
-  api.reset(); frame();
-  expect(viewer.getCameraOrbit()).toEqual({ theta: 0, phi: Math.PI / 2, radius: 2 });
-  expect(viewer.getCameraTarget()).toEqual({ x: .1, y: .3, z: 0 });
+  expect(['min-camera-orbit', 'max-camera-orbit'].map(attr => viewer.getAttribute(attr))).toEqual(limits);
+  api.roll('right'); api.zoom(.01); frame();
+  expect(viewer.getCameraOrbit().radius).toBeCloseTo(home.radius * .55);
+  expect(viewer.getAttribute('orientation')).not.toBe('0rad 0rad 0rad');
+  api.exit();
+  expect(viewer.getCameraOrbit()).toEqual(home); expect(viewer.getCameraTarget()).toEqual(center);
   expect(viewer).toHaveAttribute('orientation', '0rad 0rad 0rad');
   expect(viewer).toHaveAttribute('min-camera-orbit', 'auto 15deg 65%'); expect(viewer).toHaveAttribute('max-camera-orbit', 'auto 170deg 160%');
+  api.enter(pad); expect(viewer.getCameraOrbit()).toEqual(expandedHome); expect(viewer.getCameraTarget()).toEqual(center);
   api.destroy();
 });
 
@@ -192,24 +202,29 @@ it('steps the actual native inline orbit without changing orientation or its bou
   api.destroy();
 });
 
-it('repeats enter/reset/exit with live inline snapshots and removes captures, stale frames and listeners each time', () => {
+it('alternates explicit reset and plain close without leaking a prior decision, captures, frames or listeners', () => {
   const { viewer, pad, api, captured, nativeDrag } = fixture();
+  const home = viewer.getCameraOrbit(), center = viewer.getCameraTarget();
   for (let cycle = 0; cycle < 5; cycle++) {
     const orbit = { theta: .4 + cycle * .1, phi: .8 + cycle * .05, radius: 2 + cycle * .1 };
     const target = { x: .1 + cycle * .01, y: .3, z: -.1 };
     nativeDrag(orbit, target);
-    api.enter(pad); api.roll('left'); frame(); api.reset(); frame();
+    api.enter(pad);
     expect(viewer.getCameraOrbit().radius).toBeCloseTo(orbit.radius * 1.2);
+    api.roll('left'); frame();
     pointer(pad, 'pointerdown', cycle + 1, 200, 150); pointer(pad, 'pointermove', cycle + 1, 310, 210);
     expect(captured.size).toBe(1); expect(vi.getTimerCount()).toBe(1);
+    const didReset = cycle % 2 === 0;
+    if (didReset) api.reset(); // Close before the next animation frame.
+    const expectedOrbit = didReset ? home : orbit, expectedCenter = didReset ? center : target;
     api.exit();
     expect(captured.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
-    expect(viewer.getCameraOrbit()).toEqual(orbit); expect(viewer.getCameraTarget()).toEqual(target);
+    expect(viewer.getCameraOrbit()).toEqual(expectedOrbit); expect(viewer.getCameraTarget()).toEqual(expectedCenter);
     expect(viewer).toHaveAttribute('orientation', '0rad 0rad 0rad');
     expect(viewer).toHaveAttribute('min-camera-orbit', 'auto 15deg 65%'); expect(viewer).toHaveAttribute('max-camera-orbit', 'auto 170deg 160%');
     expect(fireEvent.keyDown(pad, { key: 'q' })).toBe(true);
     pointer(pad, 'pointermove', cycle + 1, 20, 20); frame();
-    expect(viewer.getCameraOrbit()).toEqual(orbit); expect(viewer.getCameraTarget()).toEqual(target);
+    expect(viewer.getCameraOrbit()).toEqual(expectedOrbit); expect(viewer.getCameraTarget()).toEqual(expectedCenter);
   }
   const final = viewer.getCameraOrbit(); api.destroy(); api.destroy(); api.reset(); api.enter(pad); api.orbitInline('left');
   expect(viewer.getCameraOrbit()).toEqual(final); expect(vi.getTimerCount()).toBe(0);

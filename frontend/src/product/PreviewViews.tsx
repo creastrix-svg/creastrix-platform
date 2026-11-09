@@ -1,46 +1,66 @@
-import { useId, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router';
+import { useContext, useId, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../hooks';
-import { concepts, isVariantId, mediaForVariant, money, photoDescription, photos, swatchBackground, variantById } from './catalog';
+import { concepts, isVariantId, mediaForVariant, photoDescription, swatchBackground, variantById } from './catalog';
 import type { VariantId } from './catalog';
 import { productCopy } from './copy';
 import { favoriteRemoved } from './demoStore';
+import ProductPrice from './ProductPrice';
 import { Icon } from './Icon';
-import { ConceptCard } from './Carousel';
-import { searchExamples } from './search';
+import { searchCatalog, searchResultSummary } from './search';
 import { useProductLocale } from './useProductLocale';
+import { StorefrontOrigin } from './storefrontOrigin';
+import { isCatalogPath } from './routes';
 
-function Back({ productReturn = false }: { productReturn?: boolean }) {
-  const t = productCopy[useProductLocale()];
-  const selected = useAppSelector(state => state.productDemo.selectedVariant);
-  return <Link to={'/products/loop?variant=' + selected} state={productReturn ? { productReturn: true } : null} className="product-back"><span className="product-flip"><Icon name="arrow" /></span>{t.back}</Link>;
+function Back() {
+  const t = productCopy[useProductLocale()], origin = useContext(StorefrontOrigin);
+  const collection = isCatalogPath(useLocation().pathname), navigate = useNavigate();
+  return <Link to={origin ?? (collection ? '/' : '/catalog')} className="product-back" onClick={event => {
+    if (!origin || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault(); navigate(-1);
+  }}><span className="product-flip"><Icon name="arrow" /></span>{origin ? t.back : collection ? t.home : t.browseCollection}</Link>;
 }
+export { Back as StorefrontBack };
 
 export function FavoritesView() {
   const language = useProductLocale(), t = productCopy[language];
-  const favorite = useAppSelector(state => state.productDemo.favorite), dispatch = useAppDispatch();
-  const variant = favorite === null ? null : variantById(favorite);
-  return <div className="product-preview-page"><Back /><h1>{t.favorites}</h1>{variant ? <article className="product-saved-card"><Link to={'/products/loop?variant=' + variant.id}>
-    {mediaForVariant(variant.id).photos[0] ? <img src={mediaForVariant(variant.id).photos[0]} alt={photoDescription(t.photoAlt, variant.name[language])} width="425" height="283" /> : <span className="product-saved-swatch" role="img" aria-label={variant.name[language] + ' · ' + t.noPhoto} style={{ background: swatchBackground(variant.colors) }} />}
-    <h2>Loop · {variant.name[language]}</h2></Link><p><span className="product-sr-only">{t.currentPrice}: </span>{money(variant.cents, language)}</p><button type="button" className="product-text-button" onClick={() => dispatch(favoriteRemoved())}>{t.remove}</button></article> : <p className="product-empty">{t.emptySaved}</p>}</div>;
+  const ids = useAppSelector(state => state.productDemo.favorites), dispatch = useAppDispatch();
+  const heading = useRef<HTMLHeadingElement>(null);
+  const titlePrefix = useId();
+  const links = useRef(new Map<VariantId, HTMLAnchorElement>());
+  const [broken, setBroken] = useState<Partial<Record<VariantId, boolean>>>({});
+  return <div className="product-preview-page"><Back /><h1 ref={heading} tabIndex={-1}>{t.favorites}</h1>
+    {ids.length ? <div className="product-saved-grid">{ids.map((id, index) => {
+      const variant = variantById(id), name = variant.name[language], photo = mediaForVariant(id).photos[0];
+      const titleId = titlePrefix + '-' + id;
+      return <article key={id} className="product-saved-card"><Link aria-labelledby={titleId} to={'/products/loop?variant=' + id} ref={node => { if (node) links.current.set(id, node); else links.current.delete(id); }}>
+        {photo && !broken[id] ? <img src={photo} alt={photoDescription(t.photoAlt, name)} width="425" height="283" onError={() => setBroken(previous => ({ ...previous, [id]: true }))} /> :
+          <span className="product-saved-swatch" role="img" aria-label={name + ' · ' + t.noPhoto} style={{ background: swatchBackground(variant.colors) }} />}
+        <h2 id={titleId}>Loop · {name}</h2></Link><ProductPrice cents={variant.cents} previousCents={variant.previousCents} language={language} t={t} />
+        <button type="button" className="product-text-button" aria-label={t.unfavorite + ' · Loop · ' + name} onClick={() => {
+          (links.current.get(ids[index + 1] ?? ids[index - 1]) ?? heading.current)?.focus();
+          dispatch(favoriteRemoved(id));
+        }}>{t.remove}</button></article>;
+    })}</div> : <div className="product-empty"><p><strong>{t.emptySaved}</strong></p><p>{t.savedHint}</p></div>}</div>;
 }
 
-export function CollectionView({ search = false }: { search?: boolean }) {
+export function SearchResultsView() {
   const language = useProductLocale(), t = productCopy[language];
   const [params] = useSearchParams();
-  const query = search ? (params.get('q') ?? '').slice(0, 100).trim().toLocaleLowerCase() : '';
-  const ranked = searchExamples(query, language, 7);
-  const items = search ? ranked.filter(item => item.id !== 'loop') : concepts;
-  const loop = !search || ranked.some(item => item.id === 'loop');
-  return <div className="product-preview-page"><Back /><h1>{search ? t.results : t.collection}</h1>
-    {items.length || loop ? <div className="product-collection-grid">{loop && <Link to="/products/loop" className="product-concept-card"><span className="product-concept-image"><img src={photos[0]} alt={t.photoAlt} width="850" height="567" /></span><span className="product-concept-copy"><strong>Loop</strong><small>{t.subtitle}</small></span></Link>}{items.map(item => <ConceptCard key={item.id} item={item} t={t} />)}</div> : <p className="product-empty">{t.noResults}</p>}
+  const items = searchCatalog(params.get('q') ?? '', language);
+  return <div className="product-preview-page"><Back /><h1>{t.results}</h1>
+    {items.length ? <div className="product-collection-grid">{items.map(item => <Link key={item.id} className="product-concept-card" to={item.href}>
+      <span className="product-concept-image"><img src={item.photo} alt="" loading="lazy" width="512" height="512" /></span>
+      <span className="product-concept-copy"><strong>{item.name}</strong><small>{searchResultSummary(item, language)}</small></span>
+    </Link>)}</div> : <p className="product-empty">{t.noResults}</p>}
   </div>;
 }
 
 export function ConceptView() {
   const t = productCopy[useProductLocale()], { id } = useParams();
   const item = concepts.find(concept => concept.id === id);
-  return <div className="product-preview-page"><Back /><h1>{item?.name ?? t.notFound}</h1>{item && <><img className="product-concept-detail" src={`/product/reference-asset-${item.image}.webp`} alt={`${item.name} · ${t.concept}`} width="512" height="512" /><p>{t.studioBody}</p></>}</div>;
+  if (!item) return <NotFoundView />;
+  return <div className="product-preview-page"><Back /><h1>{item.name}</h1><img className="product-concept-detail" src={`/product/reference-asset-${item.image}.webp`} alt={`${item.name} · ${t.concept}`} width="512" height="512" /><p>{t.conceptNote}</p></div>;
 }
 
 export function InfoView({ studio = false }: { studio?: boolean }) {
@@ -48,7 +68,11 @@ export function InfoView({ studio = false }: { studio?: boolean }) {
   const info = { help: [t.help, t.helpBody], delivery: [t.delivery, t.deliveryBody], returns: [t.returns, t.returnsBody], contact: [t.contact, t.contactBody], about: [t.about, t.aboutInfo], legal: [t.legal, t.legalBody] };
   if (!studio && !Object.hasOwn(info, topic)) return <NotFoundView />;
   const content = studio ? ['Loop Studio', t.studioBody] : info[topic as keyof typeof info];
-  return <div className="product-preview-page product-info-page"><Back /><span className="product-label">{t.info}</span><h1>{content[0]}</h1><p>{content[1]}</p>{studio && <Link className="product-text-button" to="/preview/collection">{t.collection}<Icon name="arrow" /></Link>}</div>;
+  return <div className="product-preview-page product-info-page"><Back /><h1>{content[0]}</h1><p>{content[1]}</p>
+    {studio && <Link className="product-text-button" to="/catalog?format=concept">{t.moreStudio}<Icon name="arrow" /></Link>}
+    {!studio && topic === 'help' && <a className="product-text-button" href="mailto:support@creastrix.com">support@creastrix.com</a>}
+    {!studio && topic === 'contact' && <a className="product-text-button" href="mailto:hello@creastrix.com">hello@creastrix.com</a>}
+  </div>;
 }
 
 export function ReviewsView() {
@@ -82,5 +106,5 @@ function ReviewForm({ initialRating, variant }: { initialRating: number | null; 
 
 export function NotFoundView() {
   const t = productCopy[useProductLocale()];
-  return <div className="product-preview-page"><Back /><h1>{t.notFound}</h1><p>{t.info}</p></div>;
+  return <div className="product-preview-page"><Back /><h1>{t.notFound}</h1><p>{t.notFoundBody}</p></div>;
 }

@@ -5,16 +5,28 @@ import type { ProductCopy } from './copy';
 import { Icon, Spinner } from './Icon';
 import { createModelControls } from './modelControls';
 import type { ModelControls } from './modelControls';
+import { createPersonalizationModel } from './personalizationModel';
+import type { ModelDecoration } from './personalizationModel';
+import { createLampModel } from './lampModel';
+import type { LampDecoration } from './lampModel';
+import { createLampZoneSelection } from './lampZoneSelection';
+import type { LampZoneSelection } from './lampZoneSelection';
 
-type Props = { t: ProductCopy; target: HTMLElement | null; expanded: boolean; source?: string; onPhase?: (phase: 'importing' | 'loading' | 'ready' | 'failed') => void };
+type Props = { t: ProductCopy; target: HTMLElement | null; expanded: boolean; source?: string; decoration?: ModelDecoration; lampDecoration?: LampDecoration; lampZoneSelection?: LampZoneSelection; onDecorationError?: (failed: boolean) => void; onPhase?: (phase: 'importing' | 'loading' | 'ready' | 'failed') => void };
 
-export default function ModelPreview(props: Props) { return <ModelInstance key={props.source ?? '/product/loop.glb'} {...props} />; }
+const defaultModelSource = '/product/loop-shaped-cobalt.glb';
+export default function ModelPreview(props: Props) { return <ModelInstance key={props.source ?? defaultModelSource} {...props} />; }
 
-function ModelInstance({ t, target, expanded, source = '/product/loop.glb', onPhase }: Props) {
+function ModelInstance({ t, target, expanded, source = defaultModelSource, onPhase, decoration, lampDecoration, lampZoneSelection, onDecorationError }: Props) {
   const hintId = useId();
   const mount = useRef<HTMLDivElement>(null);
   const pad = useRef<HTMLDivElement>(null);
+  const hoverMarker = useRef<HTMLSpanElement>(null);
   const controls = useRef<ModelControls | null>(null);
+  const decorationModel = useRef<ReturnType<typeof createPersonalizationModel> | null>(null);
+  const lampModel = useRef<ReturnType<typeof createLampModel> | null>(null);
+  const zoneSelection = useRef<ReturnType<typeof createLampZoneSelection> | null>(null);
+  const selectableLamp = Boolean(lampZoneSelection);
   const [viewer, setViewer] = useState<ModelViewerElement | null>(null);
   const [phase, setPhase] = useState<'importing' | 'loading' | 'ready' | 'failed'>('importing');
   useLayoutEffect(() => { onPhase?.(phase); }, [phase, onPhase]);
@@ -48,6 +60,12 @@ function ModelInstance({ t, target, expanded, source = '/product/loop.glb', onPh
         'shadow-intensity': '0.7', exposure: '1', loading: 'eager', tabindex: '0',
       };
       for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, value);
+      if (/^\/product\/(?:studio-loop|loop-shaped)-/.test(source)) {
+        // A long lens keeps the belly and foot in proportion. Aim slightly above
+        // the 10° sightline to the rim because the camera orbits the body's centre.
+        element.setAttribute('field-of-view', '12deg');
+        element.setAttribute('camera-orbit', '30deg 77.5deg 105%');
+      }
       element.addEventListener('load', loaded); element.addEventListener('error', failed);
       // This self-contained local GLB needs no AR, CDN environment or decoder.
       element.setAttribute('src', source);
@@ -78,9 +96,37 @@ function ModelInstance({ t, target, expanded, source = '/product/loop.glb', onPh
     return () => { api?.exit(); };
   }, [phase, expanded, target]);
 
+  useEffect(() => {
+    if (phase !== 'ready' || !viewer) return;
+    const model = createPersonalizationModel(viewer);
+    const lamp = createLampModel(viewer);
+    decorationModel.current = model;
+    lampModel.current = lamp;
+    return () => { model.destroy(); lamp.destroy(); decorationModel.current = null; lampModel.current = null; };
+  }, [phase, viewer]);
+
+  useEffect(() => {
+    if (phase !== 'ready' || !decorationModel.current) return;
+    const available = decorationModel.current.update(decoration) && (lampModel.current?.update(lampDecoration) ?? true);
+    onDecorationError?.(!available);
+  }, [phase, viewer, decoration, lampDecoration, onDecorationError]);
+
+  useEffect(() => {
+    const input = expanded ? pad.current : viewer;
+    if (phase !== 'ready' || !viewer || !input || !target || !selectableLamp || !hoverMarker.current) return;
+    const selection = createLampZoneSelection(viewer, input, hoverMarker.current);
+    zoneSelection.current = selection;
+    return () => { selection.destroy(); zoneSelection.current = null; };
+  }, [phase, viewer, expanded, target, selectableLamp]);
+
+  useEffect(() => {
+    if (lampZoneSelection) zoneSelection.current?.update(lampZoneSelection);
+  }, [phase, viewer, expanded, target, lampZoneSelection]);
+
   if (!target) return null;
   return createPortal(<div className="product-model" data-expanded={expanded}>
     <div className="product-model-mount" ref={mount} />
+    {selectableLamp && <span ref={hoverMarker} className="studio-model-hover-marker" hidden aria-hidden="true" />}
     {expanded && <>
       <div className="product-model-pad" ref={pad} tabIndex={phase === 'ready' ? 0 : -1} role="group" aria-label={t.rotationLabel} aria-describedby={hintId} aria-disabled={phase !== 'ready'} />
       <div className="product-model-tools" role="group" aria-label={t.fullRotation}>

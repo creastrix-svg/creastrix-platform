@@ -5,9 +5,13 @@ import { mediaForVariant, money, photoDescription, swatchBackground, variantById
 import { checkoutCopy } from './checkoutCopy';
 import type { CheckoutCopy } from './checkoutCopy';
 import { productCopy } from './copy';
-import { cartCount, cartTotal } from './demoStore';
+import { cartCount, cartLinePrice, cartTotal } from './demoStore';
 import { Icon } from './Icon';
 import { useProductLocale } from './useProductLocale';
+import { cartLineId } from './demoStore';
+import DesignThumbnail from './DesignThumbnail';
+import { cartDesignLabel, studioCartCopy } from './studioCartCopy';
+import CartDesignPriceDetails from './CartDesignPriceDetails';
 
 const fields = ['name', 'email', 'street', 'postalCode', 'city', 'country'] as const;
 type Field = typeof fields[number];
@@ -56,10 +60,13 @@ export default function CheckoutView() {
         <h2 id="checkout-summary-title">{t.summaryTitle}</h2>
         <div className="checkout-lines">{demo.cart.map(line => {
           const variant = variantById(line.variant), photo = mediaForVariant(line.variant).photos[0];
-          return <article className="checkout-line" key={line.variant} aria-label={'Loop · ' + variant.name[language]}>
-            <div className="checkout-photo">{photo ? <img src={photo} alt={photoDescription(product.photoAlt, variant.name[language])} width="88" height="88" /> : <span role="img" aria-label={product.noPhoto} style={{ background: swatchBackground(variant.colors) }} />}</div>
+          const { baseCents, feeCents, unitCents } = cartLinePrice(line);
+          const designLabel = cartDesignLabel(line, language), context = variant.name[language] + (designLabel ? ' · ' + designLabel : '');
+          return <article className="checkout-line" key={cartLineId(line)} data-cart-line-id={cartLineId(line)} aria-label={'Loop · ' + context}>
+            <div className="checkout-photo">{line.design ? <DesignThumbnail design={line.design} variant={line.variant} label={designLabel} /> : photo ? <img src={photo} alt={photoDescription(product.photoAlt, variant.name[language])} width="88" height="88" /> : <span role="img" aria-label={product.noPhoto} style={{ background: swatchBackground(variant.colors) }} />}</div>
             <div className="checkout-line-copy"><h3>Loop</h3><p>{variant.name[language]}</p>
-              <dl className="checkout-line-amount"><div><dt>{product.price}</dt><dd>{money(variant.cents, language)}</dd></div><div><dt>{product.quantity}</dt><dd>{line.quantity}</dd></div><div><dt>{product.cartLineSubtotal}</dt><dd>{money(variant.cents * line.quantity, language)}</dd></div></dl>
+              {line.design && <div className="product-cart-design-meta"><span>{designLabel}</span><CartDesignPriceDetails baseCents={baseCents} feeCents={feeCents} language={language} /><Link aria-label={`${studioCartCopy[language].edit} · ${context}`} to={`/products/loop/personalize?variant=${line.variant}&edit=${encodeURIComponent(cartLineId(line))}`}>{studioCartCopy[language].edit}</Link></div>}
+              <dl className="checkout-line-amount"><div><dt>{product.price}</dt><dd>{money(unitCents, language)}</dd></div><div><dt>{product.quantity}</dt><dd>{line.quantity}</dd></div><div><dt>{product.cartLineSubtotal}</dt><dd>{money(unitCents * line.quantity, language)}</dd></div></dl>
             </div>
           </article>;
         })}</div>

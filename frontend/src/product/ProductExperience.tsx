@@ -1,24 +1,44 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useStore } from 'react-redux';
 import { Link, Route, Routes } from 'react-router';
-import { useAppSelector } from '../hooks';
+import { isFavoriteEvent, readFavoriteIds } from './favorites';
+import { favoritesRead } from './demoStore';
+import { useAppDispatch, useAppSelector } from '../hooks';
 import { productCopy } from './copy';
 import { Icon } from './Icon';
 import ProductPage from './ProductPage';
 import { HeaderCart, SearchControl } from './HeaderControls';
 import { useStorefrontNavigation } from './useStorefrontNavigation';
+import { StorefrontOrigin, useStorefrontOrigin } from './storefrontOrigin';
 import { useProductMetadata } from './metadata';
 import { useProductLocale } from './useProductLocale';
 import { useAppearance } from './appearance';
 import StorefrontNavigation from './StorefrontNavigation';
 import CartView from './CartView';
 import CheckoutView from './CheckoutView';
-import { CollectionView, ConceptView, FavoritesView, InfoView, NotFoundView, ReviewFormView, ReviewsView } from './PreviewViews';
+import { SearchResultsView, ConceptView, FavoritesView, InfoView, NotFoundView, ReviewFormView, ReviewsView } from './PreviewViews';
+import CatalogView from './CatalogView';
+import EditionView from './EditionView';
+import { editionCollectionPath } from './routes';
+import { catalogCopy } from './catalogCopy';
 import './product.css';
 import { rememberProductPreferences, serializeProductPreferences } from './preferences';
+import PersonalizationView from './PersonalizationView';
+import PersistentStudio from './PersistentStudio';
 
 export default function ProductExperience() {
+  return <PersistentStudio browsingHome={<Storefront cartReady={false} />}><Storefront /></PersistentStudio>;
+}
+function Storefront({ cartReady = true }: { cartReady?: boolean }) {
   const language = useProductLocale(), t = productCopy[language];
   const demo = useAppSelector(state => state.productDemo);
+  const dispatch = useAppDispatch(), store = useStore();
+  useEffect(() => {
+    const refresh = () => { const ids = readFavoriteIds(store.getState); if (ids) dispatch(favoritesRead(ids)); };
+    const changed = (event: StorageEvent) => { if (isFavoriteEvent(event)) refresh(); };
+    window.addEventListener('storage', changed); refresh();
+    return () => window.removeEventListener('storage', changed);
+  }, [dispatch, store]);
   const preferences = serializeProductPreferences(demo);
   useEffect(() => { rememberProductPreferences(preferences); }, [preferences]);
   const { appearance, setAppearance, theme } = useAppearance();
@@ -35,6 +55,7 @@ export default function ProductExperience() {
     return () => { observer?.disconnect(); window.removeEventListener('resize', measure); shell.style.removeProperty('--product-header-height'); };
   }, []);
   useStorefrontNavigation(main);
+  const origin = useStorefrontOrigin();
   useProductMetadata(t, language);
   return <div className="product-storefront" data-theme={theme}>
     <div data-storefront-content>
@@ -42,21 +63,25 @@ export default function ProductExperience() {
       <header ref={header} className="product-header product-width">
         <Link to="/" className="product-logo" aria-label={t.home}><img src="/brand/creastrix-logo-horizontal-black.svg" alt="Creastrix" width="174" height="44" /></Link>
         <SearchControl />
-        <div className="product-header-actions"><Link to="/account" className="product-icon-button" aria-label={t.account}><Icon name="user" /></Link><Link to="/preview/saved" className="product-icon-button" aria-label={t.favorites}><Icon name="heart" />{demo.favorite && <span className="product-count">1</span>}</Link><HeaderCart /></div>
+        <div className="product-header-actions"><Link to="/account" className="product-icon-button" aria-label={t.account}><Icon name="user" /></Link><Link to="/preview/saved" className="product-icon-button" aria-label={demo.favorites.length ? t.favorites + ' · ' + demo.favorites.length : t.favorites}><Icon name="heart" />{demo.favorites.length > 0 && <span className="product-count">{demo.favorites.length}</span>}</Link><HeaderCart ready={cartReady} /></div>
       </header>
+      {demo.favoritesMemoryOnly && <p role="status" className="product-width">{t.favoritesMemoryOnly}</p>}
       <StorefrontNavigation appearance={appearance} onAppearance={setAppearance} />
-      <main className="product-main product-width" id="product-main" tabIndex={-1} ref={main}><Routes>
+      <main className="product-main product-width" id="product-main" tabIndex={-1} ref={main}><StorefrontOrigin.Provider value={origin}><Routes>
+        <Route path={editionCollectionPath} element={<EditionView />} />
+        <Route path={editionCollectionPath + '/:id'} element={<EditionView />} />
         <Route path="/products/loop" element={<ProductPage />} /><Route path="/products/loop/reviews" element={<ReviewsView />} /><Route path="/products/loop/reviews/new" element={<ReviewFormView />} />
+        <Route path="/products/loop/personalize" element={<PersonalizationView />} />
         <Route path="/preview/cart" element={<CartView />} /><Route path="/preview/checkout" element={<CheckoutView />} /><Route path="/preview/saved" element={<FavoritesView />} />
-        <Route path="/preview/search" element={<CollectionView search />} /><Route path="/preview/collection" element={<CollectionView />} />
+        <Route path="/preview/search" element={<SearchResultsView />} /><Route path="/catalog" element={<CatalogView />} /><Route path="/preview/collection" element={<CatalogView />} />
         <Route path="/preview/items/:id" element={<ConceptView />} /><Route path="/preview/info/:topic" element={<InfoView />} /><Route path="/preview/studio" element={<InfoView studio />} />
         <Route path="*" element={<NotFoundView />} />
-      </Routes></main>
+      </Routes></StorefrontOrigin.Provider></main>
       <footer className="product-footer"><div className="product-width"><div className="product-footer-grid">
         <div className="product-footer-brand"><Link to="/" className="product-logo"><img src="/brand/creastrix-logo-horizontal-black.svg" alt="Creastrix" width="160" height="40" /></Link><p>{t.footerTagline}</p></div>
-        <section><h2>{t.buyers}</h2><Link to="/products/loop">Loop</Link><Link to="/preview/collection">{t.collection}</Link><Link to="/preview/saved">{t.favorites}</Link></section>
+        <section><h2>{t.buyers}</h2><Link to="/catalog">{catalogCopy[language].title}</Link><Link to="/preview/saved">{t.favorites}</Link></section>
         <section><h2>{t.support}</h2><Link to="/preview/info/help">{t.help}</Link><Link to="/preview/info/delivery">{t.delivery}</Link><Link to="/preview/info/returns">{t.returns}</Link><a href="mailto:support@creastrix.com">support@creastrix.com</a></section>
-        <section><h2>{t.about}</h2><Link to="/preview/info/about">{t.how}</Link><Link to="/preview/studio">Loop Studio</Link><a href="mailto:hello@creastrix.com">{t.contact}</a><Link to="/preview/info/legal">{t.legal}</Link></section>
+        <section><h2>{t.about}</h2><Link to="/preview/info/about">{t.how}</Link><Link to="/preview/info/contact">{t.contact}</Link></section>
       </div><div className="product-footer-bottom"><span>© Creastrix</span><Link to="/preview/info/legal">{t.legal}</Link></div></div></footer>
     </div><div data-storefront-modal />
   </div>;

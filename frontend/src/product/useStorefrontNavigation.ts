@@ -3,6 +3,8 @@ import type { RefObject } from 'react';
 import { useLocation, useNavigationType } from 'react-router';
 import { isVariantId } from './catalog';
 import type { VariantId } from './catalog';
+import { isCatalogPath } from './routes';
+import { catalogQueryKeys } from './catalogBrowse';
 
 // Bounded, document-memory scroll history; not account data or persistent browser identity.
 type ProductDeparture = { left: number; top: number; variant: VariantId };
@@ -20,22 +22,30 @@ export function useStorefrontNavigation(main: RefObject<HTMLElement | null>) {
     const oldPoint = old ? positions.get(old.key) : undefined;
     const productPage = location.pathname.replace(/\/+$/, '') === '/products/loop';
     const route = location.pathname.replace(/\/+$/, ''), oldRoute = old?.pathname.replace(/\/+$/, '');
-    const cartPage = route === '/preview/cart';
+    const cartPage = route === '/preview/cart' || route === '/products/loop/personalize';
     // Carry the product departure through the local cart/checkout loop, not unrelated routes.
     const checkoutLoop = [route, oldRoute].every(path => path === '/preview/cart' || path === '/preview/checkout');
     const returnTo = cartPage && oldPoint?.product ? { left: oldPoint.left, top: oldPoint.top, variant: oldPoint.product }
       : positions.get(location.key)?.returnTo ?? (checkoutLoop ? oldPoint?.returnTo : undefined);
     const selected = main.current?.querySelector<HTMLElement>('[data-product-variant]')?.dataset.productVariant;
-    const explicitReturn = action === 'PUSH' && old?.pathname.replace(/\/+$/, '') === '/preview/cart' && productPage && !location.hash && location.state?.productReturn === true;
+    const explicitReturn = action === 'PUSH' && (oldRoute === '/preview/cart' || oldRoute === '/products/loop/personalize') && productPage && !location.hash && location.state?.productReturn === true;
     const departure = oldPoint?.returnTo;
     const saved = action === 'POP' ? positions.get(location.key) : explicitReturn && departure && departure.variant === selected ? departure : undefined;
-    const withoutVariant = (search: string) => { const params = new URLSearchParams(search); params.delete('variant'); return params.toString(); };
-    const selectionOnly = action === 'REPLACE' && old !== null && old.pathname.replace(/\/+$/, '') === '/products/loop' && location.pathname === old.pathname && location.hash === old.hash && withoutVariant(location.search) === withoutVariant(old.search);
+    const sameQueryExcept = (keys: readonly string[]) => {
+      const rest = (query: string) => { const params = new URLSearchParams(query); keys.forEach(key => params.delete(key)); return params.toString(); };
+      return !!old && rest(old.search) === rest(location.search);
+    };
+    // In-page picks update a shareable URL without moving focus or jumping to the top.
+    const selectionOnly = action === 'REPLACE' && old !== null && location.pathname === old.pathname && location.hash === old.hash
+      && ((productPage && sameQueryExcept(['variant'])) || (isCatalogPath(route) && sameQueryExcept(catalogQueryKeys)));
     previous.current = { key: location.key, pathname: location.pathname, search: location.search, hash: location.hash };
     if (!selectionOnly) {
-      if (changed || saved) main.current?.focus({ preventScroll: true });
+      // A client-side link from the account shell mounts a fresh storefront.
+      // Give it the same focus/scroll transition as an in-store link, but leave a direct entry alone.
+      const fromOtherShell = old === null && action !== 'POP';
+      if (changed || saved || fromOtherShell) main.current?.focus({ preventScroll: true });
       if (location.hash === '#product-main') main.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
-      else if (changed || saved) window.scrollTo({ left: saved?.left ?? 0, top: saved?.top ?? 0, behavior: 'instant' });
+      else if (changed || saved || fromOtherShell) window.scrollTo({ left: saved?.left ?? 0, top: saved?.top ?? 0, behavior: 'instant' });
     }
     const remember = () => {
       positions.delete(location.key);

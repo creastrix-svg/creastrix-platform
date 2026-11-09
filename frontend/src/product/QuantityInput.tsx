@@ -23,7 +23,7 @@ export default function QuantityInput({ value, max, onChange, onEmpty, t, disabl
         disabled={disabled} aria-describedby={id + '-limit'} onChange={event => change(event.target.value)}
         onBlur={() => { if (empty) { setEmpty(false); setLimited(true); onChange(1); } }} />
       <button type="button" aria-label={context ? `${t.increase} · ${context}` : t.increase} disabled={disabled || value >= max} onClick={() => { setEmpty(false); setLimited(false); onChange(value + 1); }}>+</button>
-      <span className="product-quantity-notice" id={id + '-limit'} role="status">{limited ? `${t.limit} ${max}.` : ''}</span>
+      <span className="product-quantity-notice" id={id + '-limit'} role="status">{limited && !disabled && max > 0 ? `${t.limit} ${max}.` : ''}</span>
     </div>
   </div>;
 }

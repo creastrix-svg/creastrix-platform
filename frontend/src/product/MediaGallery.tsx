@@ -1,12 +1,17 @@
 import { lazy, Suspense, useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { mediaForVariant } from './catalog';
+import { mediaForVariant, variantById } from './catalog';
 import type { VariantId } from './catalog';
 import type { ProductCopy } from './copy';
 import { Icon, Spinner } from './Icon';
 import Modal from './Modal';
 import MediaErrorBoundary from './MediaErrorBoundary';
 import MediaImage from './MediaImage';
+import LetteringSketch from './LetteringSketch';
+import { studioModelSource } from './personalizationModel';
+import type { ModelDecoration } from './personalizationModel';
+import { personalizationCopy } from './personalizationCopy';
+import type { StorefrontLocale } from './locale';
 
 const ModelPreview = lazy(() => new Promise<typeof import('./ModelPreview')>((resolve, reject) => {
   // Bound failure, not minimum latency; this cannot cancel the module fetch.
@@ -19,7 +24,9 @@ const ModelPreview = lazy(() => new Promise<typeof import('./ModelPreview')>((re
   });
 }));
 
-export default function MediaGallery({ variant, favorite, toggleFavorite, t, initialMode = 'photo', onModeChange }: { variant: VariantId; favorite: boolean; toggleFavorite: () => void; t: ProductCopy; initialMode?: 'photo' | 'model'; onModeChange?: (mode: 'photo' | 'model') => void }) {
+export default function MediaGallery({ variant, favorite, toggleFavorite, t: originalCopy, initialMode = 'photo', onModeChange, decoration, locale = 'en' }: { variant: VariantId; favorite: boolean; toggleFavorite: () => void; t: ProductCopy; initialMode?: 'photo' | 'model'; onModeChange?: (mode: 'photo' | 'model') => void; decoration?: ModelDecoration; locale?: StorefrontLocale }) {
+  const p = personalizationCopy[locale];
+  const t = decoration ? { ...originalCopy, photo: p.edit, backToPhotos: p.edit } : originalCopy;
   const [photo, setPhoto] = useState(0);
   const [mode, setMode] = useState<'photo' | 'model'>(initialMode);
   const [requestedOpen, setOpen] = useState(false);
@@ -31,13 +38,15 @@ export default function MediaGallery({ variant, favorite, toggleFavorite, t, ini
   const [inlineHost, setInlineHost] = useState<HTMLDivElement | null>(null);
   const [modalHost, setModalHost] = useState<HTMLDivElement | null>(null);
   const photoTab = useRef<HTMLButtonElement>(null), enlarge = useRef<HTMLButtonElement>(null), wasOpen = useRef(false);
-  const media = mediaForVariant(variant);
+  const media = decoration ? { ...mediaForVariant(variant), model: studioModelSource(variant) } : mediaForVariant(variant);
+  const [decorationFailed, setDecorationFailed] = useState(false);
+  const sketch = decoration ? <LetteringSketch variant={variant} value={decoration} objects={decoration.objects} label={p.applied} /> : null;
   const modelSource = media.model;
   const photos = media.photos, hasPhotos = photos.length > 0;
   const currentPhoto = Math.min(photo, Math.max(0, photos.length - 1));
   const rawPhoto = photos[currentPhoto];
   const displayMode = mode;
-  const open = requestedOpen && (displayMode === 'model' ? !!media.model : hasPhotos);
+  const open = requestedOpen && (displayMode === 'model' ? !!media.model : hasPhotos || !!decoration);
   useLayoutEffect(() => {
     // Loading or a terminal media error may disable/remove the original opener.
     if (wasOpen.current && !open && (!enlarge.current || enlarge.current.disabled)) photoTab.current?.focus({ preventScroll: true });
@@ -56,9 +65,9 @@ export default function MediaGallery({ variant, favorite, toggleFavorite, t, ini
   const retryPhoto = () => setFailedPhotos(previous => { const next = new Set(previous); next.delete(photoKey); return next; });
   function selectMode(next: 'photo' | 'model') { if (next === 'model') setModelStarted(true); setMode(next); onModeChange?.(next); }
   const unavailable = <div className="product-model-fallback"><p role="status">{t.modelFailed}</p><button type="button" className="product-secondary" onClick={() => selectMode('photo')}>{t.backToPhotos}</button></div>;
-  const noPhoto = <div className="product-no-photo"><Icon name="layers" /><strong>{t.noPhoto}</strong><p>{t.noPhotoBody}</p>{photoFailed && <button type="button" className="product-text-button" onClick={retryPhoto}>{t.retryPhoto}</button>}</div>;
+  const noPhoto = <div className="product-no-photo"><Icon name="layers" /><strong>{t.noPhoto}</strong>{photoFailed && <><p>{t.noPhotoBody}</p><button type="button" className="product-text-button" onClick={retryPhoto}>{t.retryPhoto}</button></>}</div>;
   const thumbnailPlaceholder = (key: string) => <span key={key} className="product-thumbnail-placeholder" role="img" aria-label={t.noPhoto}><Icon name="image" /><span>{t.noPhotoShort}</span></span>;
-  const thumbnails = (expanded: boolean) => <div className={expanded ? 'product-gallery-thumbnails' : 'product-thumbnails'} role="group" aria-label={t.photo}>
+  const thumbnails = (expanded: boolean) => decoration ? null : <div className={expanded ? 'product-gallery-thumbnails' : 'product-thumbnails'} role="group" aria-label={t.photo}>
     {!hasPhotos && thumbnailPlaceholder('empty')}
     {photos.map((source, index) => {
       const key = `${variant}:${source}`;
@@ -72,19 +81,20 @@ export default function MediaGallery({ variant, favorite, toggleFavorite, t, ini
     </div>
     <div className="product-media">
       <div className="product-model-host" ref={setInlineHost} hidden={!media.model || displayMode !== 'model' || open} />
-      {displayMode === 'model' ? media.model ? <button ref={enlarge} type="button" className="product-model-expand product-icon-button" disabled={modelPhase !== 'ready'} aria-busy={modelBusy} aria-label={t.enlarge} onClick={() => setOpen(true)}>{modelBusy ? <Spinner /> : <Icon name="expand" />}</button> : unavailable : hasPhotos && !photoFailed ? <button ref={enlarge} type="button" className="product-photo-open" disabled={photoBusy} aria-busy={photoBusy} aria-label={t.enlarge} onClick={() => setOpen(true)}><MediaImage key={photoKey} src={rawPhoto} alt={t.photoAlt} width={1200} height={802} priority="high" className="product-photo-change" loadingLabel={t.loadingPhoto} errorLabel={t.noPhotoShort} announce onPhase={photoPhase} onFailure={() => failPhoto(photoKey)} /><span className="product-photo-expand">{photoBusy ? <Spinner /> : <Icon name="expand" />}</span></button>
+      {displayMode === 'model' ? media.model ? <button ref={enlarge} type="button" className="product-model-expand product-icon-button" disabled={modelPhase !== 'ready'} aria-busy={modelBusy} aria-label={t.enlarge} onClick={() => setOpen(true)}>{modelBusy ? <Spinner /> : <Icon name="expand" />}</button> : unavailable : decoration ? <button type="button" ref={enlarge} className="product-photo-open" aria-label={t.enlarge} onClick={() => setOpen(true)}>{sketch}<span className="product-photo-expand"><Icon name="expand" /></span></button> : hasPhotos && !photoFailed ? <button ref={enlarge} type="button" className="product-photo-open" disabled={photoBusy} aria-busy={photoBusy} aria-label={t.enlarge} onClick={() => setOpen(true)}><MediaImage key={photoKey} src={rawPhoto} alt={t.photoAlt} width={1200} height={802} priority="high" className="product-photo-change" loadingLabel={t.loadingPhoto} errorLabel={t.noPhotoShort} announce onPhase={photoPhase} onFailure={() => failPhoto(photoKey)} /><span className="product-photo-expand">{photoBusy ? <Spinner /> : <Icon name="expand" />}</span></button>
         : noPhoto}
-      <button type="button" className="product-favorite" aria-label={favorite ? t.unfavorite : t.favorite} aria-pressed={favorite} onClick={() => { if (!favorite) setFavoriteTick(value => value + 1); toggleFavorite(); }}><span key={favoriteTick} className={favorite && favoriteTick > 0 ? 'product-heart-added' : undefined}><Icon name="heart" filled={favorite} /></span></button>
+      <button type="button" className="product-favorite" aria-label={favorite ? t.unfavorite : t.favorite} aria-description={variantById(variant).name[locale]} aria-pressed={favorite} onClick={() => { if (!favorite) setFavoriteTick(value => value + 1); toggleFavorite(); }}><span key={favoriteTick} className={favorite && favoriteTick > 0 ? 'product-heart-added' : undefined}><Icon name="heart" filled={favorite} /></span></button>
     </div>
     {thumbnails(false)}
+    {decorationFailed && decoration && <p role="alert">{p.modelUnavailable}</p>}
     {open && <Modal title={t.gallery} closeLabel={t.close} className="product-media-dialog" onClose={() => setOpen(false)} actions={<button type="button" className="product-media-dialog-toggle" disabled={displayMode === 'photo' && !media.model} onClick={() => selectMode(displayMode === 'photo' ? 'model' : 'photo')}>{modelBusy && displayMode === 'model' ? <Spinner /> : <Icon name={displayMode === 'photo' ? 'cube' : 'image'} />}<span>{displayMode === 'photo' ? t.model : t.photo}</span></button>} onKeyDown={event => {
       if (!event.altKey && !event.ctrlKey && !event.metaKey && displayMode === 'photo' && photos.length > 1 && (event.key === 'ArrowRight' || event.key === 'ArrowLeft')) { event.preventDefault(); setPhoto(index => (index + (event.key === 'ArrowRight' ? 1 : photos.length - 1)) % photos.length); }
     }}>
       <div className="product-gallery-view">
-        <div className="product-gallery-image"><div className="product-model-host" ref={setModalHost} hidden={displayMode !== 'model'} />{displayMode === 'photo' && <>{photoFailed ? noPhoto : <MediaImage key={photoKey} src={rawPhoto} alt={`${t.photoAlt} · ${currentPhoto + 1}`} width={1200} height={802} className="product-photo-change" loadingLabel={t.loadingPhoto} errorLabel={t.noPhotoShort} announce onFailure={() => failPhoto(photoKey)} />}{photos.length > 1 && <><button type="button" className="product-gallery-arrow product-gallery-prev" aria-label={t.previous} onClick={() => setPhoto(index => (index + photos.length - 1) % photos.length)}><span className="product-flip"><Icon name="chevron" /></span></button><button type="button" className="product-gallery-arrow product-gallery-next" aria-label={t.next} onClick={() => setPhoto(index => (index + 1) % photos.length)}><Icon name="chevron" /></button></>}</>}</div>
-        <div className="product-gallery-footer"><div className="product-gallery-bar">{displayMode === 'photo' ? thumbnails(true) : <strong>{t.fullRotation}</strong>}<span role="status">{displayMode === 'photo' ? `${currentPhoto + 1} / ${photos.length}` : t.model}</span></div>{displayMode === 'model' && <p>{t.modelHint}</p>}</div>
+        <div className="product-gallery-image"><div className="product-model-host" ref={setModalHost} hidden={displayMode !== 'model'} />{displayMode === 'photo' && <>{decoration ? sketch : photoFailed ? noPhoto : <MediaImage key={photoKey} src={rawPhoto} alt={`${t.photoAlt} · ${currentPhoto + 1}`} width={1200} height={802} className="product-photo-change" loadingLabel={t.loadingPhoto} errorLabel={t.noPhotoShort} announce onFailure={() => failPhoto(photoKey)} />}{!decoration && photos.length > 1 && <><button type="button" className="product-gallery-arrow product-gallery-prev" aria-label={t.previous} onClick={() => setPhoto(index => (index + photos.length - 1) % photos.length)}><span className="product-flip"><Icon name="chevron" /></span></button><button type="button" className="product-gallery-arrow product-gallery-next" aria-label={t.next} onClick={() => setPhoto(index => (index + 1) % photos.length)}><Icon name="chevron" /></button></>}</>}</div>
+        <div className="product-gallery-footer"><div className="product-gallery-bar">{displayMode === 'photo' ? thumbnails(true) : <strong>{t.fullRotation}</strong>}<span role="status">{displayMode === 'photo' ? decoration ? p.applied : `${currentPhoto + 1} / ${photos.length}` : t.model}</span></div>{displayMode === 'model' && <p>{t.modelHint}</p>}</div>
       </div>
     </Modal>}
-    {modelStarted && media.model && <MediaErrorBoundary key={media.model} onFailure={modelFailed} fallback={displayMode === 'model' && target ? createPortal(unavailable, target) : null}><Suspense fallback={displayMode === 'model' && target ? createPortal(<p className="product-model-status" role="status"><Spinner />{t.loadingModel}</p>, target) : null}><ModelPreview source={media.model} t={t} target={target} expanded={open && displayMode === 'model'} onPhase={modelPhaseChanged} /></Suspense></MediaErrorBoundary>}
+    {modelStarted && media.model && <MediaErrorBoundary key={media.model} onFailure={modelFailed} fallback={displayMode === 'model' && target ? createPortal(unavailable, target) : null}><Suspense fallback={displayMode === 'model' && target ? createPortal(<p className="product-model-status" role="status"><Spinner />{t.loadingModel}</p>, target) : null}><ModelPreview source={media.model} t={t} target={target} expanded={open && displayMode === 'model'} onPhase={modelPhaseChanged} decoration={decoration} onDecorationError={setDecorationFailed} /></Suspense></MediaErrorBoundary>}
   </section>;
 }

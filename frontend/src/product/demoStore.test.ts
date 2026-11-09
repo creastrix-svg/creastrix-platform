@@ -6,15 +6,18 @@ import { cartAdded, cartCount, cartLineRemoved, cartQuantityChanged, cartTotal, 
 
 const defaultPurchase = { cobalt: 1, coral: 1, chalk: 1, 'cobalt-chalk': 1 };
 
-describe('public memory-only product state', () => {
-  it('keeps purchase drafts separate from cart lines and permanently narrows them when available capacity falls', () => {
+describe('public product demo state', () => {
+  it('resets only the submitted draft, and permanently narrows pending drafts when remaining stock falls', () => {
     const store = createAppStore('en', vi.fn());
     store.dispatch(purchaseQuantityChanged({ variant: 'coral', quantity: 6 }));
     store.dispatch(purchaseQuantityChanged({ variant: 'cobalt-chalk', quantity: 3 }));
     expect(store.getState().productDemo.cart).toEqual([]);
     store.dispatch(cartAdded({ variant: 'cobalt-chalk', quantity: 3 }));
-    expect(store.getState().productDemo.purchaseQuantities['cobalt-chalk']).toBe(3);
+    expect(store.getState().productDemo.purchaseQuantities['cobalt-chalk']).toBe(1);
+    expect(store.getState().productDemo.purchaseQuantities.coral).toBe(6);
     store.dispatch(cartAdded({ variant: 'coral', quantity: 3 }));
+    expect(store.getState().productDemo.purchaseQuantities.coral).toBe(1);
+    store.dispatch(purchaseQuantityChanged({ variant: 'coral', quantity: 6 }));
     expect(store.getState().productDemo.purchaseQuantities.coral).toBe(5);
     store.dispatch(cartQuantityChanged({ variant: 'coral', quantity: 7 }));
     store.dispatch(cartQuantityChanged({ variant: 'coral', quantity: 2 }));
@@ -23,7 +26,7 @@ describe('public memory-only product state', () => {
     expect(store.getState().productDemo.purchaseQuantities.coral).toBe(0);
     store.dispatch(cartLineRemoved('coral'));
     expect(store.getState().productDemo.purchaseQuantities.coral).toBe(1);
-    expect(store.getState().productDemo.purchaseQuantities['cobalt-chalk']).toBe(3);
+    expect(store.getState().productDemo.purchaseQuantities['cobalt-chalk']).toBe(1);
     expect(store.getState().productDemo.addSerial).toBe(2);
     expect(createAppStore('en', vi.fn()).getState().productDemo.purchaseQuantities).toEqual(defaultPurchase);
   });
@@ -48,26 +51,26 @@ describe('public memory-only product state', () => {
     for (const invalid of ['unknown', 'constructor', '__proto__', '', 'Cobalt']) store.dispatch(productVariantSelected(invalid as VariantId));
     expect(store.getState().productDemo.selectedVariant).toBe('cobalt-chalk');
     expect(store.getState().productDemo.cart).toEqual(before.productDemo.cart);
-    expect(store.getState().productDemo.favorite).toEqual(before.productDemo.favorite);
+    expect(store.getState().productDemo.favorites).toEqual(before.productDemo.favorites);
     expect(store.getState().authentication).toEqual(before.authentication);
     expect(persist).not.toHaveBeenCalled(); expect(localStorage.length).toBe(0);
     expect(createAppStore('en', persist).getState().productDemo.selectedVariant).toBe('cobalt');
   });
-  it('stores one representative favorite variant, clears it on removal and captures the current color on re-add', () => {
+  it('keeps favourite colours independent and persists exact removals', () => {
     const persist = vi.fn(), store = createAppStore('en', persist);
     store.dispatch(favoriteToggled('coral'));
-    expect(store.getState().productDemo.favorite).toBe('coral');
+    expect(store.getState().productDemo.favorites).toEqual(['coral']);
     store.dispatch(cartAdded({ variant: 'chalk', quantity: 1 }));
-    expect(store.getState().productDemo.favorite).toBe('coral');
+    expect(store.getState().productDemo.favorites).toEqual(['coral']);
     store.dispatch(favoriteToggled('cobalt-chalk'));
-    expect(store.getState().productDemo.favorite).toBeNull();
+    expect(store.getState().productDemo.favorites).toEqual(['coral', 'cobalt-chalk']);
     store.dispatch(favoriteToggled('cobalt-chalk'));
-    expect(store.getState().productDemo.favorite).toBe('cobalt-chalk');
-    store.dispatch(favoriteRemoved()); store.dispatch(favoriteRemoved());
-    expect(store.getState().productDemo.favorite).toBeNull();
+    expect(store.getState().productDemo.favorites).toEqual(['coral']);
+    store.dispatch(favoriteRemoved('coral')); store.dispatch(favoriteRemoved('coral'));
+    expect(store.getState().productDemo.favorites).toEqual([]);
     expect(store.getState().productDemo.cart).toEqual([{ variant: 'chalk', quantity: 1 }]);
     expect(persist).not.toHaveBeenCalled(); expect(localStorage.length).toBe(0);
-    expect(createAppStore('en', persist).getState().productDemo.favorite).toBeNull();
+    expect(createAppStore('en', persist).getState().productDemo.favorites).toEqual([]);
   });
   it('supports one/two local sample tones and renders an exact diagonal half split with explicit check contrast', () => {
     expect(swatchBackground(['#244bcc'])).toBe('#244bcc');
@@ -90,12 +93,13 @@ describe('public memory-only product state', () => {
   it.each([0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])('rejects invalid quantity %s without changing cart', quantity => {
     const store = createAppStore('en', vi.fn());
     store.dispatch(cartAdded({ variant: 'cobalt', quantity: 2 }));
+    store.dispatch(purchaseQuantityChanged({ variant: 'cobalt', quantity: 4 }));
     const before = store.getState().productDemo;
     store.dispatch(cartAdded({ variant: 'cobalt', quantity }));
     store.dispatch(cartQuantityChanged({ variant: 'cobalt', quantity }));
     expect(store.getState().productDemo).toEqual(before);
   });
-  it('edits/removes one colour without changing another or product-level favorite', () => {
+  it('edits/removes one colour without changing another or saved colours', () => {
     const store = createAppStore('de', vi.fn());
     store.dispatch(favoriteToggled('cobalt'));
     store.dispatch(cartAdded({ variant: 'cobalt', quantity: 12 }));
@@ -104,21 +108,21 @@ describe('public memory-only product state', () => {
     expect(cartCount(store.getState().productDemo)).toBe(23);
     expect(cartTotal(store.getState().productDemo)).toBe(55_800);
     store.dispatch(cartLineRemoved('cobalt'));
-    expect(store.getState().productDemo).toEqual({ favorite: 'cobalt', cart: [{ variant: 'coral', quantity: 3 }], cartOrder: ['cobalt', 'coral'], cartRemoved: { cobalt: { quantity: 20, revision: 4 } }, locale: null, addSerial: 2, selectedVariant: 'cobalt', purchaseQuantities: defaultPurchase, descriptionOpen: false, mediaMode: 'photo', cartChange: { revision: 4, kind: 'removed', variant: 'cobalt' } });
+    expect(store.getState().productDemo).toEqual({ favorites: ['cobalt'], cart: [{ variant: 'coral', quantity: 3 }], cartSerial: 1, cartOrder: ['cobalt', 'coral'], cartRemoved: { cobalt: { quantity: 20, revision: 4 } }, locale: null, addSerial: 2, selectedVariant: 'cobalt', purchaseQuantities: defaultPurchase, descriptionOpen: false, mediaMode: 'photo', cartChange: { revision: 4, kind: 'removed', variant: 'cobalt' } });
   });
-  it('has no account/persistence coupling and remount starts empty', () => {
+  it('keeps cart/account state separate while saved colours survive a fresh store', () => {
     const persist = vi.fn(), store = createAppStore('en', persist);
     const authBefore = store.getState().authentication;
     store.dispatch(cartAdded({ variant: 'cobalt', quantity: 12 }));
     store.dispatch(favoriteToggled('cobalt'));
     expect(store.getState().authentication).toEqual(authBefore);
     expect(persist).not.toHaveBeenCalled();
-    expect(localStorage.length).toBe(0);
+    expect(localStorage.length).toBe(1);
     const owner = { document: 'one', epoch: 1, request: 1, revision: 'test' };
     store.dispatch(authenticationStarted({ owner, phase: 'CHECKING', notice: 'NONE' }));
     store.dispatch(authenticationFinished({ owner, result: { phase: 'AUTHENTICATED', notice: 'NONE', user: { id: '11111111-1111-4111-8111-111111111111', status: 'ACTIVE' } } }));
     store.dispatch(authenticationStarted({ owner: { ...owner, epoch: 2 }, phase: 'TRANSITION', notice: 'NONE' }));
-    expect(store.getState().productDemo).toEqual({ favorite: 'cobalt', cart: [{ variant: 'cobalt', quantity: 12 }], cartOrder: ['cobalt'], cartRemoved: {}, locale: null, addSerial: 1, selectedVariant: 'cobalt', purchaseQuantities: defaultPurchase, descriptionOpen: false, mediaMode: 'photo', cartChange: { revision: 1, kind: 'other' } });
-    expect(createAppStore('en', persist).getState().productDemo).toEqual({ favorite: null, cart: [], cartOrder: [], cartRemoved: {}, locale: null, addSerial: 0, selectedVariant: 'cobalt', purchaseQuantities: defaultPurchase, descriptionOpen: false, mediaMode: 'photo', cartChange: { revision: 0, kind: 'other' } });
+    expect(store.getState().productDemo).toEqual({ favorites: ['cobalt'], cart: [{ variant: 'cobalt', quantity: 12 }], cartSerial: 1, cartOrder: ['cobalt'], cartRemoved: {}, locale: null, addSerial: 1, selectedVariant: 'cobalt', purchaseQuantities: defaultPurchase, descriptionOpen: false, mediaMode: 'photo', cartChange: { revision: 1, kind: 'other' } });
+    expect(createAppStore('en', persist).getState().productDemo).toEqual({ favorites: ['cobalt'], cart: [], cartSerial: 1, cartOrder: [], cartRemoved: {}, locale: null, addSerial: 0, selectedVariant: 'cobalt', purchaseQuantities: defaultPurchase, descriptionOpen: false, mediaMode: 'photo', cartChange: { revision: 0, kind: 'other' } });
   });
 });

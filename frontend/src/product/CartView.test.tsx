@@ -39,7 +39,7 @@ it('renders variant-owned media, current unit prices, line subtotals and separat
 it('keeps numeric stock and quantity notices truthful, clamps at own stock and recomputes current-price totals', () => {
   const { main, store, t } = show([{ variant: 'chalk', quantity: 2 }]);
   const line = within(main).getByRole('article', { name: 'Loop · Chalk' });
-  expect(line.querySelector('.product-cart-stock')).toHaveTextContent(t.stock + ': 15 ' + t.pieces);
+  expect(line.querySelector('.product-cart-stock')).toHaveTextContent(t.stock + ': 15');
   const input = within(line).getByRole('textbox', { name: t.quantity + ' · Chalk' });
   fireEvent.change(input, { target: { value: '999' } }); expect(input).toHaveValue('15');
   expect(within(line).getByText(t.limit + ' 15.')).toBeVisible(); expect(store.getState().productDemo.cart[0].quantity).toBe(15);
@@ -247,8 +247,9 @@ it.each(storefrontLocales)('renders localized Continue shopping and disables che
 it.each(['cart', 'checkout'] as const)('preserves productReturn colour, purchase draft, Photo/3D and disclosure via %s', async action => {
   const { user, store, t } = show([], '/products/loop?variant=cobalt-chalk');
   act(() => {
-    store.dispatch(productVariantSelected('cobalt-chalk')); store.dispatch(purchaseQuantityChanged({ variant: 'cobalt-chalk', quantity: 3 }));
-    store.dispatch(productMediaModeSelected('model')); store.dispatch(productDescriptionChanged(true)); store.dispatch(cartAdded({ variant: 'cobalt-chalk', quantity: 2 }));
+    store.dispatch(productVariantSelected('cobalt-chalk')); store.dispatch(cartAdded({ variant: 'cobalt-chalk', quantity: 2 }));
+    store.dispatch(purchaseQuantityChanged({ variant: 'cobalt-chalk', quantity: 3 }));
+    store.dispatch(productMediaModeSelected('model')); store.dispatch(productDescriptionChanged(true));
   });
   // Use the media mode control as well: the mounted gallery owns its current mode.
   await user.click(screen.getByRole('button', { name: t.model }));

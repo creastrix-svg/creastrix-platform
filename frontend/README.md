@@ -7,6 +7,31 @@ local React/dev-proxy/browser F. A separate bounded real Auth0 owner walkthrough
 completed on 2026-10-11; this historical evidence is not a Cognito transfer.
 Public access and rollout remain unverified and unauthorized.
 
+## Buyer catalog (local preview)
+
+Open `/catalog` (or its older alias `/preview/collection`) to browse products
+and individual design concepts. Loop has **one** card, irrespective of how
+many finishes match. Buyers choose a finish on its product page; a specific
+colour or sale filter can suggest a matching finish. Favourites retain their
+existing variant identity. The editorial collection is not itself a catalog
+item. Concepts open their own previews with no price or purchase action.
+
+The **Menu** button opens a left-side drawer for the whole collection or a
+specific selection. Its short slide and backdrop fade respect reduced motion.
+Filters distinguish the offer (ready-made, made to order, production file, or
+design concept) from the making technique and the buyer's personalisation
+options. Colours can be combined: a match can satisfy any checked option in a
+group, but must satisfy every active group. Made-to-order items and production
+files currently have no matches; a concept is neither a file nor a promise
+to manufacture. The cards show fixture details and the actual empty review
+state, not generated ratings or popularity.
+
+Filter selections and sorting live in the URL (`format`, `custom`,
+`technique`, `color`, `sale`, `category`, `group`, `sort`). Browser Back and the
+product breadcrumb return to the previous selection. The page can sort by
+displayed base price, name or available quantity. This is a local React storefront:
+no catalog API, published listings, or checkout integration is included.
+
 ## Product experience — FRONTEND-PRODUCT-001
 
 FRONTEND-PRODUCT-001 adds a standalone
@@ -16,17 +41,20 @@ document-memory state; it never expands or rewrites the authentication DE/EN
 preference or its storage. It translates the owner's final product mockup,
 not the Lovable redesign or an embedded HTML/iframe. The original external HTML
 is unchanged. The new footer, native smooth rails and main-photo thumbnails are
-explicit owner-approved exceptions to that reference.
+explicit owner-approved exceptions to that reference. The shared footer leads to
+store sections, not individual products or their studios.
 
 The opaque theme-aware header is sticky, with a compact two-row mobile layout.
 Its measured height supplies local anchor/focus clearance; resize does not scroll
 the page. Search/cart popups and the icon menu remain below the modal layer.
 
-Variant-owned images and four self-contained GLBs live in `public/product`.
-Cobalt keeps its three original photos; coral, chalk and the cobalt/chalk demo
-combination each have one separately approved AI example. Every colour selects
-its own approximate open-pot GLB/material; the old `loop.glb` is retained unused.
-These are visual samples, not manufacturing geometry or product evidence.
+Loop uses the [cobalt hero photo](public/product/reference-asset-01.webp) as its
+shape reference. The [shared profile](src/product/loopShape.json) defines the
+foot, curved sides and open rim for both the four colour-specific product models
+(`loop-shaped-*.glb`) and the [2D studio sketch](src/product/loopSketchProjection.ts).
+Cobalt keeps its three original photos; coral, chalk and cobalt/chalk each have
+one illustrative AI image. The legacy `loop.glb` is not used. The profile is a
+visual approximation from the photo, not measured CAD or fabrication geometry.
 Photo/3D share a viewport-centred keyboard modal, with focus
 restoration and background inertness. `@google/model-viewer` 4.0.0 is a pinned,
 lazy renderer loaded only on 3D selection, with an explicit loading/error fallback.
@@ -35,9 +63,10 @@ chunk is separate from ordinary storefront and authentication code. Expanded
 view adds public-API quaternion arcball rotation, roll, pinch/twist, bounded zoom,
 reset and keyboard controls only after actual load. Inline has bounded orbit
 controls and a reset to the normal product view. Fullscreen captures the actual
-numeric inline orbit/target and attributes before free rotation; closing restores
-that view and its bounds, not the free pose. Fullscreen Reset/Home restores that
-expanded session's start without overwriting the captured inline selection.
+numeric inline orbit/target and opens from that angle with extra framing room.
+Closing restores the original inline view and its bounds unless Reset/Home was
+used: reset centres the model at its normal product angle and zoom for each
+viewport. Further free rotation in the dialog does not change the card's view.
 One viewer survives host/language changes for the same source. Colour changes
 retain the selected Photo/3D intent while a keyed gallery resets source-owned
 photo index, errors, loading and viewer pose. 3D loads that colour's own model,
@@ -57,14 +86,19 @@ and explicit retries belong to the exact variant/source, not neighbouring images
 The thumbnail strip retains its height for zero, one or three photos; missing or
 failed assets use noninteractive placeholders, and a single photo has no arrows.
 
-Public Redux sample cart/favorite state is memory-only, unrelated to credentials,
-account identity or private authentication state. A separate version-1 bounded
+Public Redux sample cart/favorite state is unrelated to credentials, account
+identity or private authentication state. The local studio adapter below now
+persists active cart lines; saved colours use independent local keys. A separate version-1 bounded
 `creastrix.product.loop.preferences` record remembers only selected colour,
-per-colour purchase quantity, Photo/3D intent and description disclosure across
-refresh. An explicit valid URL colour wins; invalid/duplicate colour queries use
-cobalt. Unknown versions/fields, malformed or oversized records fall back safely;
+per-colour quantity to add next, Photo/3D intent and description disclosure across
+refresh. A cart visit leaves an unsubmitted quantity alone. A successful add resets
+only that colour's picker to one (zero and disabled when exhausted). The product
+page separately shows the active cart quantity matching its colour and applied
+design; stock is shared across all designs of that colour. An explicit valid URL
+colour wins; invalid/duplicate colour queries use cobalt. Unknown versions/fields,
+malformed or oversized records fall back safely;
 quantities are safe integers clamped to each sample stock. A cart-exhausted zero
-restores as one for the new empty cart. Denied/full storage keeps in-memory use.
+restores as one before cart hydration reconciles the remaining capacity. Denied/full storage keeps in-memory use.
 No account, authentication, cart, favorite, locale or appearance value is persisted
 by this adapter; existing locale/theme behavior and auth lifecycle are unchanged.
 Preferences are local to this browser origin, not account synchronization or
@@ -88,16 +122,20 @@ The form has an editable rating and text; invalid/missing ratings remain unselec
 It publishes nothing and submits no request or persistent data. Star-prefix hover
 is decoration, not a submitted or stored rating; quantity and swatch feedback do
 not resize controls.
-One product-level favorite stores the variant selected at add time. Changing colour
-does not overwrite that representative; remove/re-add captures the new selection.
-The saved card shows its name and actual photo or swatch, and opens the captured
-variant through a validated query. Unknown or duplicate variant queries use cobalt.
-No account storage, persistent favorite or seller/backend API is introduced.
+The heart saves a product in its selected colour, not a standalone colour or a
+personalised design. Saved products lists each marked variant
+with its own photo or swatch, current sample price and direct variant link.
+Each known variant owns one localStorage key under `creastrix.product.loop.favorites.v1.`:
+saving writes a one-character marker and removing deletes only that key. Tabs
+cannot overwrite other colours by writing an outdated list. No design,
+account identifier, cart or price is stored in favorites. Storage failure
+leaves the current view usable, without guaranteeing recovery after reload.
 The icon-only appearance popup uses menu-radio keyboard navigation and localized
 accessible names, without changing authentication appearance. Chalk's sample
 €24.00-to-€19.90 comparison produces a checked, rounded17% demo tag; all totals
 and saved prices use current integer cents. This is not live offer/pricing logic.
-Refresh starts a new empty demo cart. Header hover/focus preview supports editing
+Refresh restores a valid local preview cart through the studio adapter below.
+Header hover/focus preview supports editing
 and removal. Its bounded last-five item list alone scrolls; header, total and
 View cart remain outside that scroll area, including short viewports.
 Click/touch opens `/preview/cart`. The small `/preview/*` routes and
@@ -159,10 +197,163 @@ Search submit uses the same matcher. A future real endpoint would need a roughly
 and distinct loading/error/empty states; no such endpoint is implemented here.
 
 Creastrix remains the MVP seller/merchant; Loop Studio is only a demo design author.
-Personalisation opens an honest later-slice explanation, not an editor, AI service
-or manufacturing approval. No checkout, payment, product/Workspace API, linking,
-new domain model or rollout is delivered. Existing `/`, `/login`, `/confirm-email`,
+Personalisation opens the local creative studio described below. Checkout is a separate
+interface prototype; payment, product/Workspace API, account linking, a new approved
+domain model and rollout are not delivered. Existing `/login`, `/confirm-email`,
 `/account`, authentication lifecycle and fixed development proxy are unchanged.
+
+### Personalisation studio — interface prototype
+
+`/products/loop/personalize?variant=cobalt` opens an area-based local studio.
+The product is selected by the route; there is no in-editor demonstration switcher.
+The existing `?product=lamp` route opens Luma directly. Each product profile supplies its available areas, operations, tools, fonts and
+colours. Loop offers text, pictures and AI ideas on its front surface. Luma offers
+prepared cut-out patterns, visual stencil text/pictures and AI ideas on its front panel, and text/pictures on
+its base. Switching areas preserves their separate drafts. An unavailable or
+unconfigured profile exposes no active personalisation entry or editor tools.
+These are local fixtures, not a seller configuration API.
+
+The AI service is not connected: its brief stays local and a concise availability
+message explains this beside the field. No example gallery substitutes for generated
+results. Prepared lamp patterns remain in the configured pattern tool. There is no
+paid generation, provider call or Python manufacturing service in this slice.
+
+The Loop text editor has a live front sketch, six font styles, three ink colours,
+size and bounded position controls, drag with slider alternatives, grouped undo/redo,
+comparison without text and a confirmed, undoable reset.
+Input is limited to 32 complete graphemes and two lines; overflowing text remains
+editable but cannot be applied. The visual working area is a UI fixture, not an
+approved production constraint or `Personalization` domain record.
+Loop text and Luma base text share their respective area bounds with the visible
+frame and texture mapping. Position limits account for the whole measured text
+block and glyph overhang, with a small inset at the edges. The base uses its full
+front face; both 2D sketches support dragging and slider alternatives. Panel cut
+text stays in its fixed, visibly marked lower band.
+
+Apply creates a separate product-preview snapshot, rendered on the Loop product
+card in 2D and 3D. Drafts/applied snapshots remain per colour and separately per
+Luma area. Returning preserves colour and scroll; removing an applied preview keeps
+its draft. Add to cart copies the entire applied composition into a stable local
+line. Equal designs of the same variant add to that line; different designs and plain
+items stay separate. Exact-line editing owns a detached draft: explicit Save updates
+only that line, while cancel/back leaves both the cart and product draft unchanged.
+The AI brief is product-local and not part of a cart design; line editing exposes
+only text/image controls. All design lines share the variant's stock capacity.
+Minicart, remove/undo and checkout summaries preserve those identities and amounts.
+
+`creastrix-studio-local` IndexedDB version 1 stores one atomic bounded snapshot:
+current/applied documents, deduplicated PNG resources, custom font bytes, prepared
+motifs/local briefs and active cart lines. It excludes undo histories, removal
+tombstones, unsaved cart-editor edits, checkout contact fields and private account
+state. Existing preferences retain their key/shape; live plain cart lines are not
+overwritten by hydration. There was no historical persisted cart schema to migrate.
+Restoration validates and decodes before enabling editing, remapping runtime font,
+image and object counters without collisions. No network/storage URL or executable
+image payload is accepted. Luma drafts persist without making Luma purchasable.
+Returning from the account shell remounts the resource library without replacing live
+cart quantities or identities. Custom font IDs are rebound only to the exact
+previous font bytes; a different tab's coincident ID cannot substitute another
+font. An unavailable resource fails visibly rather than silently using a fallback.
+
+The record is limited to 24 Mi characters, 48 distinct raster assets, 64 million
+decoded pixels and three custom fonts. Normalized PNG restoration has a separate
+10 MiB/1536-pixel-edge limit; the public compressed upload remains 5 MiB/16 MP.
+Writes are queued; saved means transaction completion, not request success. A
+compare-and-write in the same transaction refuses to overwrite a changed record
+from another tab. This is single-tab editing with conflict detection, not cross-tab
+merge. A late old save cannot mark a newer failed/oversized draft saved. Corrupt or
+unsupported stored state is retained, with explicit memory-only continuation.
+Quota, unavailable storage and serialization failure show a not-saved notice while
+keeping live work usable. Browser site-data clearing/eviction is outside this local
+durability boundary. No account save/quote/upload/order endpoint is called.
+Loop uses one illustrative €5 surcharge per personalised unit, independent of
+the number of text or picture layers. The studio previews the draft's unit
+price; the product uses the applied design and each cart line uses its own saved
+design. For example, two personalised Cobalt units cost 2 × (€24 + €5) = €58.
+The current variant price is used, including sale prices. Refresh recomputes
+amounts from the local fixtures; prices are not persisted or guaranteed.
+Luma has no purchase price. No server quote, payment or order is created.
+
+Each configured area now owns an ordered composition of up to eight text/image
+objects. Selection, addition, deletion, layer order, resizing and dragging use one
+canonical composition; SVG and 3D texture adapters consume the same object order
+and zone-relative image bounds. Object edits share a 40-step per-area history;
+selection is not an edit and text reset affects only the selected object. Prepared
+motifs and local AI briefs remain outside that object history. Apply validates all
+text objects in both lamp areas and snapshots the complete composition. Image modes
+are free, contain and cover; contain/cover use the complete zone, keep aspect ratio
+and crop cover without stretching. File/font request ownership includes object ID,
+zone and a supersession epoch. Undo/delete/selection cannot redirect a late result.
+Image assets are shared by history snapshots and may remain retained for undo;
+the mounted-storefront lifetime, object cap and history bounds limit retention.
+
+The 3D view reuses the existing lazy local viewer and its inline/expanded controls.
+The four `studio-loop-*.glb` assets use the same pot geometry as the product
+models and separate the outer wall so lettering and images stay off the rim and
+interior. Two reusable canvas textures decorate that wall without replacing its
+normal map. The sketch shows the same profile in a fixed front view; it guides
+placement, not exact print dimensions. If a model fails to load, 2D remains available.
+GPU resource lifetime remains controlled by the renderer; canvas backing stores
+and material bindings are cleaned up, without claiming immediate GPU disposal.
+After changing `loopShape.json`, regenerate all eight Loop assets and check
+them from the repository root:
+
+```sh
+node scripts/generate-personalization-models.mjs
+node --test scripts/generate-personalization-models.test.mjs
+```
+
+Pictures are decoded locally: PNG/JPEG/WebP up to 5 MiB and 16 megapixels, with a
+header-dimension guard before decoding and an 8192-pixel edge limit. The resulting
+canvas is reduced proportionally to a maximum edge of 1536 and normalised to PNG.
+Reading and decoding each have a 12-second bound. Cancelled or obsolete results
+cannot replace a draft; failed replacement preserves the previous picture. SVG,
+remote image URLs and production vectorisation are outside this upload control.
+
+Loop's six font styles include locally bundled Nunito, Cormorant Garamond and Caveat;
+licenses, pinned sources and hashes are in `public/fonts/`. Where the configured
+area permits custom fonts, buyers can add up to three TTF/OTF/WOFF2 files per mounted
+studio session, each at most 2 MiB. Luma's base offers only sans, serif and mono;
+its front panel offers the bundled Allerta Stencil. A file
+header check precedes browser FontFace decoding, with an eight-second bound and
+owned cleanup. Unique accepted font IDs preserve applied previews and text undo.
+Font files are not transmitted. Rights and available glyphs remain the buyer's
+responsibility; browser fallback is not proof of a usable manufacturing font.
+
+Luma is a plywood-lamp example, not another purchasable catalog item. Its prepared
+botanical, forest and orbit cut-out patterns include their connecting material.
+The buyer cannot remove or tune bridges. The panel offers prepared patterns plus
+optional stencil text in a reserved lower band (one line, at most 14 Latin letters,
+digits, spaces or hyphens). Font loading and visual fit are checked before applying;
+unsupported glyphs are reported rather than replaced by a fallback font. Arbitrary
+pictures are not converted to cut geometry. The base separately accepts text and
+pictures as visual engraving references. The panel also permits a visual image/text
+composition in the same lower band, explicitly not an image-to-cut service. Both
+composition drafts and undo histories remain
+independent; applying validates both areas, even when one is not selected.
+The 3D preview contains the lamp assembly and pattern openings; surface previews
+do not create new text-shaped holes or simulate engraving depth. Neither the model
+nor visual fit certifies material-dependent bridge strength,
+manufacturing validity or a production-ready cutting file.
+The three `studio-lamp-*.glb` files share their prepared pattern descriptors with
+the flat panel view. Their sampled, extruded openings are display geometry rather
+than an engineering mesh; the warm inner diffuser is an illustrative material.
+Generate/check these fixtures from the repository root with:
+
+```sh
+node --experimental-strip-types scripts/generate-lamp-models.mjs
+node --experimental-strip-types --test scripts/generate-lamp-models.test.mjs
+```
+
+The studio supports all seven storefront languages and light/dark appearance.
+Connected AI, computer vision/vector validation, seller-side area authoring,
+authoritative manufacturing limits, saved account designs, commercial cart/order
+integration and manufacturing export require later, separately approved slices.
+The owner's accepted direction includes configured personalisation on existing
+stock, but that hybrid workflow is outside the current APPROVED Ready-Made Product
+scope and DRAFT Personalization/Listing rules. See the
+[configured-area decision and domain gap](../docs/frontend-personalization-zones.md).
+Current fixtures do not approve those drafts or change backend behaviour.
 
 The disconnected built preview can be run on the separately agreed loopback port:
 

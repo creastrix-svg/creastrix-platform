@@ -9,6 +9,8 @@ class PublicViewerFixture extends HTMLElement {
   interpolationDecay = 50;
   orbit = { theta: Math.PI / 6, phi: 68 * Math.PI / 180, radius: 1 };
   target = { x: .1, y: .2, z: 0 };
+  model = { materials: ['Studio lamp front panel','Studio lamp front cut edge','Studio lamp base engraving'].map(name => ({ name, emissiveFactor: [0,0,0], setEmissiveFactor: vi.fn() })) };
+  materialFromPoint = vi.fn(() => this.model.materials[0]);
   getCameraOrbit() { return { ...this.orbit }; }
   getCameraTarget() { return { ...this.target }; }
   jumpCameraToGoal() {
@@ -22,16 +24,26 @@ if (!customElements.get('model-viewer')) customElements.define('model-viewer', P
 const targets: HTMLElement[] = [];
 function host() { const element = document.createElement('div'); document.body.append(element); targets.push(element); return element; }
 afterEach(() => { vi.useRealTimers(); targets.splice(0).forEach(element => element.remove()); });
-async function start(expanded = false) {
+async function start(expanded = false, source?: string) {
   vi.useFakeTimers();
   const target = host();
-  const view = render(<ModelPreview t={productCopy.en} target={target} expanded={expanded} />);
-  await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+  const view = render(<ModelPreview t={productCopy.en} target={target} expanded={expanded} source={source} />);
+  await act(async () => { await vi.dynamicImportSettled(); });
   return { ...view, target, viewer: target.querySelector('model-viewer') as unknown as PublicViewerFixture };
 }
+it.each(['/product/loop-shaped-cobalt.glb', '/product/studio-loop-cobalt-chalk.glb', '/product/studio-lamp-forest.glb'])('uses the same long lens for product and studio Loop, without changing lamp framing: %s', async source => {
+  const { viewer } = await start(false, source);
+  if (source.includes('lamp')) {
+    expect(viewer).not.toHaveAttribute('field-of-view');
+    expect(viewer).toHaveAttribute('camera-orbit', '30deg 68deg 105%');
+  } else {
+    expect(viewer).toHaveAttribute('field-of-view', '12deg');
+    expect(viewer).toHaveAttribute('camera-orbit', '30deg 77.5deg 105%');
+  }
+});
 it('loads only the local GLB without AR/external environment and cancels the deadline after real load notification', async () => {
   const { viewer } = await start();
-  expect(viewer).toHaveAttribute('src', '/product/loop.glb');
+  expect(viewer).toHaveAttribute('src', '/product/loop-shaped-cobalt.glb');
   expect(viewer).toHaveAttribute('camera-controls');
   expect(viewer).toHaveAttribute('tabindex', '0');
   expect(viewer).toHaveAttribute('aria-label', productCopy.en.model);
@@ -93,7 +105,7 @@ it('keeps one viewer across hosts/languages but restores the captured actual inl
   rerender(<ModelPreview t={productCopy.de} target={null} expanded={false} />); expect(viewer.isConnected).toBe(false);
   rerender(<ModelPreview t={productCopy.en} target={expandedHost} expanded />);
   expect(expandedHost.querySelector('model-viewer')).toBe(viewer); expect(viewer).toHaveAttribute('orientation', '0rad 0rad 0rad');
-  expect(viewer).toHaveAttribute('src', '/product/loop.glb'); expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(viewer).toHaveAttribute('src', '/product/loop-shaped-cobalt.glb'); expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });
 
 it('cancels a not-yet-painted free gesture and restores inline before the fullscreen host disappears', async () => {
@@ -171,4 +183,71 @@ it.each(['rejected', 'deadline'])('keeps a module-import %s failure terminal eve
     await act(async () => { release?.(); for (let i = 0; i < 10; i++) await Promise.resolve(); });
     expect(target.querySelector('model-viewer')).toBeNull(); expect(screen.getByRole('button', { name: productCopy.en.rotateLeft })).toBeDisabled();
   } finally { vi.doMock('@google/model-viewer', () => ({})); vi.resetModules(); }
+});
+
+function tapZone(element: HTMLElement, id = 1) {
+  for (const type of ['pointerdown','pointerup']) fireEvent(element,new PointerEvent(type,{pointerId:id,clientX:100,clientY:120,button:0,isPrimary:true,bubbles:true,composed:true}));
+}
+it('selects zones only after load and keeps picking/highlighting attached to the current inline or expanded host', async () => {
+  const {viewer,target,rerender,unmount} = await start(), onSelect = vi.fn();
+  const props = { t:productCopy.en,target,expanded:false,lampZoneSelection:{selected:'base' as const,onSelect} };
+  rerender(<ModelPreview {...props} />);
+  vi.spyOn(viewer,'getBoundingClientRect').mockReturnValue(new DOMRect(0,0,400,300));
+  tapZone(viewer); expect(viewer.materialFromPoint).not.toHaveBeenCalled();
+  fireEvent(viewer,new Event('load')); tapZone(viewer); expect(onSelect).toHaveBeenLastCalledWith('panel');
+  expect(target.querySelector('.studio-model-hover-marker')).toHaveAttribute('hidden');
+  expect(viewer.model.materials[2].setEmissiveFactor).not.toHaveBeenCalled();
+  const expandedHost = host(); rerender(<ModelPreview {...props} target={expandedHost} expanded lampZoneSelection={{selected:'panel',onSelect}} />);
+  const pad = expandedHost.querySelector<HTMLElement>('.product-model-pad')!;
+  vi.spyOn(pad,'getBoundingClientRect').mockReturnValue(new DOMRect(0,0,400,300));
+  viewer.materialFromPoint.mockReturnValue(viewer.model.materials[2]);
+  tapZone(pad); expect(onSelect).toHaveBeenLastCalledWith('base'); expect(onSelect).toHaveBeenCalledTimes(2);
+  tapZone(viewer); expect(onSelect).toHaveBeenCalledTimes(2);
+  fireEvent.click(screen.getByRole('button',{name:productCopy.en.resetView})); expect(onSelect).toHaveBeenCalledTimes(2);
+  rerender(<ModelPreview {...props} lampZoneSelection={{selected:'panel',onSelect}} />);
+  tapZone(pad); expect(onSelect).toHaveBeenCalledTimes(2);
+  tapZone(viewer); expect(onSelect).toHaveBeenCalledTimes(3);
+  unmount(); tapZone(viewer); expect(onSelect).toHaveBeenCalledTimes(3);
+  for (const material of viewer.model.materials) expect(material.setEmissiveFactor).not.toHaveBeenCalled();
+});
+
+it('removes selection behavior and highlight when the optional feature is removed or loading fails', async () => {
+  const {viewer,target,rerender} = await start(), onSelect = vi.fn();
+  vi.spyOn(viewer,'getBoundingClientRect').mockReturnValue(new DOMRect(0,0,400,300));
+  fireEvent(viewer,new Event('load'));
+  rerender(<ModelPreview t={productCopy.en} target={target} expanded={false} lampZoneSelection={{selected:'base',onSelect}} />);
+  tapZone(viewer); expect(onSelect).toHaveBeenCalledOnce();
+  rerender(<ModelPreview t={productCopy.en} target={target} expanded={false} />);
+  tapZone(viewer); expect(onSelect).toHaveBeenCalledOnce();
+  expect(target.querySelector('.studio-model-hover-marker')).toBeNull();
+  rerender(<ModelPreview t={productCopy.en} target={target} expanded={false} lampZoneSelection={{selected:'base',onSelect}} />);
+  fireEvent(viewer,new Event('error')); tapZone(viewer); expect(onSelect).toHaveBeenCalledOnce();
+  expect(viewer.model.materials[2].setEmissiveFactor).not.toHaveBeenCalled();
+});
+
+it('cleans the hover marker, cursor ownership and queued rays across hidden mode, fullscreen and source replacement', async () => {
+  const {viewer,target,rerender,unmount} = await start(), onSelect=vi.fn();
+  const props = { t:productCopy.en,target,expanded:false,lampZoneSelection:{selected:'base' as const,onSelect} };
+  viewer.style.cursor='grab';
+  vi.spyOn(viewer,'getBoundingClientRect').mockReturnValue(new DOMRect(0,0,400,300));
+  fireEvent(viewer,new Event('load')); rerender(<ModelPreview {...props} />);
+  const hover = (element:HTMLElement) => { fireEvent(element,new PointerEvent('pointermove',{pointerType:'mouse',pointerId:1,buttons:0,clientX:100,clientY:120,bubbles:true,composed:true})); act(() => vi.advanceTimersByTime(20)); };
+  hover(viewer); expect(viewer.style.cursor).toBe('pointer');
+  expect(target.querySelector('.studio-model-hover-marker')).toHaveAttribute('data-hover-zone','panel');
+  rerender(<ModelPreview {...props} lampZoneSelection={undefined} />);
+  expect(viewer.style.cursor).toBe('grab'); expect(target.querySelector('.studio-model-hover-marker')).toBeNull();
+  const expandedHost=host(); rerender(<ModelPreview {...props} target={expandedHost} expanded />);
+  const pad=expandedHost.querySelector<HTMLElement>('.product-model-pad')!;
+  vi.spyOn(pad,'getBoundingClientRect').mockReturnValue(new DOMRect(0,0,400,300));
+  hover(pad); expect(pad.style.cursor).toBe('pointer'); expect(onSelect).not.toHaveBeenCalled();
+  expect(expandedHost.querySelector('.studio-model-hover-marker')).toHaveAttribute('data-hover-zone','panel');
+  rerender(<ModelPreview {...props} source="/product/studio-lamp-forest.glb" />);
+  expect(pad.style.cursor).toBe(''); expect(expandedHost.querySelector('.studio-model-hover-marker')).toBeNull();
+  expect(viewer.model.materials[0].setEmissiveFactor).not.toHaveBeenCalled();
+  const previousCalls=viewer.materialFromPoint.mock.calls.length; hover(pad); expect(viewer.materialFromPoint).toHaveBeenCalledTimes(previousCalls);
+  await act(async () => { await vi.dynamicImportSettled(); });
+  const current=target.querySelector('model-viewer') as unknown as PublicViewerFixture;
+  expect(current).not.toBe(viewer); vi.spyOn(current,'getBoundingClientRect').mockReturnValue(new DOMRect(0,0,400,300));
+  fireEvent(current,new Event('load')); hover(current); expect(current.style.cursor).toBe('pointer');
+  unmount(); expect(current.style.cursor).toBe(''); expect(vi.getTimerCount()).toBe(0);
 });

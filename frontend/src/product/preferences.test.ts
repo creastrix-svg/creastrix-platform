@@ -25,7 +25,7 @@ describe('versioned public Loop preference allowlist', () => {
     localStorage.setItem(PRODUCT_PREFERENCES_KEY, JSON.stringify({ ...preference, purchaseQuantities: { ...preference.purchaseQuantities, cobalt: quantity } }));
     expect(readProductPreferences().purchaseQuantities.cobalt).toBe(1);
     const state = createAppStore('en', vi.fn()).getState();
-    expect(state.productDemo.cart).toEqual([]); expect(state.productDemo.favorite).toBeNull(); expect(state.authentication.user).toBeNull();
+    expect(state.productDemo.cart).toEqual([]); expect(state.productDemo.favorites).toEqual([]); expect(state.authentication.user).toBeNull();
   });
   it('clamps safe integers to each own stock and maps cart-exhausted zero to fresh quantity one', () => {
     localStorage.setItem(PRODUCT_PREFERENCES_KEY, JSON.stringify({ ...preference, purchaseQuantities: { cobalt: 900, coral: 900, chalk: 900, 'cobalt-chalk': 900 } }));

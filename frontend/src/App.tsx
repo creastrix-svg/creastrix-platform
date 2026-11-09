@@ -6,7 +6,7 @@ import ConfirmEmail from './ConfirmEmail';
 import { useAppDispatch, useAppSelector } from './hooks';
 import { copy } from './i18n';
 import { languageSelected } from './store';
-import { isProductPath } from './product/routes';
+import { isStorefrontPath } from './product/routes';
 
 const ProductExperience = lazy(() => import('./product/ProductExperience'));
 
@@ -127,7 +127,7 @@ export default function App() {
   const dispatch = useAppDispatch();
   const t = copy[language];
   const { pathname } = useLocation();
-  const productPath = isProductPath(pathname);
+  const productPath = isStorefrontPath(pathname);
   const previousPath = useRef(pathname);
   const main = useRef<HTMLElement>(null);
   const currentPath = pathname.replace(/\/+$/, '').toLowerCase() || '/';
