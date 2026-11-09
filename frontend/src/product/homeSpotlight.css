@@ -1,0 +1,58 @@
+.home-shelf-filters {
+  min-width: 0; display: flex; align-items: center; gap: 5px;
+  overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+.product-storefront .home-shelf-filters button {
+  position: relative; flex: none; min-height: 44px; min-width: 44px; padding: 8px 12px;
+  isolation: isolate; border: 0; border-radius: 999px; background: none;
+  font-size: 13px; white-space: nowrap; line-height: 1.2; font-weight: 560; color: var(--product-muted);
+}
+.home-shelf-filters button::before { position: absolute; z-index: -1; content: ""; inset: 5px 0; border-radius: inherit; }
+.home-shelf-filters button:hover::before { background: var(--product-soft); }
+.product-storefront .home-shelf-filters button[aria-pressed="true"] { color: var(--product-bg); }
+.home-shelf-filters button[aria-pressed="true"]::before { background: var(--product-text); }
+.home-featured {
+  display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); align-items: start;
+  gap: 25px clamp(10px,1.25vw,22px); list-style: none; margin: 0; padding: 0;
+}
+.home-featured-tile { min-width: 0; }
+.product-storefront .home-featured-card { display: block; min-width: 0; color: var(--product-text); text-decoration: none; border-radius: 6px; }
+.home-featured-media {
+  display: grid; place-items: center; width: 100%; aspect-ratio: 1.22; overflow: hidden;
+  background: var(--product-soft); border-radius: 6px; isolation: isolate;
+}
+.home-featured-media img { width: 100%; height: 100%; min-height: 0; object-fit: cover; display: block; }
+.home-featured-fallback { display: grid; place-items: center; text-align: center; gap: 5px; font-size: 12px; color: var(--product-muted); }
+.home-featured-fallback svg { width: 18px; height: 18px; }
+.home-featured-caption { display: grid; gap: 4px; padding: 10px 1px 0; min-width: 0; overflow-wrap: break-word; }
+.home-featured-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 1px 7px; line-height: 1.28; }
+.home-featured-title strong { font-size: clamp(17px,1.3vw,21px); letter-spacing: -.035em; font-weight: 640; }
+.home-featured-title > span { font-size: 13px; font-weight: 500; }
+.home-featured-material { color: var(--product-muted); font-size: 12px; line-height: 1.4; }
+.home-featured-card:focus-visible { outline: 2px solid var(--product-ring); outline-offset: 2px; }
+.home-shelf-filters button:focus-visible { outline: 2px solid var(--product-ring); outline-offset: -2px; }
+.home-featured-card:hover .home-featured-title strong { text-decoration: underline; text-underline-offset: 3px; }
+.home-featured-status { justify-self: start; margin-top: 2px; padding: 3px 7px; border-radius: 4px;
+  background: var(--product-soft); color: var(--product-muted); font-size: 11px; line-height: 1.35; font-weight: 540; }
+.home-offer-end { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; margin-top: 2px; }
+.home-offer-end > strong { font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.home-offer-action { display: inline-flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 600; }
+.home-offer-action svg { width: 15px; height: 15px; }
+.home-featured-card:hover .home-offer-action { text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .home-featured-media img { transition: transform 300ms ease-out; }
+  .home-featured-card:hover .home-featured-media img { transform: scale(1.035); }
+}
+@media (max-width: 1023px) {
+  .home-featured { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .home-featured-media { aspect-ratio: 1.36; }
+}
+@media (max-width: 779px) {
+  .home-featured { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 19px 11px; }
+  .home-featured-media { aspect-ratio: 1.1; }
+  .product-storefront .home-shelf-filters button { padding-inline: clamp(8px,2vw,13px); font-size: 12px; }
+  .home-featured-caption { padding-top: 8px; }
+  .home-featured-title { display: grid; gap: 1px; }
+  .home-offer-action { font-size: 11px; gap: 3px; }
+}

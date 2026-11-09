@@ -10,6 +10,10 @@ import { READ_TIMEOUT_MS } from './authentication';
 import type { Authentication, Notice, Phase } from './authentication';
 import { EmailConfirmationContext } from './emailConfirmation';
 import { copy } from './i18n';
+import { productCopy } from './product/copy';
+import { homeCopy } from './product/homeCopy';
+import { catalogCopy } from './product/catalogCopy';
+import { PRODUCT_PREFERENCES_KEY } from './product/preferences';
 import { authenticationFinished, authenticationStarted, createAppStore } from './store';
 import { initialLanguage, LANGUAGE_KEY } from './language';
 import type { Language } from './language';
@@ -22,9 +26,14 @@ const controllers: Authentication[] = [];
 const lifecycleDisposers: (() => void)[] = [];
 afterEach(() => { lifecycleDisposers.splice(0).forEach(dispose => dispose()); controllers.splice(0).forEach(runtime => runtime.dispose()); delete document.documentElement.dataset.authPrivate; vi.unstubAllEnvs(); vi.useRealTimers(); });
 
+let fixtureNumber = 0;
 function show(path = '/', language: Language = 'en') {
   const store = createAppStore(language);
-  const view = render(<Provider store={store}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></Provider>);
+  // Independent browsers have separate document scroll histories. MemoryRouter's
+  // shared default initial key would turn a fresh keyboard visit into Back navigation.
+  const url = new URL(path, 'http://localhost');
+  const entry = { pathname: url.pathname, search: url.search, hash: url.hash, key: 'test-entry-' + ++fixtureNumber };
+  const view = render(<Provider store={store}><MemoryRouter initialEntries={[entry]}><App /></MemoryRouter></Provider>);
   return { ...view, store, user: userEvent.setup() };
 }
 
@@ -61,8 +70,11 @@ function connected(path = '/account', language: Language = 'en', enabled = true,
 describe('public routes, language and keyboard support', () => {
   it('opens a protected account route from home without inventing an identity or workspace list', async () => {
     const { user, store } = show();
-    expect(screen.getByRole('heading', { level: 1, name: copy.en.homeTitle })).toBeVisible();
-    await user.click(screen.getByRole('link', { name: copy.en.openAccount }));
+    await screen.findByRole('main', {}, { timeout: 5000 });
+    expect(within(screen.getByRole('main')).getByRole('heading', { level: 1 })).toBeVisible();
+    expect(document.title).toBe(homeCopy.en.title + ' · Creastrix');
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute('content', homeCopy.en.description);
+    await user.click(within(screen.getByRole('banner')).getByRole('link', { name: productCopy.en.account }));
     expect(screen.getByRole('heading', { level: 1, name: copy.en.accountTitle })).toBeVisible();
     expect(screen.getByText(copy.en.status.CHECKING)).toBeVisible();
     expect(screen.queryByText(A.id)).not.toBeInTheDocument();
@@ -70,7 +82,8 @@ describe('public routes, language and keyboard support', () => {
     expect(screen.queryByText(copy.en.workspaceBody)).not.toBeInTheDocument();
     expect(screen.getByRole('main')).toHaveFocus();
     expect(store.getState().authentication.user).toBeNull();
-    expect(localStorage.length).toBe(0);
+    // Only public product preferences may be written by this visit.
+    expect(Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i))).toEqual([PRODUCT_PREFERENCES_KEY]);
   });
 
   it('has no password/email controls and disables unimplemented signup and social methods', () => {
@@ -80,6 +93,26 @@ describe('public routes, language and keyboard support', () => {
     expect(document.querySelector('input[type=password],input[type=email]')).toBeNull();
     expect(screen.getByRole('button', { name: copy.en.continueLogin })).toBeDisabled();
     expect(screen.getByText(copy.en.methodsNote)).toBeVisible();
+  });
+
+  it('keeps the buyer header, storefront language and search mounted across home and catalog', async () => {
+    const { user, store } = show();
+    const banner = await screen.findByRole('banner');
+    const search = within(banner).getByRole('search');
+    await user.selectOptions(screen.getByRole('combobox', { name: productCopy.en.language }), 'ru');
+    expect(document.documentElement.lang).toBe('ru');
+    expect(document.title).toBe(homeCopy.ru.title + ' · Creastrix');
+    expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute('content', homeCopy.ru.description);
+    await user.click(within(screen.getByRole('main')).getByRole('link', { name: homeCopy.ru.browse }));
+    expect(screen.getByRole('heading', { name: catalogCopy.ru.pageHeading })).toBeVisible();
+    expect(screen.getByRole('main')).toHaveFocus();
+    expect(screen.getByRole('search')).toBe(search);
+    expect(search.closest('header')).toBe(banner);
+    await user.click(within(banner).getByRole('link', { name: productCopy.ru.home }));
+    expect(document.title).toBe(homeCopy.ru.title + ' · Creastrix');
+    expect(screen.getByRole('main')).toHaveFocus();
+    expect(store.getState().ui.language).toBe('en');
+    expect(store.getState().authentication.user).toBeNull();
   });
 
   it.each(['en', 'de'] as const)('supports protected direct account navigation and labels in %s', language => {
@@ -109,7 +142,9 @@ describe('public routes, language and keyboard support', () => {
     const { user } = show('/missing');
     expect(screen.getByRole('heading', { name: copy.en.notFoundTitle })).toBeVisible();
     await user.click(screen.getByRole('link', { name: copy.en.backHome }));
-    expect(screen.getByRole('heading', { name: copy.en.homeTitle })).toBeVisible();
+    await screen.findByRole('search');
+    expect(document.title).toBe(homeCopy.en.title + ' · Creastrix');
+    expect(screen.getByRole('main')).toHaveFocus();
   });
 
   it.each(['/account/', '/ACCOUNT'])('keeps title consistent with the router for %s', path => {
@@ -120,15 +155,21 @@ describe('public routes, language and keyboard support', () => {
 
   it('keeps early skip link, keyboard navigation and the selected brand', async () => {
     const { user } = show();
-    expect(screen.getByRole('img', { name: 'Creastrix' })).toHaveAttribute('src', '/brand/creastrix-logo-horizontal-black.svg');
+    const header = within(await screen.findByRole('banner'));
+    expect(header.getByRole('img', { name: 'Creastrix' })).toHaveAttribute('src', '/brand/creastrix-logo-horizontal-black.svg');
     await user.tab();
-    expect(screen.getByRole('link', { name: copy.en.skip })).toHaveFocus();
+    expect(screen.getByRole('link', { name: productCopy.en.skip })).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole('link', { name: 'Creastrix — Home' })).toHaveFocus();
+    expect(header.getByRole('link', { name: productCopy.en.home })).toHaveFocus();
     await user.tab();
+    expect(header.getByRole('combobox', { name: productCopy.en.search })).toHaveFocus();
     await user.tab();
-    expect(within(screen.getByRole('navigation', { name: copy.en.navigation })).getByRole('link', { name: copy.en.login })).toHaveFocus();
+    expect(header.getByRole('button', { name: productCopy.en.searchSubmit })).toHaveFocus();
+    await user.tab();
+    expect(header.getByRole('link', { name: productCopy.en.account })).toHaveFocus();
     await user.keyboard('{Enter}');
+    expect(screen.getByRole('heading', { name: copy.en.accountTitle })).toBeVisible();
+    await user.click(within(screen.getByRole('navigation', { name: copy.en.navigation })).getByRole('link', { name: copy.en.login }));
     expect(screen.getByRole('heading', { name: copy.en.loginTitle })).toBeVisible();
   });
 });

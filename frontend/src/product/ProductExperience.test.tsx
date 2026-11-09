@@ -1277,7 +1277,13 @@ describe('native horizontal carousel requests', () => {
 });
 
 describe('new route integration preserves existing authentication entry points', () => {
-  it.each(['/', '/login', '/account', '/confirm-email'])('keeps %s in the existing pilot shell', path => {
+  it('opens the public shopping homepage outside the account shell', async () => {
+    const { container } = show('/', 'en', true);
+    const navigation = await screen.findByRole('navigation', { name: 'Shop by category' }, { timeout: 5000 });
+    expect(navigation.closest('.product-storefront')).not.toBeNull();
+    expect(container.querySelector('.shell')).toBeNull();
+  });
+  it.each(['/login', '/account', '/confirm-email'])('keeps %s in the existing pilot shell', path => {
     const { container } = show(path, 'en', true);
     expect(container.querySelector('.shell')).not.toBeNull();
     expect(container.querySelector('.product-storefront')).toBeNull();

@@ -7,7 +7,37 @@ local React/dev-proxy/browser F. A separate bounded real Auth0 owner walkthrough
 completed on 2026-10-11; this historical evidence is not a Cognito transfer.
 Public access and rollout remain unverified and unauthorized.
 
-## Buyer catalog (local preview)
+## Buyer homepage and catalog (local preview)
+
+Open `/` to explore the buyer storefront without signing in. It shares search,
+saved products, cart, language and appearance controls with the catalog and
+product pages. Account access is still available from the header. The homepage
+is readable while local drafts and cart contents are being restored; the
+mini-cart does not offer edits against a cart that has not been restored.
+
+The wide campaign opens the complete catalog. The carved-pattern banner
+opens `/catalog?group=custom-or-made`: personalised items, made-to-order goods
+**or** production files. It does not open an editor until a product is chosen.
+Three category entrances below it show a closed gift box with a denim-blue ribbon,
+embroidery in progress, and a carved figure holding an amber sphere beside its
+sketch and drafting tools. They open **Ready-made**, **To personalise** and
+**Design concepts** respectively. The two desktop banners use the same three
+column tracks as the entrances: the catalog spans the first two, and the
+customisation banner occupies the third. Phones stack the banners.
+See the [image sources and credits](public/shop-edition/process-photo-credits.txt)
+for the packaging and design-concept artwork.
+
+Popular picks can be narrowed to gifts, home, accessories, desk, kitchen, or
+decor. The catalog link beside the section heading opens that same category;
+with **All** selected it opens the full catalog. The large campaign above always
+opens the full catalog. These selections are not sales analytics.
+The default shelf shows Loop once and 31 individual design previews: eight rows
+of four on a wide screen. Thumbnails load lazily; the smaller grids keep the same
+items on tablets and phones. Designs have individual detail URLs, localised
+descriptions and two WebP sizes. Each tile links directly to the product or
+design detail, without a separate quick-view button. Concepts show neither
+prices nor fictional stock. Loop uses its existing
+variant pricing. Purchasing and backend contracts are unchanged.
 
 Open `/catalog` (or its older alias `/preview/collection`) to browse products
 and individual design concepts. Loop has **one** card, irrespective of how

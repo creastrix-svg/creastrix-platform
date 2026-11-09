@@ -20,6 +20,7 @@ import { SearchResultsView, ConceptView, FavoritesView, InfoView, NotFoundView, 
 import CatalogView from './CatalogView';
 import EditionView from './EditionView';
 import { editionCollectionPath } from './routes';
+import StorefrontHome from './StorefrontHome';
 import { catalogCopy } from './catalogCopy';
 import './product.css';
 import { rememberProductPreferences, serializeProductPreferences } from './preferences';
@@ -68,6 +69,7 @@ function Storefront({ cartReady = true }: { cartReady?: boolean }) {
       {demo.favoritesMemoryOnly && <p role="status" className="product-width">{t.favoritesMemoryOnly}</p>}
       <StorefrontNavigation appearance={appearance} onAppearance={setAppearance} />
       <main className="product-main product-width" id="product-main" tabIndex={-1} ref={main}><StorefrontOrigin.Provider value={origin}><Routes>
+        <Route path="/" element={<StorefrontHome />} />
         <Route path={editionCollectionPath} element={<EditionView />} />
         <Route path={editionCollectionPath + '/:id'} element={<EditionView />} />
         <Route path="/products/loop" element={<ProductPage />} /><Route path="/products/loop/reviews" element={<ReviewsView />} /><Route path="/products/loop/reviews/new" element={<ReviewFormView />} />

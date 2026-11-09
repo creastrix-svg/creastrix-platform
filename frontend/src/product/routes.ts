@@ -10,5 +10,5 @@ export function isCatalogPath(path: string) {
 }
 
 export function isStorefrontPath(path: string) {
-  return isCatalogPath(path) || isEditionPath(path) || path === '/products/loop' || path.startsWith('/products/loop/') || path === '/preview' || path.startsWith('/preview/');
+  return path === '/' || isCatalogPath(path) || isEditionPath(path) || path === '/products/loop' || path.startsWith('/products/loop/') || path === '/preview' || path.startsWith('/preview/');
 }
