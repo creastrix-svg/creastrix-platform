@@ -22,6 +22,8 @@ it('keeps only the last five fixture lines in a separate scroll body, with stati
     name: { ...catalog.variants[0].name, en: `Fixture ${index + 1}` },
   }));
   vi.spyOn(catalog, 'variantById').mockImplementation(id => fixtures.find(item => item.id === id) ?? original(id));
+  const isRealVariant = catalog.isVariantId;
+  vi.spyOn(catalog, 'isVariantId').mockImplementation((id): id is VariantId => fixtures.some(item => item.id === id) || isRealVariant(id));
   vi.stubGlobal('innerHeight', 320); vi.stubGlobal('innerWidth', 640);
   const store = createAppStore('en');
   fixtures.forEach(item => store.dispatch(cartAdded({ variant: item.id, quantity: 1 })));
@@ -40,6 +42,7 @@ it('keeps only the last five fixture lines in a separate scroll body, with stati
   expect(list).not.toContainElement(footer);
   expect(list).not.toContainElement(within(popup).getByRole('heading', { name: t.cart }));
   expect(footer).toHaveTextContent('€8.00');
+  expect(within(footer).getByText(t.cartItemsSubtotal)).toBeVisible();
   expect(popup.style.getPropertyValue('--product-peek-height')).toBe('228px');
   expect(popup.style.getPropertyValue('--product-peek-top')).toBe('80px');
   // Static CSS/DOM evidence is deliberately not a browser geometry claim.

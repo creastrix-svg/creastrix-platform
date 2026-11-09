@@ -601,8 +601,31 @@ L1 and the OPEN public-readiness gate are unchanged.
 - Third-party seller self-service may be introduced later.
 - The architecture should remain extensible for a future seller marketplace without implementing that marketplace now.
 - Creastrix-first selling is platform policy rather than an invariant of Ready-Made Product.
+- On 2026-10-20 the owner accepted zone-based buyer personalisation: the product
+  author prepares permitted areas and operations, and the offer exposes only those
+  capabilities. Existing-stock products may offer personalisation when explicitly
+  enabled and configured by the seller; unavailable configuration offers no active
+  editor entry. This is accepted product direction and a bounded frontend prototype,
+  not approval or backend implementation of hybrid stock-plus-processing fulfilment.
+  Ready-Made Product APPROVED 1.1 and the current Personalization/Revision/Listing
+  drafts remain unchanged and require separate reconciliation before that workflow.
+  See the [frontend scope and domain gap](docs/frontend-personalization-zones.md).
+- On 2026-10-23 the owner requested text for both cutting and engraving in that
+  prototype. Tools, AI access, font choices and text limits follow the selected
+  area's configuration. Luma demonstrates separate panel stencil text and base
+  engraving drafts in 2D/3D; cut text remains a surface preview, not manufacturing
+  geometry. This extends the frontend proposal only, not the integrated baseline
+  or approved production domain specifications.
 
 ## Next Steps
+
+The owner-authorized 2026-11-06 frontend work extends the proposed local studio into
+Loop's product/cart preview: complete design snapshots, independent cart-line edits
+and bounded browser-only draft/cart/image/font persistence. Luma's two areas are
+retained without a buying route. Fixture prices remain illustrative; no account
+save, backend cart/order, production quote, manufacturing export or domain approval
+is implied. This is unintegrated frontend work, not an accepted main capability;
+author verification, browser/mobile checks and independent review are separate gates.
 
 1. With IMPLEMENTATION 005A/V6, 005B/V7, 005C/V8, and foundation V9/V10 integrated, separately agree the next bounded step and MVP scope with the owner before further authoring or implementation. Any next Ready-Made Product implementation slice requires explicit selection and independent review against the remaining unimplemented behavior in APPROVED 1.1; no slice is selected or started here.
 2. Do not implement Listing, Order Item, Shipment, or commerce integration from their DRAFT specifications before separate approval.

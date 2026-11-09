@@ -5,7 +5,8 @@ import type { Language } from './language';
 import { sameOwner } from './authBoundary';
 import type { Owner } from './authBoundary';
 import type { Notice, Outcome, Phase } from './authentication';
-import productDemoReducer from './product/demoStore';
+import { writeFavorite } from './product/favorites';
+import productDemoReducer, { favoriteRemoved, favoriteToggled, favoriteStorageReported } from './product/demoStore';
 
 const uiSlice = createSlice({
   name: 'ui',
@@ -42,6 +43,14 @@ export function createAppStore(language: Language, persist = rememberLanguage) {
   preferenceListener.startListening({
     actionCreator: languageSelected,
     effect: action => { persist(action.payload); },
+  });
+  preferenceListener.startListening({
+    matcher: (action): action is ReturnType<typeof favoriteToggled | typeof favoriteRemoved> => favoriteToggled.match(action) || favoriteRemoved.match(action),
+    effect: (action, api) => {
+      const { productDemo } = api.getState() as { productDemo: ReturnType<typeof productDemoReducer> };
+      const stored = writeFavorite(api.getState, action.payload, productDemo.favorites.includes(action.payload));
+      if (stored === false || (stored === true && productDemo.favoritesMemoryOnly)) api.dispatch(favoriteStorageReported(stored));
+    },
   });
   return configureStore({
     reducer: { ui: uiSlice.reducer, authentication: authenticationSlice.reducer, productDemo: productDemoReducer },

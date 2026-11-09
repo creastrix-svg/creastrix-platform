@@ -85,12 +85,12 @@ export function createModelControls(viewer: ModelControlViewer): ModelControls |
   let frame: number | null = null;
   let pad: HTMLElement | null = null;
   let removeListeners: (() => void) | null = null;
-  let saved: InlineView | null = null;
+  let inlineReturnView: InlineView | null = null;
   let destroyed = false;
   type Gesture = { count: 1; ball: Vector3; pose: Quaternion; bounds: DOMRect } | { count: 2; angle: number; distance: number; radius: number; pose: Quaternion };
   let gesture: Gesture | null = null;
   const boundRadius = (radius: number) => {
-    const base = saved?.orbit.radius ?? home.radius;
+    const base = inlineReturnView?.orbit.radius ?? home.radius;
     return Math.max(base * .55, Math.min(base * 1.8, radius));
   };
 
@@ -126,6 +126,14 @@ export function createModelControls(viewer: ModelControlViewer): ModelControls |
   function setCameraBasis() {
     camera = unitQuaternion(multiplyQuaternion(axisQuaternion([0, 1, 0], orbit.theta), axisQuaternion([1, 0, 0], orbit.phi - Math.PI / 2)));
   }
+  function frameExpanded(view: InlineView) {
+    pose = [0, 0, 0, 1];
+    center = view.target;
+    orbit = { ...view.orbit, radius: view.orbit.radius * 1.2 };
+    setCameraBasis();
+    viewer.setAttribute('min-camera-orbit', `auto auto ${view.orbit.radius * .55}m`);
+    viewer.setAttribute('max-camera-orbit', `auto auto ${view.orbit.radius * 1.8}m`);
+  }
   function screenTurn(delta: Quaternion, start = pose) {
     return unitQuaternion(multiplyQuaternion(multiplyQuaternion(multiplyQuaternion(camera, delta), inverseQuaternion(camera)), start));
   }
@@ -155,11 +163,12 @@ export function createModelControls(viewer: ModelControlViewer): ModelControls |
   }
   function reset() {
     if (destroyed) return;
-    if (!pad || !saved) { restore(homeView); return; }
-    // A fullscreen reset belongs to this viewing session, not the global home.
-    // It must not overwrite the pre-open inline snapshot restored by exit.
-    release(); pose = [0, 0, 0, 1]; center = saved.target;
-    orbit = { ...saved.orbit, radius: saved.orbit.radius * 1.2 }; setCameraBasis(); schedule();
+    if (!pad) { restore(homeView); return; }
+    release();
+    // Only an explicit reset changes which inline view is restored on close.
+    inlineReturnView = homeView;
+    frameExpanded(homeView);
+    schedule();
   }
   function orbitInline(direction: 'left' | 'right') {
     if (pad || destroyed) return;
@@ -173,8 +182,8 @@ export function createModelControls(viewer: ModelControlViewer): ModelControls |
     // Discard pending free motion before restoring inline; never paint it later.
     if (frame !== null) { window.cancelAnimationFrame(frame); frame = null; }
     removeListeners?.(); removeListeners = null;
-    const previous = saved;
-    saved = null; pad = null;
+    const previous = inlineReturnView;
+    inlineReturnView = null; pad = null;
     if (previous) restore(previous);
   }
   function enter(nextPad: HTMLElement) {
@@ -182,18 +191,14 @@ export function createModelControls(viewer: ModelControlViewer): ModelControls |
     exit();
     const actual = viewer.getCameraOrbit(), target = viewer.getCameraTarget();
     if (![actual.theta, actual.phi, actual.radius, target.x, target.y, target.z].every(Number.isFinite) || actual.radius <= 0) return;
-    saved = { orbit: { ...actual }, target: [target.x, target.y, target.z], attributes: captureAttributes() };
-    pose = [0, 0, 0, 1]; center = saved.target;
-    orbit = { ...actual, radius: actual.radius * 1.2 };
-    setCameraBasis();
+    inlineReturnView = { orbit: { ...actual }, target: [target.x, target.y, target.z], attributes: captureAttributes() };
     pad = nextPad;
     viewer.removeAttribute('camera-controls');
     viewer.setAttribute('touch-action', 'none');
     viewer.setAttribute('interpolation-decay', '0');
     viewer.setAttribute('shadow-intensity', '0');
     viewer.setAttribute('tabindex', '-1');
-    viewer.setAttribute('min-camera-orbit', `auto auto ${actual.radius * .55}m`);
-    viewer.setAttribute('max-camera-orbit', `auto auto ${actual.radius * 1.8}m`);
+    frameExpanded(inlineReturnView);
 
     const down = (event: PointerEvent) => {
       if (event.button !== 0 || points.size >= 2) return;

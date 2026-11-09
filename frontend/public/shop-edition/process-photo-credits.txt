@@ -1,0 +1,9 @@
+Creastrix — artwork shown on the storefront homepage
+
+campaign.webp / campaign-small.webp: original AI-generated editorial still life.
+studio-grain.webp / studio-grain-small.webp: ginkgo-patterned plywood detail from the existing Creastrix studio artwork; an illustration of personalization, not a photograph of a particular listed product.
+gift-denim-ribbon.webp / gift-denim-ribbon-small.webp: original AI-generated category artwork depicting closed gift boxes and denim-blue ribbon.
+precision.webp / precision-small.webp: original AI-generated category artwork depicting an embroidery machine stitching a design on linen.
+amber-keeper-drafting.webp / amber-keeper-drafting-small.webp: original AI-generated category artwork depicting a wooden figure with an amber sphere beside its sketch and drafting tools.
+
+These images illustrate shopping categories or collections. The 32 edition product previews (full-size and thumbnail renditions) are design visualizations, not vendor-verified product photographs.

@@ -39,3 +39,14 @@ it('removes comparison markup on sale-to-normal change but keeps its reserved ro
   expect(container.querySelector('del')).toBeNull(); expect(container.querySelector('.product-price-badge')).toBeNull();
   expect(container.querySelector('.product-price-offer')).toBeEmptyDOMElement();
 });
+it('keeps the discount on the pot only when its current unit price includes a design', () => {
+  const { container } = render(<ProductPrice cents={2490} designFeeCents={500} previousCents={2400} language="en" t={productCopy.en} />);
+  expect(container.querySelector('.product-price')).toHaveTextContent('€24.90');
+  expect(container.querySelector('.product-price')).not.toHaveClass('product-price-sale');
+  const base = container.querySelector('.product-price-breakdown > span:first-child');
+  expect(base).toHaveTextContent('Base price: €19.90');
+  expect(base?.querySelector('del')).toHaveTextContent('€24.00');
+  expect(base?.querySelector('.product-price-badge')).toHaveTextContent('−17%');
+  expect(screen.getByText('Personalisation: +€5.00 per item')).toBeVisible();
+  expect(screen.queryByText(productCopy.en.without)).toBeNull();
+});

@@ -1,0 +1,19 @@
+{
+  "reference": "/product/reference-asset-01.webp",
+  "height": 1.57,
+  "outerRadiusMeters": 0.065,
+  "wallThickness": 0.040,
+  "rimThickness": 0.050,
+  "printedLayers": 112,
+  "floorHeight": 0.045,
+  "cameraElevationDegrees": 10,
+  "splitHeight": 0.535,
+  "sketch": { "centerX": 240, "baseY": 375, "pixelsPerRadius": 140 },
+  "profile": [
+    [0.000, 0.560], [0.006, 0.607], [0.025, 0.635], [0.060, 0.673],
+    [0.115, 0.736], [0.185, 0.803], [0.270, 0.870], [0.355, 0.926],
+    [0.430, 0.970], [0.490, 0.993], [0.535, 1.000], [0.575, 0.996],
+    [0.645, 0.970], [0.730, 0.925], [0.820, 0.877], [0.910, 0.825],
+    [0.982, 0.788], [1.000, 0.782]
+  ]
+}

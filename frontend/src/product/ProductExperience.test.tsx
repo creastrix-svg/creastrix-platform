@@ -10,9 +10,13 @@ import { copy } from '../i18n';
 import type { Language } from '../language';
 import ProductExperience from './ProductExperience';
 import { productCopy } from './copy';
+import { loopPricingCopy } from './loopPricingCopy';
+import { catalogCopy } from './catalogCopy';
 import { checkoutCopy } from './checkoutCopy';
-import { cartAdded } from './demoStore';
+import { personalizationCopy } from './personalizationCopy';
+import { cartAdded, favoriteToggled } from './demoStore';
 import Carousel from './Carousel';
+import { loopCarouselContent } from './carouselContent';
 import indexSource from '../../index.html?raw';
 import { storefrontLocales } from './locale';
 import MediaGallery from './MediaGallery';
@@ -57,6 +61,56 @@ function returnScrollFixture() {
 }
 
 describe('bounded public product preferences and quiet presentation', () => {
+  it('returns from the Loop studio to the exact selected product variant', async () => {
+    const { user, t } = show('/products/loop?variant=coral', 'en', false, true);
+    await user.click(screen.getByRole('link', { name: t.personalButton }));
+    const back = screen.getByRole('link', { name: t.backToProduct });
+    expect(back).toHaveAttribute('href', '/products/loop?variant=coral');
+    await user.click(back);
+    expect(screen.getByTestId('current-product-route')).toHaveTextContent('/products/loop?variant=coral');
+    expect(screen.getByRole('button', { name: 'Coral' })).toHaveAttribute('aria-pressed', 'true');
+  });
+  it('offers the real collection for direct Luma entry; subsequent Back is not a Loop product link', async () => {
+    const lamp = '/products/loop/personalize?product=lamp';
+    const { user, t } = show(lamp, 'en', false, true);
+    const collection = screen.getByRole('link', { name: t.browseCollection });
+    expect(collection).toHaveAttribute('href', '/catalog');
+    await user.click(collection);
+    expect(screen.getByRole('heading', { name: catalogCopy.en.pageHeading, level: 1 })).toBeVisible();
+    const back = within(screen.getByRole('main')).getByRole('link', { name: t.back });
+    expect(back).toHaveAttribute('href', lamp);
+    await user.click(back);
+    expect(screen.getByTestId('current-product-route')).toHaveTextContent(lamp);
+  });
+  it('preserves the actual collection and category in generic storefront Back links', async () => {
+    const { user, t } = show('/preview/collection?category=living', 'en', false, true);
+    const main = within(screen.getByRole('main'));
+    expect(main.queryByRole('link', { name: t.home })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: t.home })).toHaveAttribute('href', '/');
+    await user.click(main.getByRole('link', { name: /Loop Mini/ }));
+    const back = main.getByRole('link', { name: t.back });
+    expect(back).toHaveAttribute('href', '/preview/collection?category=living');
+    await user.click(back);
+    expect(screen.getByTestId('current-product-route')).toHaveTextContent('/preview/collection?category=living');
+  });
+  it('keeps keyboard focus on the catalog sort and returns from a changed product colour to the same sorted entry', async () => {
+    const { user } = show('/catalog', 'en', true, true);
+    const main = within(await screen.findByRole('main'));
+    const sort = main.getByRole('combobox', { name: catalogCopy.en.sort });
+    const scroll = vi.spyOn(window, 'scrollTo');
+    scroll.mockClear();
+    try {
+      await user.selectOptions(sort, 'price-asc');
+      expect(sort).toHaveFocus(); expect(scroll).not.toHaveBeenCalled();
+      await user.click(main.getByRole('link', { name: 'Loop' }));
+      await user.click(main.getByRole('button', { name: 'Coral' }));
+      const back = main.getByRole('link', { name: catalogCopy.en.title });
+      expect(back).toHaveAttribute('href', '/catalog?sort=price-asc');
+      await user.click(back);
+      expect(main.getByRole('combobox', { name: catalogCopy.en.sort })).toHaveValue('price-asc');
+      expect(screen.getByTestId('current-product-route')).toHaveTextContent('/catalog?sort=price-asc');
+    } finally { scroll.mockRestore(); }
+  });
   const key = 'creastrix.product.loop.preferences';
   const remembered = { version: 1, selectedVariant: 'cobalt-chalk', purchaseQuantities: { cobalt: 2, coral: 3, chalk: 4, 'cobalt-chalk': 3 }, mediaMode: 'model', descriptionOpen: true };
   it('restores colour, quantity, 3D intent and disclosure on a fresh store without restoring cart, favorite or identity', async () => {
@@ -66,7 +120,7 @@ describe('bounded public product preferences and quiet presentation', () => {
     expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue('3');
     expect(screen.getByRole('button', { name: t.model })).toHaveAttribute('aria-pressed', 'true');
     expect(document.querySelector('.product-description details')).toHaveAttribute('open');
-    expect(store.getState().productDemo.cart).toEqual([]); expect(store.getState().productDemo.favorite).toBeNull();
+    expect(store.getState().productDemo.cart).toEqual([]); expect(store.getState().productDemo.favorites).toEqual([]);
     expect(store.getState().authentication).toMatchObject({ phase: 'CHECKING', user: null, owner: null });
     await readyModel(t.model);
   });
@@ -79,7 +133,6 @@ describe('bounded public product preferences and quiet presentation', () => {
     const details = document.querySelector<HTMLDetailsElement>('.product-description details')!;
     details.open = true; fireEvent(details, new Event('toggle'));
     await user.click(screen.getByRole('button', { name: t.favorite }));
-    await user.click(screen.getByRole('button', { name: t.add }));
     expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ ...remembered, selectedVariant: 'coral', purchaseQuantities: { cobalt: 1, coral: 3, chalk: 1, 'cobalt-chalk': 1 } });
     expect(first.store.getState().ui).toBe(originalUi); expect(first.store.getState().authentication).toBe(originalAuth);
     first.unmount();
@@ -88,7 +141,14 @@ describe('bounded public product preferences and quiet presentation', () => {
     expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue('3');
     expect(screen.getByRole('button', { name: t.model })).toHaveAttribute('aria-pressed', 'true');
     expect(document.querySelector('.product-description details')).toHaveAttribute('open');
-    expect(second.store.getState().productDemo.cart).toEqual([]); expect(second.store.getState().productDemo.favorite).toBeNull();
+    expect(second.store.getState().productDemo.cart).toEqual([]); expect(second.store.getState().productDemo.favorites).toEqual(['coral']);
+    await readyModel(t.model);
+    await user.click(screen.getByRole('button', { name: t.add }));
+    expect(screen.getByText('Already in cart: 3')).toBeVisible();
+    expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue('1');
+    second.unmount();
+    const third = show();
+    expect(third.store.getState().productDemo.purchaseQuantities.coral).toBe(1);
     await readyModel(t.model);
   });
   it.each([
@@ -112,17 +172,18 @@ describe('bounded public product preferences and quiet presentation', () => {
     expect(container.querySelector('.product-media-badge')).toBeNull();
     expect(container.querySelector('.product-buy-feedback')).toBeEmptyDOMElement();
     expect(container.querySelector('.product-footer')).not.toHaveTextContent(t.footerNote);
-    await user.click(screen.getByRole('button', { name: t.personalButton }));
-    expect(within(screen.getByRole('dialog')).getByText(t.personalBody)).toBeVisible();
-    expect(within(screen.getByRole('dialog')).queryByText(t.preview)).toBeNull();
-    await user.click(screen.getByRole('button', { name: t.close }));
+    await user.click(screen.getByRole('link', { name: t.personalButton }));
+    expect(screen.getByRole('heading', { name: personalizationCopy[locale].title })).toBeVisible();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await user.click(screen.getByRole('link', { name: personalizationCopy[locale].back }));
     act(() => store.dispatch(cartAdded({ variant: 'cobalt', quantity: 24 })));
     expect(screen.getByRole('button', { name: t.add })).toBeDisabled(); expect(screen.getByText(t.allInCart)).toBeVisible();
     await user.click(within(screen.getByRole('banner')).getByRole('link', { name: t.cart }));
     expect(screen.queryByText(t.cartBoundary)).toBeNull(); expect(screen.queryByText(t.preview)).toBeNull();
-    await user.click(within(screen.getByRole('banner')).getByRole('link', { name: t.favorites }));
+    await user.click(within(screen.getByRole('banner')).getByRole('link', { name: new RegExp('^' + t.favorites + '(?: · [1-4])?$') }));
     expect(screen.queryByText(t.savedNote)).toBeNull(); expect(screen.getByText(t.emptySaved)).toBeVisible();
     await user.click(screen.getByRole('link', { name: t.back }));
+    await user.click(screen.getByRole('link', { name: t.continue }));
     await user.click(screen.getByRole('link', { name: t.noReviews }));
     expect(screen.queryByText(t.reviewsBody)).toBeNull();
     await user.click(screen.getByRole('link', { name: t.writeReview }));
@@ -198,11 +259,20 @@ describe('scoped product style regressions', () => {
     const hover = styles.match(/\.product-photo-open:hover > \.product-photo-expand, \.product-storefront \.product-model-expand:hover\s*\{([^}]+)\}/)?.[1] ?? '';
     expect(hover).toMatch(/\bbackground:\s*#f0f5ef\s*;/);
   });
-  it('keeps the top category links hidden outside any breakpoint while retaining the category drawer action', () => {
-    const base = styles.slice(0, styles.indexOf('@media'));
-    expect(base).toMatch(/\.product-nav-inner nav \.product-category-link\s*\{\s*display:\s*none;\s*\}/);
-    const { t } = show();
-    expect(screen.getByRole('button', { name: t.categories })).toHaveAttribute('aria-haspopup', 'dialog');
+  it('opens one categories menu with the whole catalog, curated shortcuts and a clearly located Home link', async () => {
+    const { user, t } = show();
+    const trigger = screen.getByRole('button', { name: t.categories });
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(within(trigger.closest('nav')!).queryByRole('link')).not.toBeInTheDocument();
+    await user.click(trigger);
+    const menu = within(screen.getByRole('dialog', { name: t.categories }));
+    expect(menu.getByRole('link', { name: catalogCopy.en.allItems })).toHaveAttribute('href', '/catalog');
+    expect(menu.getByRole('link', { name: t.living })).toHaveAttribute('href', '/catalog?category=living');
+    expect(menu.getByRole('link', { name: t.home })).toHaveAttribute('href', '/');
+    await user.click(menu.getByRole('link', { name: catalogCopy.en.conceptsTitle }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: catalogCopy.en.conceptsTitle })).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'Loop · Cobalt blue' })).not.toBeInTheDocument();
   });
   it('keeps shared quantity feedback enabled-only and swatch focus/hover rings out of layout', () => {
     expect(styles).toContain('.product-quantity button:not(:disabled):hover');
@@ -289,13 +359,14 @@ describe('product card and public demo controls', () => {
   it('retains inline 3D intent across real colour changes but gives each model a fresh loading owner and default pose', async () => {
     const { user, t, container } = show();
     await user.click(screen.getByRole('button', { name: t.model })); const old = await readyModel(t.model);
+    const home = old.getAttribute('camera-orbit');
     old.setAttribute('orientation', '10deg 20deg 30deg');
     const swatch = screen.getByRole('button', { name: 'Coral' }); await user.click(swatch);
     expect(swatch).toHaveFocus(); expect(screen.getByRole('button', { name: t.model })).toHaveAttribute('aria-pressed', 'true');
     expect(container.querySelector('.product-photo-open')).not.toBeInTheDocument();
     const fresh = await screen.findByLabelText(t.model, { selector: 'model-viewer' });
     expect(fresh).not.toBe(old); expect(fresh).toHaveAttribute('src', mediaForVariant('coral').model);
-    expect(fresh).not.toHaveAttribute('orientation'); expect(fresh).toHaveAttribute('camera-orbit', '30deg 68deg 105%');
+    expect(fresh).not.toHaveAttribute('orientation'); expect(fresh).toHaveAttribute('camera-orbit', home!);
     fireEvent(old, new Event('load')); fireEvent(old, new Event('error'));
     expect(screen.getByRole('button', { name: t.enlarge })).toBeDisabled();
     await readyModel(t.model); expect(screen.getByRole('button', { name: t.enlarge })).toBeEnabled();
@@ -382,7 +453,7 @@ describe('product card and public demo controls', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Loop' })).toBeVisible();
     expect(screen.getByText(t.subtitle)).toBeVisible();
     expect(screen.getByText(t.personalise)).toBeVisible();
-    expect(screen.getByText(t.personalFrom)).toBeVisible();
+    expect(screen.getByText(loopPricingCopy[language].from(money(500, language)), { normalizer: value => value.trim() })).toBeVisible();
     expect(screen.getByRole('button', { name: t.add })).toBeEnabled();
     expect(screen.getByRole('link', { name: t.noReviews })).toHaveAttribute('href', '/products/loop/reviews?variant=cobalt');
     const help = screen.getAllByRole('link', { name: t.help });
@@ -390,7 +461,7 @@ describe('product card and public demo controls', () => {
     help.forEach(link => expect(link).toHaveAttribute('href', '/preview/info/help'));
     expect(screen.queryByText(/notifications|messages|Benachrichtigungen|Nachrichten/i)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'support@creastrix.com' })).toHaveAttribute('href', 'mailto:support@creastrix.com');
-    expect(screen.getByRole('link', { name: t.contact })).toHaveAttribute('href', 'mailto:hello@creastrix.com');
+    expect(screen.getByRole('link', { name: t.contact })).toHaveAttribute('href', '/preview/info/contact');
   });
   it('accepts manual quantities above nine up to stock and prevents cart overfill', async () => {
     const { user, store, t } = show();
@@ -498,19 +569,72 @@ describe('product card and public demo controls', () => {
     expect(input).toHaveValue('1');
     expect(screen.getByRole('button', { name: t.decrease })).toBeDisabled();
   });
-  it('keeps a product-level favorite across owned colour-media changes without substituting the cobalt photo', async () => {
+  it.each(storefrontLocales)('describes saved products in %s, keeping the colour on the product rather than treating it as the saved item', async locale => {
+    const { user, store } = show('/preview/saved');
+    await user.selectOptions(screen.getByRole('combobox', { name: productCopy.en.language }), locale);
+    const t = productCopy[locale], main = within(screen.getByRole('main'));
+    const emptyTitles = {
+      en: 'No saved products yet.', de: 'Deine Merkliste ist noch leer.', ru: 'В избранном пока нет товаров.',
+      pl: 'Nie masz jeszcze ulubionych produktów.', es: 'Aún no tienes productos favoritos.',
+      fr: 'Vous n’avez pas encore de produits favoris.', it: 'Non hai ancora prodotti preferiti.',
+    };
+    expect(main.getByText(emptyTitles[locale])).toBeVisible();
+    expect(main.getByText(t.savedHint)).toBeVisible();
+    act(() => { store.dispatch(favoriteToggled('coral')); });
+    expect(main.queryByText(t.savedHint)).toBeNull();
+    const name = 'Loop · ' + variantById('coral').name[locale];
+    const link = main.getByRole('link', { name });
+    expect(link).toHaveAttribute('href', '/products/loop?variant=coral');
+    expect(main.getByRole('button', { name: t.unfavorite + ' · ' + name })).toBeVisible();
+  });
+  it('keeps stable colour order through reload; keyboard removal focuses the remaining exact variant then the empty heading', async () => {
+    const view = show('/products/loop?variant=chalk'), { t, user } = view;
+    await user.click(screen.getByRole('button', { name: t.favorite }));
+    await user.click(screen.getByRole('button', { name: 'Cobalt blue' }));
+    const heart = screen.getByRole('button', { name: t.favorite });
+    heart.focus(); await user.keyboard('{Enter}');
+    await user.click(screen.getByRole('link', { name: t.favorites + ' · 2' }));
+    const names = () => screen.getAllByRole('article').map(a => within(a).getByRole('heading').textContent);
+    expect(names()).toEqual(['Loop · Cobalt blue', 'Loop · Chalk']);
+    view.unmount(); const reloaded = show('/preview/saved'); expect(names()).toEqual(['Loop · Cobalt blue', 'Loop · Chalk']);
+    const chalk = screen.getAllByRole('article')[1];
+    const link = within(chalk).getByRole('link', { name: 'Loop · Chalk' });
+    expect(link).toContainElement(within(chalk).getByRole('img'));
+    expect(link).toContainElement(within(chalk).getByRole('heading'));
+    expect(link).not.toContainElement(chalk.querySelector('.product-price-row'));
+    expect(link).not.toContainElement(within(chalk).getByRole('button'));
+    expect(chalk).toHaveTextContent('€19.90'); expect(chalk.querySelector('del')).toHaveTextContent('€24.00');
+    fireEvent.error(within(chalk).getByRole('img')); expect(within(chalk).getByRole('img')).toHaveAccessibleName('Chalk · ' + t.noPhoto);
+    expect(link).toHaveAccessibleName('Loop · Chalk');
+    screen.getByRole('button', { name: t.unfavorite + ' · Loop · Cobalt blue' }).focus();
+    await reloaded.user.keyboard('{Enter}'); expect(within(chalk).getByRole('link')).toHaveFocus();
+    await reloaded.user.tab(); await reloaded.user.keyboard(' ');
+    expect(screen.getByRole('heading', { name: new RegExp('^' + t.favorites + '(?: · [1-4])?$') })).toHaveFocus(); expect(screen.getByText(t.emptySaved)).toBeVisible();
+    reloaded.unmount(); show('/preview/saved'); expect(screen.getByText(t.emptySaved)).toBeVisible();
+  });
+  it('updates the badge/heart on a peer storage event, ignoring a delayed event payload', () => {
+    const { t } = show(); const key = 'creastrix.product.loop.favorites.v1.cobalt';
+    localStorage.setItem(key, '1');
+    fireEvent(window, new StorageEvent('storage', { key, storageArea: localStorage, newValue: null }));
+    expect(screen.getByRole('button', { name: t.unfavorite })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('link', { name: t.favorites + ' · 1' })).toBeVisible();
+    localStorage.removeItem(key);
+    fireEvent(window, new StorageEvent('storage', { key, storageArea: localStorage, newValue: '1' }));
+    expect(screen.getByRole('button', { name: t.favorite })).toHaveAttribute('aria-pressed', 'false');
+  });
+  it('keeps only the saved colour marked across owned colour-media changes without substituting the cobalt photo', async () => {
     const { user, store, t } = show();
     await user.click(screen.getByRole('button', { name: t.favorite }));
     await user.click(screen.getByRole('button', { name: 'Coral' }));
-    expect(screen.getByRole('button', { name: t.unfavorite })).toHaveAttribute('aria-pressed', 'true');
-    expect(store.getState().productDemo.favorite).toBe('cobalt');
+    expect(screen.getByRole('button', { name: t.favorite })).toHaveAttribute('aria-pressed', 'false');
+    expect(store.getState().productDemo.favorites).toEqual(['cobalt']);
     expect(screen.getByAltText(photoDescription(t.photoAlt, 'Coral'))).toHaveAttribute('src', mediaForVariant('coral').photos[0]);
     expect(screen.getByRole('button', { name: t.model })).toBeEnabled();
     const quantity = screen.getByRole('textbox', { name: t.quantity });
     fireEvent.change(quantity, { target: { value: '24' } });
     expect(quantity).toHaveValue('8');
     await user.click(screen.getByRole('button', { name: 'Chalk' }));
-    expect(store.getState().productDemo.favorite).toBe('cobalt');
+    expect(store.getState().productDemo.favorites).toEqual(['cobalt']);
     const chalkQuantity = screen.getByRole('textbox', { name: t.quantity });
     fireEvent.change(chalkQuantity, { target: { value: '24' } });
     expect(chalkQuantity).toHaveValue('15');
@@ -522,9 +646,9 @@ describe('product card and public demo controls', () => {
     await user.click(screen.getByRole('button', { name: t.favorite }));
     const changed = id === 'coral' ? 'chalk' : 'coral';
     await user.click(screen.getByRole('button', { name: variantById(changed).name.en }));
-    expect(screen.getByRole('button', { name: t.unfavorite })).toHaveAttribute('aria-pressed', 'true');
-    expect(store.getState().productDemo.favorite).toBe(id);
-    await user.click(within(screen.getByRole('banner')).getByRole('link', { name: t.favorites }));
+    expect(screen.getByRole('button', { name: t.favorite })).toHaveAttribute('aria-pressed', 'false');
+    expect(store.getState().productDemo.favorites).toEqual([id]);
+    await user.click(within(screen.getByRole('banner')).getByRole('link', { name: new RegExp('^' + t.favorites + '(?: · [1-4])?$') }));
     const cards = document.querySelectorAll('.product-saved-card'); expect(cards).toHaveLength(1);
     const card = cards[0] as HTMLElement;
     expect(within(card).getByRole('heading', { name: 'Loop · ' + chosen.name.en })).toBeVisible();
@@ -533,23 +657,23 @@ describe('product card and public demo controls', () => {
     expect(within(card).getByText(money(chosen.cents, 'en'))).toBeVisible();
     await user.click(link);
     expect(screen.getByRole('button', { name: chosen.name.en })).toHaveAttribute('aria-pressed', 'true');
-    expect(store.getState().productDemo.favorite).toBe(id);
+    expect(store.getState().productDemo.favorites).toEqual([id]);
     expect(screen.getByRole('button', { name: t.unfavorite })).toHaveAttribute('aria-pressed', 'true');
   });
-  it('clears the saved representative on remove and captures a new color only after re-adding', async () => {
+  it('clears the selected saved variant on remove and captures a new color only after re-adding', async () => {
     const { user, store, t } = show();
     await user.click(screen.getByRole('button', { name: 'Coral' }));
     await user.click(screen.getByRole('button', { name: t.favorite }));
-    await user.click(within(screen.getByRole('banner')).getByRole('link', { name: t.favorites }));
-    await user.click(screen.getByRole('button', { name: t.remove }));
-    expect(store.getState().productDemo.favorite).toBeNull();
+    await user.click(within(screen.getByRole('banner')).getByRole('link', { name: new RegExp('^' + t.favorites + '(?: · [1-4])?$') }));
+    await user.click(screen.getByRole('button', { name: t.unfavorite + ' · Loop · Coral' }));
+    expect(store.getState().productDemo.favorites).toEqual([]);
     expect(document.querySelector('.product-saved-card')).toBeNull();
     expect(screen.getByText(t.emptySaved)).toBeVisible();
     await user.click(screen.getByRole('link', { name: t.back }));
     await user.click(screen.getByRole('button', { name: 'Cobalt & chalk' }));
     await user.click(screen.getByRole('button', { name: t.favorite }));
-    expect(store.getState().productDemo.favorite).toBe('cobalt-chalk');
-    await user.click(within(screen.getByRole('banner')).getByRole('link', { name: t.favorites }));
+    expect(store.getState().productDemo.favorites).toEqual(['cobalt-chalk']);
+    await user.click(within(screen.getByRole('banner')).getByRole('link', { name: new RegExp('^' + t.favorites + '(?: · [1-4])?$') }));
     expect(screen.getByRole('heading', { name: 'Loop · Cobalt & chalk' })).toBeVisible();
     expect(document.querySelectorAll('.product-saved-card')).toHaveLength(1);
     expect(document.querySelector('.product-saved-card img')).toHaveAttribute('src', mediaForVariant('cobalt-chalk').photos[0]);
@@ -559,13 +683,14 @@ describe('product card and public demo controls', () => {
     expect(screen.getByRole('button', { name: 'Cobalt blue' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Coral' })).toHaveAttribute('aria-pressed', 'false');
   });
-  it('renders the captured two-tone name and updated memory-only note in all seven saved-view locales', async () => {
+  it('renders the captured two-tone name and browser-local metadata in all seven saved-view locales', async () => {
     const { user, store, t } = show('/preview/saved');
     act(() => store.dispatch(cartAdded({ variant: 'coral', quantity: 1 })));
-    await user.click(screen.getByRole('link', { name: t.back }));
+    await user.click(screen.getByRole('link', { name: t.browseCollection }));
+    await user.click(within(screen.getByRole('main')).getByRole('link', { name: 'Loop' }));
     await user.click(screen.getByRole('button', { name: 'Cobalt & chalk' }));
     await user.click(screen.getByRole('button', { name: t.favorite }));
-    await user.click(within(screen.getByRole('banner')).getByRole('link', { name: t.favorites }));
+    await user.click(within(screen.getByRole('banner')).getByRole('link', { name: new RegExp('^' + t.favorites + '(?: · [1-4])?$') }));
     const language = screen.getByRole('combobox', { name: t.language });
     for (const locale of storefrontLocales) {
       await user.selectOptions(language, locale);
@@ -573,7 +698,7 @@ describe('product card and public demo controls', () => {
       expect(screen.getByRole('heading', { name: 'Loop · ' + variantById('cobalt-chalk').name[locale] })).toBeVisible();
       expect(screen.getByRole('img', { name: photoDescription(productCopy[locale].photoAlt, variantById('cobalt-chalk').name[locale]) })).toHaveAttribute('src', mediaForVariant('cobalt-chalk').photos[0]);
       expect(document.querySelectorAll('.product-saved-card')).toHaveLength(1);
-      expect(store.getState().productDemo.favorite).toBe('cobalt-chalk');
+      expect(store.getState().productDemo.favorites).toEqual(['cobalt-chalk']);
     }
   });
   it('edits and removes cart lines after ordinary route navigation', async () => {
@@ -649,7 +774,7 @@ describe('product card and public demo controls', () => {
       await user.keyboard('{Escape}');
     }
     expect(store.getState().productDemo.cart).toEqual([{ variant: 'cobalt', quantity: 2 }]);
-    expect(store.getState().productDemo.favorite).toBe('cobalt');
+    expect(store.getState().productDemo.favorites).toEqual(['cobalt']);
     expect(store.getState().authentication).toEqual(originalAuth);
     expect(store.getState().ui).toEqual(originalUi);
     expect(localStorage.getItem('creastrix.ui.language')).toBe(originalLanguageStorage);
@@ -659,7 +784,7 @@ describe('product card and public demo controls', () => {
   it('navigates to separate reviews and honest help/info destinations', async () => {
     const { user, t } = show();
     await user.click(screen.getByRole('link', { name: t.noReviews }));
-    expect(screen.getByRole('heading', { level: 1, name: t.reviews })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1, name: t.reviews.replace('{product}', 'Loop') })).toBeVisible();
     expect(screen.getByRole('link', { name: t.writeReview })).toHaveAttribute('href', '/products/loop/reviews/new?variant=cobalt');
     expect(screen.getByRole('heading', { level: 2, name: t.noReviews })).toBeVisible();
     expect(screen.queryByText(t.reviewsBody)).toBeNull();
@@ -677,7 +802,7 @@ describe('product card and public demo controls', () => {
     await user.keyboard('{ArrowDown}{Enter}');
     expect(screen.getByRole('heading', { level: 1, name: 'Loop Mini' })).toBeVisible();
     expect(search).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByText(t.studioBody)).toBeVisible();
+    expect(screen.getByText(t.conceptNote)).toBeVisible();
     await user.clear(search); await user.type(search, 'nothing-matches'); await user.keyboard('{Enter}');
     expect(screen.getByRole('heading', { name: t.results })).toBeVisible();
     expect(screen.getByText(t.noResults)).toBeVisible();
@@ -711,7 +836,9 @@ describe('product card and public demo controls', () => {
     expect(screen.getByText(t.noResults)).toBeVisible();
     act(() => { store.dispatch(languageSelected('de')); });
     expect(screen.queryByText(t.noResults)).not.toBeInTheDocument();
-    expect(within(screen.getByRole('listbox', { name: productCopy.de.results })).getByRole('option')).toHaveTextContent('Loop TrayUntersetzer');
+    const suggestions = within(screen.getByRole('listbox', { name: productCopy.de.results }));
+    expect(suggestions.getByRole('option', { name: /^Loop Tray/ })).toHaveTextContent('Loop TrayUntersetzer');
+    expect(suggestions.getByRole('option', { name: /^Hex/ })).toHaveAttribute('href', '/collections/objects/hex');
     await user.keyboard('{Enter}');
     expect(document.title).toBe(productCopy.de.results + ' · Untersetzer · Creastrix');
     expect(screen.getByRole('link', { name: /Loop Tray.*Designkonzept/ })).toHaveAttribute('href', '/preview/items/loop-tray');
@@ -808,7 +935,8 @@ describe('purchase draft and exact cart return', () => {
       await user.click(screen.getByText(t.readMore));
       expect(document.querySelector('.product-description details')).toHaveAttribute('open');
       if (add) await user.click(screen.getByRole('button', { name: t.add }));
-      expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue(String(quantity));
+      const nextQuantity = add ? '1' : String(quantity);
+      expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue(nextQuantity);
       const before = store.getState().productDemo, cart = structuredClone(before.cart), serial = before.addSerial;
       position.depart(1375.5);
       await user.click(action === 'continue' && add ? within(document.querySelector<HTMLElement>('.product-buy-feedback')!).getByRole('link', { name: t.viewCart }) : within(screen.getByRole('banner')).getByRole('link', { name: t.cart }));
@@ -819,7 +947,9 @@ describe('purchase draft and exact cart return', () => {
       position.scroll.mockClear();
       await user.click(action === 'history' ? screen.getByRole('button', { name: 'History back' }) : screen.getByRole('link', { name: t.continue }));
       expect(screen.getByRole('button', { name: variantById(variant).name.en })).toHaveAttribute('aria-pressed', 'true');
-      expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue(String(quantity));
+      expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue(nextQuantity);
+      if (add) expect(screen.getByText('Already in cart: ' + quantity)).toBeVisible();
+      else expect(screen.queryByText(/^Already in cart:/)).toBeNull();
       expect(document.querySelector('.product-description details')).toHaveAttribute('open');
       expect(position.top).toBe(1375.5);
       expect(position.scroll).toHaveBeenCalledExactlyOnceWith({ left: 0, top: 1375.5, behavior: 'instant' });
@@ -828,7 +958,7 @@ describe('purchase draft and exact cart return', () => {
       await user.click(screen.getByRole('button', { name: action === 'history' ? 'History forward' : 'History back' }));
       position.scroll.mockClear();
       await user.click(screen.getByRole('button', { name: action === 'history' ? 'History back' : 'History forward' }));
-      expect(position.top).toBe(1375.5); expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue(String(quantity));
+      expect(position.top).toBe(1375.5); expect(screen.getByRole('textbox', { name: t.quantity })).toHaveValue(nextQuantity);
       expect(position.scroll).toHaveBeenCalledExactlyOnceWith({ left: 0, top: 1375.5, behavior: 'instant' });
       expect(store.getState().productDemo.addSerial).toBe(serial);
     } finally { position.restore(); }
@@ -905,7 +1035,7 @@ describe('sale totals and local demonstration review form', () => {
     expect(store.getState().productDemo.cart).toEqual([{ variant: 'chalk', quantity: 2 }]);
     const cart = within(screen.getByRole('banner')).getByRole('link', { name: t.cart });
     await user.hover(cart); expect(screen.getByRole('region', { name: t.cartPreview })).toHaveTextContent('€39.80');
-    await user.click(within(screen.getByRole('banner')).getByRole('link', { name: t.favorites }));
+    await user.click(within(screen.getByRole('banner')).getByRole('link', { name: new RegExp('^' + t.favorites + '(?: · [1-4])?$') }));
     expect(document.querySelector('.product-saved-card')).toHaveTextContent('€19.90');
     await user.click(within(screen.getByRole('banner')).getByRole('link', { name: t.cart }));
     expect(screen.getByRole('article', { name: 'Loop · Chalk' })).toHaveTextContent('€39.80');
@@ -1095,13 +1225,15 @@ describe('viewport media modal and honest personalisation boundary', () => {
     expect(within(dialog).getByRole('img', { name: photoDescription(t.photoAlt, 'Cobalt blue') + ' · 1' })).toHaveAttribute('src', '/product/reference-asset-01.webp');
     await user.click(within(dialog).getByRole('button', { name: t.close }));
   });
-  it('dismisses only backdrop clicks and gives personalisation a truthful result, not a dead link', async () => {
+  it('opens the studio and dismisses its preview only through backdrop or close', async () => {
     const { user, t } = show();
-    const button = screen.getByRole('button', { name: t.personalButton });
+    await user.click(screen.getByRole('link', { name: t.personalButton }));
+    const button = screen.getByRole('button', { name: personalizationCopy.en.expand });
     await user.click(button);
-    const dialog = screen.getByRole('dialog', { name: t.personalise });
-    expect(within(dialog).getByText(t.personalBody)).toBeVisible();
-    fireEvent.mouseDown(within(dialog).getByText(t.personalBody));
+    const dialog = screen.getByRole('dialog', { name: personalizationCopy.en.preview + ' · Loop' });
+    const preview = dialog.querySelector('.studio-stage');
+    expect(preview).toBeInTheDocument();
+    fireEvent.mouseDown(preview!);
     expect(dialog).toBeVisible();
     fireEvent.mouseDown(dialog.parentElement!);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -1127,7 +1259,7 @@ describe('viewport media modal and honest personalisation boundary', () => {
 describe('native horizontal carousel requests', () => {
   it.each([false, true])('keeps the same six DOM items, requests motion appropriately (reduced=%s), and disables edges', async reduced => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: reduced })));
-    render(<MemoryRouter><Carousel title="Related" t={productCopy.en} /></MemoryRouter>);
+    render(<MemoryRouter><Carousel title="Related" t={productCopy.en} content={loopCarouselContent(productCopy.en)} /></MemoryRouter>);
     const list = screen.getByRole('list');
     const items = within(list).getAllByRole('listitem');
     Object.defineProperties(list, { clientWidth: { configurable: true, value: 300 }, scrollWidth: { configurable: true, value: 1000 }, scrollLeft: { configurable: true, writable: true, value: 0 } });
@@ -1141,12 +1273,18 @@ describe('native horizontal carousel requests', () => {
     list.scrollLeft = 700; fireEvent.scroll(list);
     expect(next).toBeDisabled(); expect(previous).toBeEnabled();
     expect(within(list).getAllByRole('listitem')).toEqual(items);
-    expect(screen.getByRole('link', { name: 'Related' })).toHaveAttribute('href', '/preview/collection');
+    expect(screen.getByRole('link', { name: 'Related' })).toHaveAttribute('href', '/catalog');
   });
 });
 
 describe('new route integration preserves existing authentication entry points', () => {
-  it.each(['/', '/login', '/account', '/confirm-email'])('keeps %s in the existing pilot shell', path => {
+  it('opens the public shopping homepage outside the account shell', async () => {
+    const { container } = show('/', 'en', true);
+    const navigation = await screen.findByRole('navigation', { name: 'Shop by category' }, { timeout: 5000 });
+    expect(navigation.closest('.product-storefront')).not.toBeNull();
+    expect(container.querySelector('.shell')).toBeNull();
+  });
+  it.each(['/login', '/account', '/confirm-email'])('keeps %s in the existing pilot shell', path => {
     const { container } = show(path, 'en', true);
     expect(container.querySelector('.shell')).not.toBeNull();
     expect(container.querySelector('.product-storefront')).toBeNull();
@@ -1162,6 +1300,27 @@ describe('new route integration preserves existing authentication entry points',
 });
 
 describe('bounded storefront navigation, accessibility and nonpublic metadata', () => {
+  it.each(storefrontLocales)('gives concepts, policies and contact links their own buyer-facing destinations in %s', async locale => {
+    const { user } = show('/preview/items/loop-mini');
+    await user.selectOptions(screen.getByRole('combobox', { name: productCopy.en.language }), locale);
+    const t = productCopy[locale], main = within(screen.getByRole('main')), footer = within(screen.getByRole('contentinfo'));
+    expect(main.getByText(t.conceptNote)).toBeVisible();
+    expect(main.queryByText(t.studioBody)).toBeNull();
+    expect(main.queryByRole('button', { name: t.add })).toBeNull();
+    const destinations = [
+      [t.help, t.help, t.helpBody], [t.delivery, t.delivery, t.deliveryBody],
+      [t.returns, t.returns, t.returnsBody], [t.legal, t.legal, t.legalBody],
+      [t.how, t.about, t.aboutInfo], [t.contact, t.contact, t.contactBody],
+    ] as const;
+    for (const [label, heading, body] of destinations) {
+      await user.click(footer.getByRole('link', { name: label }));
+      expect(main.getByRole('heading', { level: 1, name: heading })).toBeVisible();
+      expect(main.getByText(body)).toBeVisible();
+      expect(document.title).toBe(heading === t.about ? heading : heading + ' · Creastrix');
+      expect(document.querySelector('meta[name="description"]')).toHaveAttribute('content', body);
+    }
+    expect(main.getByRole('link', { name: 'hello@creastrix.com' })).toHaveAttribute('href', 'mailto:hello@creastrix.com');
+  });
   it.each(['en', 'de'] as const)('updates route-aware titles/descriptions and language in %s without fabricated SEO offers', async language => {
     const { user, t } = show('/products/loop', language, true);
     expect(await screen.findByRole('heading', { name: 'Loop', level: 1 })).toBeVisible();
@@ -1169,7 +1328,7 @@ describe('bounded storefront navigation, accessibility and nonpublic metadata', 
     expect(document.documentElement.lang).toBe(language);
     expect(document.querySelector('meta[name="description"]')).toHaveAttribute('content', t.descriptionIntro);
     await user.click(screen.getByRole('link', { name: t.noReviews }));
-    expect(document.title).toBe(t.reviews + ' · Creastrix');
+    expect(document.title).toBe(t.reviews.replace('{product}', 'Loop') + ' · Creastrix');
     expect(document.querySelector('meta[name="description"]')).toHaveAttribute('content', t.reviewsBody);
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(document.querySelector('script[type="application/ld+json"],link[rel="canonical"],link[hreflang]')).toBeNull();
@@ -1180,7 +1339,8 @@ describe('bounded storefront navigation, accessibility and nonpublic metadata', 
     ['/preview/checkout', checkoutCopy.en.title, checkoutCopy.en.prototypeNote],
     ['/preview/saved', 'Saved products', productCopy.en.savedNote],
     ['/preview/search?q=Mini', productCopy.en.results + ' · Mini', productCopy.en.searchNote],
-    ['/preview/collection', productCopy.en.collection, productCopy.en.searchNote],
+    ['/catalog', catalogCopy.en.title, catalogCopy.en.intro],
+    ['/preview/collection', catalogCopy.en.title, catalogCopy.en.intro],
     ['/preview/studio', 'Loop Studio', productCopy.en.studioBody],
     ['/preview/info/help', productCopy.en.help, productCopy.en.helpBody],
     ['/preview/info/legal', productCopy.en.legal, productCopy.en.legalBody],
@@ -1195,12 +1355,12 @@ describe('bounded storefront navigation, accessibility and nonpublic metadata', 
     const { t } = show('/preview/info/' + topic, 'en', true);
     expect(await screen.findByRole('heading', { level: 1, name: t.notFound })).toBeVisible();
     expect(document.title).toBe(t.notFound + ' · Creastrix');
-    expect(document.querySelector('meta[name="description"]')).toHaveAttribute('content', t.info);
+    expect(document.querySelector('meta[name="description"]')).toHaveAttribute('content', t.notFoundBody);
   });
   it.each([
     ['/preview/studio/', 'Loop Studio'],
     ['/preview/info/help/', productCopy.en.help],
-    ['/products/loop/reviews/', productCopy.en.reviews],
+    ['/products/loop/reviews/', productCopy.en.reviews.replace('{product}', 'Loop')],
     ['/preview/search/?q=Mini', productCopy.en.results + ' · Mini'],
   ])('keeps accepted trailing-slash metadata aligned for %s', (path, title) => {
     show(path);
@@ -1219,7 +1379,7 @@ describe('bounded storefront navigation, accessibility and nonpublic metadata', 
     expect(screen.getByRole('main')).toBe(main);
     expect(main).toHaveFocus();
     expect(main.closest('.product-storefront')).toHaveAttribute('data-theme', 'dark');
-    expect(store.getState().productDemo.favorite).toBe('cobalt');
+    expect(store.getState().productDemo.favorites).toEqual(['cobalt']);
   });
   it('restores Back/Forward scroll positions and manages query-only search navigation once', async () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, 'scrollY');
@@ -1263,13 +1423,13 @@ describe('bounded storefront navigation, accessibility and nonpublic metadata', 
   it('preserves the long-page position when the browser clamps scroll during a shorter route commit', async () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, 'scrollY');
     let top = 0;
-    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => document.querySelector('.product-collection-grid') ? Math.min(top, 1262.5) : top });
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => document.querySelector('main h1')?.textContent === catalogCopy.en.pageHeading ? Math.min(top, 1262.5) : top });
     const scroll = vi.spyOn(window, 'scrollTo').mockImplementation((options?: ScrollToOptions | number) => { if (typeof options === 'object') top = options.top ?? top; });
     try {
-      const { user, t } = show('/products/loop', 'en', true, true);
+      const { user } = show('/products/loop', 'en', true, true);
       expect(await screen.findByRole('heading', { name: 'Loop', level: 1 })).toBeVisible();
       act(() => { top = 1490; window.dispatchEvent(new Event('scroll')); });
-      await user.click(within(screen.getByRole('contentinfo')).getByRole('link', { name: t.collection }));
+      await user.click(within(screen.getByRole('contentinfo')).getByRole('link', { name: catalogCopy.en.title }));
       expect(top).toBe(0);
       await user.click(screen.getByRole('button', { name: 'History back' }));
       expect(top).toBe(1490);

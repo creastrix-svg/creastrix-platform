@@ -1,0 +1,37 @@
+Studio preview fonts
+
+Bundled unchanged from the official google/fonts repository.
+Repository revision: 47d54ca1ebb14fd864695f1d39dc734f39017c33
+Retrieved: 2026-10-20
+Each font is licensed under SIL Open Font License 1.1; corresponding full copyright
+and license files are shipped beside the binaries. No Google CDN is contacted at
+runtime. These are preview fonts, not manufactured vector-outline artifacts.
+
+Nunito.ttf
+Source: https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/nunito/Nunito%5Bwght%5D.ttf
+Bytes: 276932
+SHA256: bb55a5ca5c2042335b3991af27c4d0705d0ef41cac6164ac737fd8f2a1e85207
+License: Nunito-OFL.txt
+
+CormorantGaramond.ttf
+Source: https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/cormorantgaramond/CormorantGaramond%5Bwght%5D.ttf
+Bytes: 1195560
+SHA256: b20b7d9626dd956b2c5e558692ad328b1f19e3275e2782db4fa07670d83f35e0
+License: CormorantGaramond-OFL.txt
+
+Caveat.ttf
+Source: https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/caveat/Caveat%5Bwght%5D.ttf
+Bytes: 403648
+SHA256: 0bdb6b660482d31531b3945849fba5916b3ef8695da7024a9e6b9ee3c4157988
+License: Caveat-OFL.txt
+
+AllertaStencil.ttf
+Source: https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/allertastencil/AllertaStencil-Regular.ttf
+Retrieved: 2026-10-23
+Bytes: 20260
+SHA256: 8c504d1be20768941ab04251a389ad82d5782d647fa1c4029c811dc5bc2abd59
+License: AllertaStencil-OFL.txt
+Unmodified upstream binary. The preview permits only A-Z, a-z, 0-9, ASCII space
+and hyphen; every permitted character has a nonzero glyph in its Unicode cmap.
+Cyrillic is absent. Font coverage and stencil styling are not a production
+proof of bridges, topology, kerf, strength or machine/material suitability.

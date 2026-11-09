@@ -1,13 +1,20 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../hooks';
-import { mediaForVariant, money, photoDescription, swatchBackground, variantById } from './catalog';
+import { isVariantId, money } from './catalog';
+import { cartOfferView } from './cartOfferView';
+import { isTideOfferPath } from './routes';
+import { tideOffer } from './tideOffer';
 import { productCopy } from './copy';
-import { cartCount, cartLineRemoved, cartQuantityChanged, cartTotal } from './demoStore';
+import { cartCount, cartLinePrice, cartLineRemoved, cartQuantityChanged, cartTotal } from './demoStore';
 import { Icon } from './Icon';
 import QuantityInput from './QuantityInput';
-import { searchExamples } from './search';
+import { searchCatalog, searchResultSummary } from './search';
 import { useProductLocale } from './useProductLocale';
+import { cartLineId, lineCapacity } from './demoStore';
+import DesignThumbnail from './DesignThumbnail';
+import { cartDesignLabel, studioCartCopy } from './studioCartCopy';
+import CartDesignPriceDetails from './CartDesignPriceDetails';
 
 export function SearchControl() {
   const language = useProductLocale(), t = productCopy[language];
@@ -19,10 +26,10 @@ export function SearchControl() {
   const form = useRef<HTMLFormElement>(null), input = useRef<HTMLInputElement>(null);
   const id = useId(), navigate = useNavigate();
   const term = query.trim().toLocaleLowerCase();
-  const items = searchExamples(query, language);
   const showing = open && draft?.key === location.key && term.length > 0 && !composing;
-  const activeId = selected?.key === location.key && selected.term === term && items.some(item => item.id === selected.id) ? selected.id : undefined;
-  const path = (id: string) => id === 'loop' ? '/products/loop' : '/preview/items/' + id;
+  const items = showing ? searchCatalog(query, language, 5) : [];
+  const active = selected?.key === location.key && selected.term === term ? items.find(item => item.id === selected.id) : undefined;
+  const activeId = active?.id;
   function finish() { setOpen(false); setSelected(null); setDraft(null); }
   useEffect(() => {
     const outside = (event: PointerEvent) => { if (event.target instanceof Node && !form.current?.contains(event.target)) setOpen(false); };
@@ -35,36 +42,40 @@ export function SearchControl() {
       if (composing || event.nativeEvent.isComposing) return;
       if (event.key === 'Escape') { event.preventDefault(); input.current?.focus(); setOpen(false); setSelected(null); }
       if (!showing) return;
-      if (event.key === 'Enter' && activeId) { event.preventDefault(); finish(); navigate(path(activeId)); }
+      if (event.key === 'Enter' && active) { event.preventDefault(); finish(); navigate(active.href); }
       if (!items.length || !['ArrowDown', 'ArrowUp'].includes(event.key)) return;
       event.preventDefault();
       const index = items.findIndex(item => item.id === activeId);
       const next = index < 0 ? event.key === 'ArrowDown' ? 0 : items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
       setSelected({ key: location.key, term, id: items[next].id });
     }}>
-    <label className="product-sr-only" htmlFor={id}>{t.search}</label><input id={id} ref={input} type="search" role="combobox" aria-autocomplete="list" aria-expanded={showing} aria-controls={id + '-results'} aria-activedescendant={showing && activeId ? id + '-' + activeId : undefined} maxLength={100} placeholder={t.search} value={query}
+    <label className="product-sr-only" htmlFor={id}>{t.search}</label><input id={id} ref={input} type="search" role="combobox" aria-autocomplete="list" aria-expanded={showing} aria-controls={id + '-results'} aria-activedescendant={showing && activeId ? id + '-' + activeId : undefined} maxLength={100} placeholder={t.searchPlaceholder} value={query}
       onChange={event => { setDraft({ key: location.key, value: event.target.value.slice(0, 100) }); setSelected(null); setOpen(true); }}
       onCompositionStart={() => { setComposing(true); setSelected(null); }} onCompositionEnd={event => { setComposing(false); setDraft({ key: location.key, value: event.currentTarget.value.slice(0, 100) }); setOpen(true); }}
       onFocus={() => { setDraft({ key: location.key, value: query }); setOpen(true); }} />
     <button type="submit" className="product-icon-button" aria-label={t.searchSubmit}><Icon name="search" /></button>
     {showing && <div className="product-search-suggestions"><ul id={id + '-results'} role="listbox" aria-label={t.results}>
-      {items.map(item => <li key={item.id}><Link id={id + '-' + item.id} role="option" aria-selected={activeId === item.id} tabIndex={-1} to={path(item.id)} onMouseDown={event => event.preventDefault()} onClick={finish}><img src={`/product/reference-asset-${item.image}.webp`} alt="" width="48" height="48" /><span>{item.name}<small>{item.description}</small></span><Icon name="arrow" /></Link></li>)}
+      {items.map(item => <li key={item.id}><Link id={id + '-' + item.id} role="option" aria-selected={activeId === item.id} tabIndex={-1} to={item.href} onMouseDown={event => event.preventDefault()} onClick={finish}><img src={item.photo} alt="" width="48" height="48" /><span>{item.name}<small>{searchResultSummary(item, language)}</small></span><Icon name="arrow" /></Link></li>)}
     </ul>{items.length === 0 && <p role="status">{t.noResults}</p>}<button type="submit" className="product-text-button">{t.results}<Icon name="arrow" /></button></div>}
   </form>;
 }
 
-export function HeaderCart() {
+export function HeaderCart({ ready = true }: { ready?: boolean }) {
   const language = useProductLocale(), t = productCopy[language];
+  const c = studioCartCopy[language];
   const demo = useAppSelector(state => state.productDemo), dispatch = useAppDispatch();
   const location = useLocation();
+  const returnState = isTideOfferPath(location.pathname) ? { cartReturnTo: tideOffer.href }
+    : location.pathname === '/products/loop' ? { cartReturnTo: '/products/loop' }
+    : location.pathname === '/preview/cart' || location.pathname === '/preview/checkout' ? location.state : null;
   const [openKey, setOpenKey] = useState<string | null>(null);
-  const open = openKey === location.key;
+  const open = ready && openKey === location.key;
   const [initialAddSerial] = useState(demo.addSerial);
   const anchor = useRef<HTMLDivElement>(null), opener = useRef<HTMLAnchorElement>(null), popup = useRef<HTMLElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const id = useId();
   function cancelClose() { if (closeTimer.current !== null) clearTimeout(closeTimer.current); closeTimer.current = null; }
-  function reveal() { cancelClose(); setOpenKey(location.key); }
+  function reveal() { cancelClose(); if (ready) setOpenKey(location.key); }
   useLayoutEffect(() => {
     if (!open) return;
     // Pin the non-scrolling header/footer inside even a short visual viewport.
@@ -102,15 +113,20 @@ export function HeaderCart() {
     }}
     onFocusCapture={reveal} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpenKey(null); }}
     onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); opener.current?.focus(); setOpenKey(null); } }}>
-    <Link to="/preview/cart" className="product-icon-button" ref={opener} aria-label={t.cart} aria-expanded={open} aria-controls={id} onClick={() => setOpenKey(null)}><Icon name="bag" />{cartCount(demo) > 0 && <span key={demo.addSerial} className={'product-count' + (demo.addSerial !== initialAddSerial ? ' product-count-added' : '')}>{cartCount(demo)}</span>}</Link>
+    <Link to="/preview/cart" state={returnState} className="product-icon-button" ref={opener} aria-label={t.cart} aria-expanded={ready ? open : undefined} aria-controls={ready ? id : undefined} onClick={() => setOpenKey(null)}><Icon name="bag" />{ready && cartCount(demo) > 0 && <span key={demo.addSerial} className={'product-count' + (demo.addSerial !== initialAddSerial ? ' product-count-added' : '')}>{cartCount(demo)}</span>}</Link>
     {open && <section className="product-cart-peek" ref={popup} id={id} aria-label={t.cartPreview}>
       <h2>{t.cart}</h2>
-      <div className="product-peek-items">{demo.cart.length === 0 ? <p>{t.emptyCart}</p> : demo.cart.slice(-5).map(line => { const variant = variantById(line.variant); return <div className="product-peek-line" key={line.variant}>
-        {mediaForVariant(line.variant).photos[0] ? <img src={mediaForVariant(line.variant).photos[0]} alt={photoDescription(t.photoAlt, variant.name[language])} width="58" height="58" /> : <span className="product-peek-swatch" style={{ background: swatchBackground(variant.colors) }} aria-label={t.noPhoto} />}
-        <div><strong>Loop · {variant.name[language]}</strong><span>{money(variant.cents * line.quantity, language)}</span><QuantityInput value={line.quantity} max={variant.stock} onChange={quantity => dispatch(cartQuantityChanged({ variant: line.variant, quantity }))} t={t} context={variant.name[language]} /></div>
-        <button type="button" className="product-icon-button" aria-label={`${t.remove} · ${variant.name[language]}`} onClick={() => { opener.current?.focus({ preventScroll: true }); dispatch(cartLineRemoved(line.variant)); }}><Icon name="close" /></button>
+      <div className="product-peek-items">{demo.cart.length === 0 ? <p>{t.emptyCart}</p> : demo.cart.slice(-5).map(line => {
+        const offer = cartOfferView(line.variant, language), id = cartLineId(line), designLabel = cartDesignLabel(line, language), context = offer.detail + (designLabel ? ' · ' + designLabel : '');
+        const { baseCents, feeCents, unitCents } = cartLinePrice(line);
+        return <div className="product-peek-line" key={id} data-cart-line-id={id}>
+        {line.design && isVariantId(line.variant) ? <DesignThumbnail design={line.design} variant={line.variant} label={designLabel} /> : offer.photo ? <img src={offer.photo} alt={offer.alt} width="58" height="58" /> : <span className="product-peek-swatch" style={{ background: offer.swatch }} aria-label={t.noPhoto} />}
+        <div><strong>{offer.name} · {offer.detail}</strong><span>{feeCents > 0 && line.quantity > 1 && <>{line.quantity} × {money(unitCents, language)} = </>}{money(unitCents * line.quantity, language)}</span>
+          {line.design && <div className="product-cart-design-meta"><span>{designLabel}</span><CartDesignPriceDetails baseCents={baseCents} feeCents={feeCents} language={language} /><Link aria-label={`${c.edit} · ${context}`} to={`/products/loop/personalize?variant=${line.variant}&edit=${encodeURIComponent(id)}`} onClick={() => setOpenKey(null)}>{c.edit}</Link></div>}
+          <QuantityInput value={line.quantity} max={lineCapacity(demo, line)} onChange={quantity => dispatch(cartQuantityChanged({ variant: line.variant, id: line.id, quantity }))} t={t} context={context} /></div>
+        <button type="button" className="product-icon-button" aria-label={`${t.remove} · ${context}`} onClick={() => { opener.current?.focus({ preventScroll: true }); dispatch(cartLineRemoved(id)); }}><Icon name="close" /></button>
       </div>; })}</div>
-      <div className="product-peek-footer"><div className="product-peek-total"><span>{t.total}</span><strong>{money(cartTotal(demo), language)}</strong></div><Link className="product-primary" to="/preview/cart" onClick={() => setOpenKey(null)}>{t.viewCart}<Icon name="arrow" /></Link></div>
+      <div className="product-peek-footer"><div className="product-peek-total"><span>{t.cartItemsSubtotal}</span><strong>{money(cartTotal(demo), language)}</strong></div><Link className="product-primary" to="/preview/cart" state={returnState} onClick={() => setOpenKey(null)}>{t.viewCart}<Icon name="arrow" /></Link></div>
     </section>}
   </div>;
 }

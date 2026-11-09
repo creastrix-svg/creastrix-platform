@@ -9,14 +9,14 @@ import ProductExperience from './ProductExperience';
 import { cartAdded, cartLineRestored, cartRemovedLineDismissed, productDescriptionChanged, productMediaModeSelected, productVariantSelected, purchaseQuantityChanged } from './demoStore';
 import { productCopy } from './copy';
 import { checkoutCopy } from './checkoutCopy';
-import type { VariantId } from './catalog';
+import type { CartSku } from './cartSku';
 import { money, variantById } from './catalog';
 import { storefrontLocales } from './locale';
 
 vi.mock('@google/model-viewer', () => ({}));
 afterEach(() => { vi.restoreAllMocks(); });
 let fixtureKey = 0;
-function show(lines: { variant: VariantId; quantity: number }[] = [], path = '/preview/cart') {
+function show(lines: { variant: CartSku; quantity: number }[] = [], path = '/preview/cart') {
   const store = createAppStore('en', vi.fn()); lines.forEach(line => store.dispatch(cartAdded(line)));
   const url = new URL(path, 'https://example.test');
   const view = render(<Provider store={store}><MemoryRouter initialEntries={[{ pathname: url.pathname, search: url.search, key: 'cart-ui-case-' + ++fixtureKey }]}><ProductExperience /></MemoryRouter></Provider>);
@@ -36,10 +36,66 @@ it('renders variant-owned media, current unit prices, line subtotals and separat
   expect(within(summary).getByText('€141.80')).toBeVisible();
 });
 
+it('keeps Tide and Loop distinct across the mini-cart, restoration, the full cart and checkout', async () => {
+  const { main, store, t, user } = show([{ variant: 'chalk', quantity: 1 }, { variant: 'tide-cobalt', quantity: 2 }]);
+  const name = 'Tide · Espresso cup', line = within(main).getByRole('article', { name });
+  expect(within(line).getByRole('link', { name: 'Tide' })).toHaveAttribute('href', '/collections/objects/tide');
+  expect(within(line).getByRole('img', { name })).toHaveAttribute('src', '/shop-edition/tide.webp');
+  expect(within(line).getByText('€18.00')).toBeVisible();
+  expect(within(line).getByText('€36.00')).toBeVisible();
+  expect(line.querySelector('.product-cart-design-meta')).toBeNull();
+  expect(within(main).getByRole('complementary')).toHaveTextContent('€55.90');
+  await user.hover(within(screen.getByRole('banner')).getByRole('link', { name: t.cart }));
+  const peek = screen.getByRole('region', { name: t.cartPreview });
+  expect(within(peek).getByRole('img', { name })).toHaveAttribute('src', '/shop-edition/tide.webp');
+  expect(within(peek).getByText('€55.90')).toBeVisible();
+  await user.keyboard('{Escape}');
+  const q = within(line).getByRole('textbox', { name: t.quantity + ' · Espresso cup' });
+  fireEvent.change(q, { target: { value: '999' } });
+  expect(q).toHaveValue('18');
+  expect(store.getState().productDemo.cart.find(item => item.variant === 'chalk')?.quantity).toBe(1);
+  fireEvent.change(q, { target: { value: '2' } });
+  await user.click(within(line).getByRole('button', { name: t.remove + ' · Espresso cup' }));
+  expect(within(main).getByRole('complementary')).toHaveTextContent('€19.90');
+  await user.click(within(line).getByRole('button', { name: t.cartRestore + ' · Espresso cup' }));
+  await user.click(within(main).getByRole('link', { name: checkoutCopy.en.proceed }));
+  const checkoutLine = screen.getByRole('article', { name });
+  expect(within(checkoutLine).getByText('€36.00')).toBeVisible();
+  expect(screen.getByRole('complementary')).toHaveTextContent('€55.90');
+});
+
+it.each(['header', 'mini-cart'] as const)('returns from a mixed cart opened via %s to Tide at its prior scroll position', async entry => {
+  const { user, t } = show([{ variant: 'cobalt', quantity: 1 }, { variant: 'tide-cobalt', quantity: 1 }], '/collections/objects/TiDe/');
+  const descriptor = Object.getOwnPropertyDescriptor(window, 'scrollY');
+  let top = 638;
+  Object.defineProperty(window, 'scrollY', { configurable: true, get: () => top });
+  const scroll = vi.spyOn(window, 'scrollTo').mockImplementation((options?: ScrollToOptions | number) => {
+    if (typeof options === 'object') top = options.top ?? top;
+  });
+  try {
+    expect(screen.getByRole('heading', { level: 1, name: 'Tide' })).toBeVisible();
+    fireEvent.scroll(window);
+    const cart = screen.getByRole('link', { name: t.cart });
+    if (entry === 'mini-cart') {
+      await user.hover(cart);
+      await user.click(within(screen.getByRole('region', { name: t.cartPreview })).getByRole('link', { name: t.viewCart }));
+    } else await user.click(cart);
+    expect(top).toBe(0);
+    const back = within(screen.getByRole('main')).getByRole('link', { name: t.continue });
+    expect(back).toHaveAttribute('href', '/collections/objects/tide');
+    await user.click(back);
+    expect(screen.getByRole('heading', { level: 1, name: 'Tide' })).toBeVisible();
+    expect(top).toBe(638);
+  } finally {
+    scroll.mockRestore();
+    if (descriptor) Object.defineProperty(window, 'scrollY', descriptor);
+  }
+});
+
 it('keeps numeric stock and quantity notices truthful, clamps at own stock and recomputes current-price totals', () => {
   const { main, store, t } = show([{ variant: 'chalk', quantity: 2 }]);
   const line = within(main).getByRole('article', { name: 'Loop · Chalk' });
-  expect(line.querySelector('.product-cart-stock')).toHaveTextContent(t.stock + ': 15 ' + t.pieces);
+  expect(line.querySelector('.product-cart-stock')).toHaveTextContent(t.stock + ': 15');
   const input = within(line).getByRole('textbox', { name: t.quantity + ' · Chalk' });
   fireEvent.change(input, { target: { value: '999' } }); expect(input).toHaveValue('15');
   expect(within(line).getByText(t.limit + ' 15.')).toBeVisible(); expect(store.getState().productDemo.cart[0].quantity).toBe(15);
@@ -247,8 +303,9 @@ it.each(storefrontLocales)('renders localized Continue shopping and disables che
 it.each(['cart', 'checkout'] as const)('preserves productReturn colour, purchase draft, Photo/3D and disclosure via %s', async action => {
   const { user, store, t } = show([], '/products/loop?variant=cobalt-chalk');
   act(() => {
-    store.dispatch(productVariantSelected('cobalt-chalk')); store.dispatch(purchaseQuantityChanged({ variant: 'cobalt-chalk', quantity: 3 }));
-    store.dispatch(productMediaModeSelected('model')); store.dispatch(productDescriptionChanged(true)); store.dispatch(cartAdded({ variant: 'cobalt-chalk', quantity: 2 }));
+    store.dispatch(productVariantSelected('cobalt-chalk')); store.dispatch(cartAdded({ variant: 'cobalt-chalk', quantity: 2 }));
+    store.dispatch(purchaseQuantityChanged({ variant: 'cobalt-chalk', quantity: 3 }));
+    store.dispatch(productMediaModeSelected('model')); store.dispatch(productDescriptionChanged(true));
   });
   // Use the media mode control as well: the mounted gallery owns its current mode.
   await user.click(screen.getByRole('button', { name: t.model }));

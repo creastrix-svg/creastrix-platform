@@ -1,5 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
+import { catalogCopy } from './catalogCopy';
+import { isCatalogPath } from './routes';
 import { useAppDispatch } from '../hooks';
 import { productCopy } from './copy';
 import { useProductLocale } from './useProductLocale';
@@ -8,6 +10,13 @@ import { productLocaleSelected } from './demoStore';
 import type { Appearance } from './appearance';
 import { Icon } from './Icon';
 import Modal from './Modal';
+
+const drawerLabels = {
+  de: ['Nach Thema', 'Schnellauswahl'], en: ['Browse by interest', 'Quick picks'],
+  ru: ['По интересам', 'Быстрый выбор'], pl: ['Według zainteresowań', 'Szybki wybór'],
+  es: ['Por interés', 'Accesos rápidos'], fr: ['Par thème', 'Accès rapides'],
+  it: ['Per interesse', 'Scelte rapide'],
+} as const;
 
 function ThemeMenu({ appearance, onAppearance }: { appearance: Appearance; onAppearance: (appearance: Appearance) => void }) {
   const t = productCopy[useProductLocale()], id = useId();
@@ -64,12 +73,25 @@ function ThemeMenu({ appearance, onAppearance }: { appearance: Appearance; onApp
 export default function StorefrontNavigation({ appearance, onAppearance }: { appearance: Appearance; onAppearance: (appearance: Appearance) => void }) {
   const locale = useProductLocale(), t = productCopy[locale], dispatch = useAppDispatch();
   const [drawer, setDrawer] = useState(false);
+  const { pathname, search } = useLocation();
+  const here = (isCatalogPath(pathname) ? '/catalog' : pathname) + search;
   const id = useId();
-  const categories = [[t.living, 'living'], [t.gifts, 'gifts'], [t.personalizable, 'personal']] as const;
+  const copy = catalogCopy[locale], [interests, shortcuts] = drawerLabels[locale];
+  const groups = [
+    { name: interests, links: [[t.living, '/catalog?category=living'], [t.gifts, '/catalog?category=gifts']] },
+    { name: shortcuts, links: [[copy.ready, '/catalog?format=ready'], [t.personalizable, '/catalog?custom=yes'], [copy.sale, '/catalog?sale=1'], [copy.conceptsTitle, '/catalog?format=concept']] },
+  ];
+  const menuLink = (label: string, to: string, className?: string) =>
+    <Link key={to} className={className} to={to} aria-current={here === to ? 'page' : undefined} onClick={() => setDrawer(false)}>
+      {label}<Icon name="chevron" />
+    </Link>;
   return <>
     <div className="product-nav-bar"><div className="product-nav-inner product-width"><nav aria-label={t.navigation}>
-      <button type="button" className="product-category-menu" aria-expanded={drawer} aria-haspopup="dialog" onClick={() => setDrawer(true)}><Icon name="menu" /><span>{t.categories}</span></button>
-      {categories.map(([label, category]) => <Link key={category} className={'product-category-link product-category-' + category} to={'/preview/collection?category=' + category}>{label}</Link>)}
+      <button type="button" className="product-category-menu" aria-expanded={drawer} aria-haspopup="dialog" onClick={event => {
+        // Safari need not focus a button on pointer activation; preserve the actual opener for the dialog.
+        event.currentTarget.focus({ preventScroll: true });
+        setDrawer(true);
+      }}><Icon name="menu" /><span>{t.categories}</span></button>
     </nav><div className="product-utilities">
       <Link className="product-help" to="/preview/info/help" aria-label={t.help}><Icon name="help" /><span>{t.help}</span></Link>
       <span className="product-language-wrap"><label className="product-sr-only" htmlFor={id + '-language'}>{t.language}</label><select id={id + '-language'} value={locale} onChange={event => { if (isStorefrontLocale(event.target.value)) dispatch(productLocaleSelected(event.target.value)); }}>
@@ -77,6 +99,15 @@ export default function StorefrontNavigation({ appearance, onAppearance }: { app
       </select><span className="product-select-chevron"><Icon name="chevron" /></span></span>
       <ThemeMenu appearance={appearance} onAppearance={onAppearance} />
     </div></div></div>
-    {drawer && <Modal title={t.categories} closeLabel={t.close} className="product-category-drawer" onClose={() => setDrawer(false)}><div className="product-category-links">{categories.map(([label, category]) => <Link key={category} to={'/preview/collection?category=' + category} onClick={() => setDrawer(false)}>{label}<Icon name="arrow" /></Link>)}<Link to="/preview/info/help" onClick={() => setDrawer(false)}>{t.help}<Icon name="arrow" /></Link></div><p>{t.categoryNote}</p></Modal>}
+    {drawer && <Modal title={t.categories} closeLabel={t.close} className="product-category-drawer" motion="drawer" onClose={() => setDrawer(false)}>
+      <nav className="product-category-links" aria-label={t.categories}>
+        {menuLink(copy.allItems, '/catalog', 'category-all')}
+        {groups.map(group => <div className="category-group" key={group.name}>
+          <h3>{group.name}</h3>
+          {group.links.map(([label, to]) => menuLink(label, to))}
+        </div>)}
+        <div className="category-secondary">{menuLink(t.home, '/')}{menuLink(t.help, '/preview/info/help')}</div>
+      </nav>
+    </Modal>}
   </>;
 }

@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { concepts } from './catalog';
+import type { CarouselItem, CarouselContent } from './carouselContent';
 import type { ProductCopy } from './copy';
 import { Icon } from './Icon';
 
-export function ConceptCard({ item, t }: { item: typeof concepts[number]; t: ProductCopy }) {
-  return <Link className="product-concept-card" to={'/preview/items/' + item.id}>
-    <span className="product-concept-image"><img src={`/product/reference-asset-${item.image}.webp`} alt={`${item.name} · ${t.conceptNote}`} loading="lazy" width="512" height="512" /></span>
-    <span className="product-concept-copy"><strong>{item.name}</strong><small>{t.concept}</small></span>
+function RailCard({ item }: { item: CarouselItem }) {
+  return <Link className="product-concept-card" to={item.href}>
+    <span className="product-concept-image"><img src={item.photo} alt="" loading="lazy" width="512" height="512" /></span>
+    <span className="product-concept-copy"><strong>{item.name}</strong><small>{item.note}</small></span>
   </Link>;
 }
 
-export default function Carousel({ title, mini = false, t }: { title: string; mini?: boolean; t: ProductCopy }) {
+export default function Carousel({ title, mini = false, t, content }: { title: string; mini?: boolean; t: ProductCopy; content: CarouselContent }) {
+  const { items, href } = content;
   const id = useId();
   const rail = useRef<HTMLUListElement>(null);
   const frame = useRef<HTMLDivElement>(null);
@@ -46,9 +47,9 @@ export default function Carousel({ title, mini = false, t }: { title: string; mi
     element.scrollTo({ left, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
   }
   return <section className={'product-carousel' + (mini ? ' product-carousel-mini' : '')} aria-labelledby={id + '-title'}>
-    <div className="product-section-heading"><h2 id={id + '-title'}><Link to="/preview/collection">{title}<Icon name="arrow" /></Link></h2></div>
+    <div className="product-section-heading"><h2 id={id + '-title'}><Link to={href}>{title}<Icon name="arrow" /></Link></h2></div>
     <div className="product-rail-frame" ref={frame}>
-      <ul className="product-rail" ref={rail} id={id} onScroll={measure}>{concepts.map(item => <li key={item.id}><ConceptCard item={item} t={t} /></li>)}</ul>
+      <ul className="product-rail" ref={rail} id={id} onScroll={measure}>{items.map(item => <li key={item.href}><RailCard item={item} /></li>)}</ul>
       <button type="button" className="product-rail-arrow product-rail-prev" aria-label={t.previousProducts} aria-controls={id} disabled={bounds.start} onClick={() => move(-1)}><span className="product-flip"><Icon name="chevron" /></span></button>
       <button type="button" className="product-rail-arrow product-rail-next" aria-label={t.nextProducts} aria-controls={id} disabled={bounds.end} onClick={() => move(1)}><Icon name="chevron" /></button>
     </div>

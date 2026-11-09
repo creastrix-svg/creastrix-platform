@@ -6,35 +6,11 @@ import ConfirmEmail from './ConfirmEmail';
 import { useAppDispatch, useAppSelector } from './hooks';
 import { copy } from './i18n';
 import { languageSelected } from './store';
-import { isProductPath } from './product/routes';
+import { isStorefrontPath } from './product/routes';
 
 const ProductExperience = lazy(() => import('./product/ProductExperience'));
 
 function useCopy() { return copy[useAppSelector(state => state.ui.language)]; }
-
-function Home() {
-  const t = useCopy();
-  return <>
-    <div className="hero">
-      <section className="hero-copy">
-        <p className="eyebrow">{t.homeEyebrow}</p><h1>{t.homeTitle}</h1><p className="lead">{t.homeLead}</p>
-        <div className="actions">
-          <Link className="button primary" to="/login">{t.login}<span aria-hidden="true">↗</span></Link>
-          <Link className="text-link" to="/account">{t.openAccount}<span aria-hidden="true">→</span></Link>
-        </div>
-      </section>
-      <aside className="preview-card" aria-label={t.previewTitle}>
-        <div className="card-top"><span className="eyebrow">Creastrix</span><span className="badge">{t.pilotLabel}</span></div>
-        <div className="paper-art" aria-hidden="true"><span /><span /><span /></div>
-        <h2>{t.previewTitle}</h2><p>{t.previewLead}</p>
-      </aside>
-    </div>
-    <ol className="principles">
-      {[[t.stepOne, t.stepOneBody], [t.stepTwo, t.stepTwoBody], [t.stepThree, t.stepThreeBody]].map(([title, body], i) =>
-        <li key={title}><span className="step-number" aria-hidden="true">0{i + 1}</span><h2>{title}</h2><p>{body}</p></li>)}
-    </ol>
-  </>;
-}
 
 function AuthenticationStatus() {
   const t = useCopy();
@@ -127,26 +103,26 @@ export default function App() {
   const dispatch = useAppDispatch();
   const t = copy[language];
   const { pathname } = useLocation();
-  const productPath = isProductPath(pathname);
+  const storefront = isStorefrontPath(pathname);
   const previousPath = useRef(pathname);
   const main = useRef<HTMLElement>(null);
   const currentPath = pathname.replace(/\/+$/, '').toLowerCase() || '/';
-  const title = currentPath === '/' ? t.home : currentPath === '/login' ? t.login : currentPath === '/account' ? t.account
+  const title = currentPath === '/login' ? t.login : currentPath === '/account' ? t.account
     : currentPath === '/confirm-email' ? t.confirmation.page : t.notFoundEyebrow;
 
-  useEffect(() => { if (!productPath) { document.documentElement.lang = language; document.title = title + ' · Creastrix'; } }, [language, title, productPath]);
+  useEffect(() => { if (!storefront) { document.documentElement.lang = language; document.title = title + ' · Creastrix'; } }, [language, title, storefront]);
   useEffect(() => {
     if (previousPath.current !== pathname) {
-      if (!productPath) { main.current?.focus(); window.scrollTo({ top: 0, behavior: 'instant' }); }
+      if (!storefront) { main.current?.focus(); window.scrollTo({ top: 0, behavior: 'instant' }); }
       previousPath.current = pathname;
     }
-  }, [pathname, productPath]);
+  }, [pathname, storefront]);
   useLayoutEffect(() => {
     // Reopening follows the current DOM commit, never an old result awaiting React rendering.
     if (auth.phase === 'AUTHENTICATED' && auth.owner && auth.user) runtime?.reveal(auth.owner);
   }, [auth, runtime]);
 
-  if (productPath) return <Suspense fallback={<p role="status">Creastrix…</p>}><ProductExperience /></Suspense>;
+  if (storefront) return <Suspense fallback={<p role="status">Creastrix…</p>}><ProductExperience /></Suspense>;
 
   return <div className="shell">
     <a className="skip-link" href="#main">{t.skip}</a>
@@ -159,7 +135,7 @@ export default function App() {
       </div>
     </header>
     <div className="demo-strip"><span className="badge">{t.pilotLabel}</span><span>{t.pilotBoundary}</span></div>
-    <main id="main" ref={main} tabIndex={-1}><Routes><Route path="/" element={<Home />} /><Route path="/login" element={<Login />} /><Route path="/confirm-email" element={<ConfirmEmail />} /><Route path="/account" element={<Account />} /><Route path="*" element={<NotFound />} /></Routes></main>
+    <main id="main" ref={main} tabIndex={-1}><Routes><Route path="/login" element={<Login />} /><Route path="/confirm-email" element={<ConfirmEmail />} /><Route path="/account" element={<Account />} /><Route path="*" element={<NotFound />} /></Routes></main>
     <footer><span>{t.footer}</span><span>{t.footerNote}</span></footer>
   </div>;
 }
