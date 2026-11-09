@@ -83,6 +83,11 @@ it('restores plain legacy-shaped lines without inventing a prior persisted cart 
   const restored = await restoreStudio(raw, library());
   expect(restored.lines).toEqual([{ variant: 'chalk', quantity: 2 }]);
 });
+it('round-trips both products without treating Tide as a blue Loop', async () => {
+  const cart = [{ variant: 'cobalt' as const, quantity: 4 }, { variant: 'tide-cobalt' as const, quantity: 3 }];
+  const raw = serializeStudio(initialStudioComposition(), emptyCreative(), { cart, cartSerial: 1 });
+  expect((await restoreStudio(raw, library())).lines).toEqual(cart);
+});
 it('restores normalized PNG above the compressed upload limit without relaxing the public uploader', async () => {
   const src = png(1536, STUDIO_IMAGE_BYTES + 100), image = { id: 900, src, canvas: document.createElement('canvas'), aspect: 1 };
   const doc = { selectedId: 'studio-object-1', objects: [{ id: 'studio-object-1', kind: 'image' as const, fit: 'cover' as const, value: { image, size: 85, x: 240, y: 278 } }] };
@@ -102,6 +107,9 @@ it('round-trips complete graphemes rather than rejecting valid multi-codepoint t
 it.each([
   (v: Record<string, unknown>) => { v.version = 999; },
   (v: Record<string, unknown>) => { v.lines = [{ variant: 'chalk', quantity: 999 }]; },
+  (v: Record<string, unknown>) => { v.lines = [{ variant: 'tide', quantity: 1 }]; },
+  (v: Record<string, unknown>) => { v.lines = [{ variant: 'tide-cobalt', quantity: 19 }]; },
+  (v: Record<string, unknown>) => { v.lines = [{ variant: 'tide-cobalt', quantity: 1, id: 'design-1', design: { objects: [] } }]; },
   (v: Record<string, unknown>) => { v.lines = [{ variant: 'chalk', quantity: 1 }, { variant: 'chalk', quantity: 1 }]; },
   (v: Record<string, unknown>) => { v.assets = ['https://example.com/image.png']; },
   (v: Record<string, unknown>) => { v.assets = ['data:image/svg+xml;base64,PHN2Zy8+']; },

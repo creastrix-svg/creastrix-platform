@@ -8,22 +8,25 @@ import { personalizationCopy } from './personalizationCopy';
 import { studioZoneCopy } from './studioZoneCopy';
 import { catalogCopy } from './catalogCopy';
 import { homeCopy } from './homeCopy';
-import { isCatalogPath } from './routes';
+import { isCatalogPath, isTideOfferPath, tideOfferPath, tideReviewRoute } from './routes';
 import { editionCollectionPath, editionCopy, editionItems } from './editionCatalog';
 
 export function useProductMetadata(t: ProductCopy, locale: StorefrontLocale) {
   const { pathname: rawPath, search } = useLocation();
-  const pathname = rawPath.replace(/\/+$/, '') || '/';
+  const pathname = isTideOfferPath(rawPath) ? tideOfferPath : rawPath.replace(/\/+$/, '') || '/';
+  const tideReviews = tideReviewRoute(pathname);
   const info = { help: [t.help, t.helpBody], delivery: [t.delivery, t.deliveryBody], returns: [t.returns, t.returnsBody], contact: [t.contact, t.contactBody], about: [t.about, t.aboutInfo], legal: [t.legal, t.legalBody] };
   let title = t.notFound, description = t.notFoundBody;
   if (pathname === '/') { title = homeCopy[locale].title; description = homeCopy[locale].description; }
   else if (pathname === editionCollectionPath) { title = editionCopy[locale].title; description = editionCopy[locale].intro; }
+  else if (tideReviews === 'list') { title = t.reviews.replace('{product}', 'Tide'); description = t.noReviews; }
+  else if (tideReviews === 'form') { title = t.reviewFormTitle + ' · Tide'; description = t.reviewDemoNote; }
   else if (pathname.startsWith(editionCollectionPath + '/')) {
     const item = editionItems(locale).find(entry => entry.href === pathname);
     if (item) { title = item.name + ' · ' + item.title; description = item.description; }
   }
   else if (pathname === '/products/loop') { title = `Loop · ${t.subtitle}`; description = t.descriptionIntro; }
-  else if (pathname === '/products/loop/reviews') { title = t.reviews; description = t.reviewsBody; }
+  else if (pathname === '/products/loop/reviews') { title = t.reviews.replace('{product}', 'Loop'); description = t.reviewsBody; }
   else if (pathname === '/products/loop/reviews/new') { title = t.reviewFormTitle; description = t.reviewDemoNote; }
   else if (pathname === '/products/loop/personalize') {
     const products = new URLSearchParams(search).getAll('product');

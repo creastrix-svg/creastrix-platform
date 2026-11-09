@@ -26,7 +26,7 @@ function mount(locale: StorefrontLocale = 'en') {
     <Route path="*" element={<Destination/>}/></Routes></MemoryRouter></Provider>);
   return { user, store, copy: shelfCopy[locale] };
 }
-it.each(storefrontLocales)('leads with a priced offer and labels 31 distinct editorial designs in %s', locale => {
+it.each(storefrontLocales)('shows two priced products and distinguishes the remaining 30 editorial designs in %s', locale => {
   mount(locale);
   const entries = editionItems(locale).filter(item => item.id !== 'drift'), shelf = within(screen.getByRole('list'));
   const available = variants.filter(item => item.stock > 0), prices = available.map(item => item.cents);
@@ -39,9 +39,15 @@ it.each(storefrontLocales)('leads with a priced offer and labels 31 distinct edi
   for (const [index, item] of entries.entries()) {
     const tile = within(tiles[index + 1]);
     const link = tile.getByRole('link', { name: item.name + ' ' + item.title });
-    expect(link).toHaveAccessibleDescription(item.material + ' ' + shelfCopy[locale].preview);
-    expect(within(link).getByText(shelfCopy[locale].preview)).toBeVisible();
-    expect(within(link).queryByText(/€/)).toBeNull();
+    if (item.id === 'tide') {
+      expect(link).toHaveTextContent(money(1800, locale).replace(/\s/gu, ' '));
+      expect(within(link).getByText(shelfCopy[locale].shop)).toBeVisible();
+      expect(within(link).queryByText(shelfCopy[locale].preview)).toBeNull();
+    } else {
+      expect(link).toHaveAccessibleDescription(item.material + ' ' + shelfCopy[locale].preview);
+      expect(within(link).getByText(shelfCopy[locale].preview)).toBeVisible();
+      expect(within(link).queryByText(/€/)).toBeNull();
+    }
     expect(link.querySelector('img')).toHaveAttribute('src', item.thumb);
     expect(link.querySelector('img')).toHaveAttribute('loading', 'lazy');
     expect(tile.getAllByRole('link')).toHaveLength(1);

@@ -33,8 +33,9 @@ not a buyer toggle. A future automatic adaptation that changes the design must b
 shown to the buyer before acceptance.
 
 Personalisation requires explicit availability and usable area configuration.
-When unavailable, show “Personalisation is not available for this product” instead
-of an active entry link. Direct navigation must respect the same condition.
+When unavailable, omit the entire entry from the product card. Its three
+feature tiles follow the gallery with no substitute notice or reserved space.
+Direct navigation still must not open an unconfigured editor.
 Whether the physical product already exists does not by itself enable this feature.
 
 ## Current frontend examples

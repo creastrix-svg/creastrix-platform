@@ -21,6 +21,8 @@ import CatalogView from './CatalogView';
 import EditionView from './EditionView';
 import { editionCollectionPath } from './routes';
 import StorefrontHome from './StorefrontHome';
+import TideProductPage from './TideProductPage';
+import { tideOffer } from './tideOffer';
 import { catalogCopy } from './catalogCopy';
 import './product.css';
 import { rememberProductPreferences, serializeProductPreferences } from './preferences';
@@ -71,6 +73,9 @@ function Storefront({ cartReady = true }: { cartReady?: boolean }) {
       <main className="product-main product-width" id="product-main" tabIndex={-1} ref={main}><StorefrontOrigin.Provider value={origin}><Routes>
         <Route path="/" element={<StorefrontHome />} />
         <Route path={editionCollectionPath} element={<EditionView />} />
+        <Route path={tideOffer.href} element={<TideProductPage />} />
+        <Route path={tideOffer.href + '/reviews'} element={<ReviewsView product="tide" />} />
+        <Route path={tideOffer.href + '/reviews/new'} element={<ReviewFormView product="tide" />} />
         <Route path={editionCollectionPath + '/:id'} element={<EditionView />} />
         <Route path="/products/loop" element={<ProductPage />} /><Route path="/products/loop/reviews" element={<ReviewsView />} /><Route path="/products/loop/reviews/new" element={<ReviewFormView />} />
         <Route path="/products/loop/personalize" element={<PersonalizationView />} />

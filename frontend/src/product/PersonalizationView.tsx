@@ -88,14 +88,14 @@ export default function PersonalizationView() {
 function CartEditor({ id }: { id: string }) {
   const line = useAppSelector(state => state.productDemo.cart.find(line => cartLineId(line) === id));
   const [original] = useState(line), c = studioCartCopy[useProductLocale()];
-  if (!original?.design || !line || designKey(line.design) !== designKey(original.design)) return <section><p role="alert">{c.missing}</p><Link to="/preview/cart">{c.cancel}</Link></section>;
-  return <LoadCartEditor line={original} />;
+  if (!original?.design || !isVariantId(original.variant) || !line || designKey(line.design) !== designKey(original.design)) return <section><p role="alert">{c.missing}</p><Link to="/preview/cart">{c.cancel}</Link></section>;
+  return <LoadCartEditor line={{ ...original, variant: original.variant }} />;
 }
-function LoadCartEditor({ line }: { line: CartLine }) {
+function LoadCartEditor({ line }: { line: CartLine<VariantId> }) {
   const { document, error } = useDesignDocument(line.design!), c = studioCartCopy[useProductLocale()];
   return document ? <CartEditorSession line={line} document={document} /> : <p role="status">{error ? c.restoreFailed : c.loading}</p>;
 }
-function CartEditorSession({ line, document }: { line: CartLine; document: CompositionDocument }) {
+function CartEditorSession({ line, document }: { line: CartLine<VariantId>; document: CompositionDocument }) {
   const [state, dispatch] = useReducer(compositionReducer, document, value => sessionWithDocument(line.variant, value));
   const storeDispatch = useAppDispatch(), navigate = useNavigate();
   return <PersonalizationSession.Provider value={{ state, dispatch }}><Studio variant={line.variant} initialProduct="loop" onSave={objects => {

@@ -1,7 +1,10 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../hooks';
-import { mediaForVariant, money, photoDescription, swatchBackground, variantById } from './catalog';
+import { isVariantId, money } from './catalog';
+import { cartOfferView } from './cartOfferView';
+import { isTideOfferPath } from './routes';
+import { tideOffer } from './tideOffer';
 import { productCopy } from './copy';
 import { cartCount, cartLinePrice, cartLineRemoved, cartQuantityChanged, cartTotal } from './demoStore';
 import { Icon } from './Icon';
@@ -62,6 +65,9 @@ export function HeaderCart({ ready = true }: { ready?: boolean }) {
   const c = studioCartCopy[language];
   const demo = useAppSelector(state => state.productDemo), dispatch = useAppDispatch();
   const location = useLocation();
+  const returnState = isTideOfferPath(location.pathname) ? { cartReturnTo: tideOffer.href }
+    : location.pathname === '/products/loop' ? { cartReturnTo: '/products/loop' }
+    : location.pathname === '/preview/cart' || location.pathname === '/preview/checkout' ? location.state : null;
   const [openKey, setOpenKey] = useState<string | null>(null);
   const open = ready && openKey === location.key;
   const [initialAddSerial] = useState(demo.addSerial);
@@ -107,20 +113,20 @@ export function HeaderCart({ ready = true }: { ready?: boolean }) {
     }}
     onFocusCapture={reveal} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpenKey(null); }}
     onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); opener.current?.focus(); setOpenKey(null); } }}>
-    <Link to="/preview/cart" className="product-icon-button" ref={opener} aria-label={t.cart} aria-expanded={ready ? open : undefined} aria-controls={ready ? id : undefined} onClick={() => setOpenKey(null)}><Icon name="bag" />{ready && cartCount(demo) > 0 && <span key={demo.addSerial} className={'product-count' + (demo.addSerial !== initialAddSerial ? ' product-count-added' : '')}>{cartCount(demo)}</span>}</Link>
+    <Link to="/preview/cart" state={returnState} className="product-icon-button" ref={opener} aria-label={t.cart} aria-expanded={ready ? open : undefined} aria-controls={ready ? id : undefined} onClick={() => setOpenKey(null)}><Icon name="bag" />{ready && cartCount(demo) > 0 && <span key={demo.addSerial} className={'product-count' + (demo.addSerial !== initialAddSerial ? ' product-count-added' : '')}>{cartCount(demo)}</span>}</Link>
     {open && <section className="product-cart-peek" ref={popup} id={id} aria-label={t.cartPreview}>
       <h2>{t.cart}</h2>
       <div className="product-peek-items">{demo.cart.length === 0 ? <p>{t.emptyCart}</p> : demo.cart.slice(-5).map(line => {
-        const variant = variantById(line.variant), id = cartLineId(line), designLabel = cartDesignLabel(line, language), context = variant.name[language] + (designLabel ? ' · ' + designLabel : '');
+        const offer = cartOfferView(line.variant, language), id = cartLineId(line), designLabel = cartDesignLabel(line, language), context = offer.detail + (designLabel ? ' · ' + designLabel : '');
         const { baseCents, feeCents, unitCents } = cartLinePrice(line);
         return <div className="product-peek-line" key={id} data-cart-line-id={id}>
-        {line.design ? <DesignThumbnail design={line.design} variant={line.variant} label={designLabel} /> : mediaForVariant(line.variant).photos[0] ? <img src={mediaForVariant(line.variant).photos[0]} alt={photoDescription(t.photoAlt, variant.name[language])} width="58" height="58" /> : <span className="product-peek-swatch" style={{ background: swatchBackground(variant.colors) }} aria-label={t.noPhoto} />}
-        <div><strong>Loop · {variant.name[language]}</strong><span>{feeCents > 0 && line.quantity > 1 && <>{line.quantity} × {money(unitCents, language)} = </>}{money(unitCents * line.quantity, language)}</span>
+        {line.design && isVariantId(line.variant) ? <DesignThumbnail design={line.design} variant={line.variant} label={designLabel} /> : offer.photo ? <img src={offer.photo} alt={offer.alt} width="58" height="58" /> : <span className="product-peek-swatch" style={{ background: offer.swatch }} aria-label={t.noPhoto} />}
+        <div><strong>{offer.name} · {offer.detail}</strong><span>{feeCents > 0 && line.quantity > 1 && <>{line.quantity} × {money(unitCents, language)} = </>}{money(unitCents * line.quantity, language)}</span>
           {line.design && <div className="product-cart-design-meta"><span>{designLabel}</span><CartDesignPriceDetails baseCents={baseCents} feeCents={feeCents} language={language} /><Link aria-label={`${c.edit} · ${context}`} to={`/products/loop/personalize?variant=${line.variant}&edit=${encodeURIComponent(id)}`} onClick={() => setOpenKey(null)}>{c.edit}</Link></div>}
           <QuantityInput value={line.quantity} max={lineCapacity(demo, line)} onChange={quantity => dispatch(cartQuantityChanged({ variant: line.variant, id: line.id, quantity }))} t={t} context={context} /></div>
         <button type="button" className="product-icon-button" aria-label={`${t.remove} · ${context}`} onClick={() => { opener.current?.focus({ preventScroll: true }); dispatch(cartLineRemoved(id)); }}><Icon name="close" /></button>
       </div>; })}</div>
-      <div className="product-peek-footer"><div className="product-peek-total"><span>{t.cartItemsSubtotal}</span><strong>{money(cartTotal(demo), language)}</strong></div><Link className="product-primary" to="/preview/cart" onClick={() => setOpenKey(null)}>{t.viewCart}<Icon name="arrow" /></Link></div>
+      <div className="product-peek-footer"><div className="product-peek-total"><span>{t.cartItemsSubtotal}</span><strong>{money(cartTotal(demo), language)}</strong></div><Link className="product-primary" to="/preview/cart" state={returnState} onClick={() => setOpenKey(null)}>{t.viewCart}<Icon name="arrow" /></Link></div>
     </section>}
   </div>;
 }

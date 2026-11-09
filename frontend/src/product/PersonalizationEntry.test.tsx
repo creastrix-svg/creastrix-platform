@@ -38,13 +38,14 @@ describe('configured personalization entry', () => {
     expect(screen.queryByTestId('applied-preview')).toBeNull();
   });
 
-  it.each(['disabled', 'missing areas', 'empty tools'] as const)('shows an explanation and no actionable CTA for %s', state => {
+  it.each(['disabled', 'missing areas', 'empty tools'] as const)('omits the entry completely for %s', state => {
     const source = getStudioProduct('loop');
     const product = state === 'disabled' ? { ...source, enabled: false }
       : state === 'missing areas' ? { ...source, zones: [] }
       : { ...source, zones: [{ ...source.zones[0], tools: [] }] };
     show(product);
-    expect(screen.getByText(studioZoneCopy.en.unavailable)).toBeVisible();
+    expect(screen.queryByText(studioZoneCopy.en.unavailable)).toBeNull();
+    expect(screen.queryByRole('region')).toBeNull();
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.queryByTestId('applied-preview')).toBeNull();

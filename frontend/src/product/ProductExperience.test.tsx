@@ -16,6 +16,7 @@ import { checkoutCopy } from './checkoutCopy';
 import { personalizationCopy } from './personalizationCopy';
 import { cartAdded, favoriteToggled } from './demoStore';
 import Carousel from './Carousel';
+import { loopCarouselContent } from './carouselContent';
 import indexSource from '../../index.html?raw';
 import { storefrontLocales } from './locale';
 import MediaGallery from './MediaGallery';
@@ -783,7 +784,7 @@ describe('product card and public demo controls', () => {
   it('navigates to separate reviews and honest help/info destinations', async () => {
     const { user, t } = show();
     await user.click(screen.getByRole('link', { name: t.noReviews }));
-    expect(screen.getByRole('heading', { level: 1, name: t.reviews })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 1, name: t.reviews.replace('{product}', 'Loop') })).toBeVisible();
     expect(screen.getByRole('link', { name: t.writeReview })).toHaveAttribute('href', '/products/loop/reviews/new?variant=cobalt');
     expect(screen.getByRole('heading', { level: 2, name: t.noReviews })).toBeVisible();
     expect(screen.queryByText(t.reviewsBody)).toBeNull();
@@ -1258,7 +1259,7 @@ describe('viewport media modal and honest personalisation boundary', () => {
 describe('native horizontal carousel requests', () => {
   it.each([false, true])('keeps the same six DOM items, requests motion appropriately (reduced=%s), and disables edges', async reduced => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: reduced })));
-    render(<MemoryRouter><Carousel title="Related" t={productCopy.en} /></MemoryRouter>);
+    render(<MemoryRouter><Carousel title="Related" t={productCopy.en} content={loopCarouselContent(productCopy.en)} /></MemoryRouter>);
     const list = screen.getByRole('list');
     const items = within(list).getAllByRole('listitem');
     Object.defineProperties(list, { clientWidth: { configurable: true, value: 300 }, scrollWidth: { configurable: true, value: 1000 }, scrollLeft: { configurable: true, writable: true, value: 0 } });
@@ -1327,7 +1328,7 @@ describe('bounded storefront navigation, accessibility and nonpublic metadata', 
     expect(document.documentElement.lang).toBe(language);
     expect(document.querySelector('meta[name="description"]')).toHaveAttribute('content', t.descriptionIntro);
     await user.click(screen.getByRole('link', { name: t.noReviews }));
-    expect(document.title).toBe(t.reviews + ' · Creastrix');
+    expect(document.title).toBe(t.reviews.replace('{product}', 'Loop') + ' · Creastrix');
     expect(document.querySelector('meta[name="description"]')).toHaveAttribute('content', t.reviewsBody);
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(document.querySelector('script[type="application/ld+json"],link[rel="canonical"],link[hreflang]')).toBeNull();
@@ -1359,7 +1360,7 @@ describe('bounded storefront navigation, accessibility and nonpublic metadata', 
   it.each([
     ['/preview/studio/', 'Loop Studio'],
     ['/preview/info/help/', productCopy.en.help],
-    ['/products/loop/reviews/', productCopy.en.reviews],
+    ['/products/loop/reviews/', productCopy.en.reviews.replace('{product}', 'Loop')],
     ['/preview/search/?q=Mini', productCopy.en.results + ' · Mini'],
   ])('keeps accepted trailing-slash metadata aligned for %s', (path, title) => {
     show(path);

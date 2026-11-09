@@ -3,6 +3,17 @@ import { createAppStore } from '../store';
 import { favoriteRemoved, favoriteToggled } from './demoStore';
 import { favoriteKey, readFavoriteIds } from './favorites';
 import type { VariantId } from './catalog';
+import { tideOffer } from './tideOffer';
+
+it('keeps the Tide cup and cobalt Loop as separate favourites across a fresh store', () => {
+  const store = createAppStore('en');
+  store.dispatch(favoriteToggled('cobalt'));
+  store.dispatch(favoriteToggled(tideOffer.sku));
+  const fresh = createAppStore('en');
+  expect(fresh.getState().productDemo.favorites).toEqual(['cobalt', tideOffer.sku]);
+  fresh.dispatch(favoriteRemoved(tideOffer.sku));
+  expect(readFavoriteIds()).toEqual(['cobalt']);
+});
 
 it('independent tabs write only their exact variant; removal and the empty result survive reload', () => {
   const a = createAppStore('en'), b = createAppStore('en');

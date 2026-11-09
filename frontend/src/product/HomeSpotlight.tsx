@@ -11,6 +11,7 @@ import { shelfCopy, shelfFilters } from './homeShelfCopy';
 import type { ShelfFilter } from './homeShelfCopy';
 import { Icon } from './Icon';
 import { useProductLocale } from './useProductLocale';
+import { tideOffer } from './tideOffer';
 import './homeSpotlight.css';
 
 // Keep a filter when Back restores this history entry, without leaking it to a
@@ -98,7 +99,9 @@ function Shelf({ entryKey }: { entryKey: string }) {
           <span className="home-featured-caption">
             <span className="home-featured-title" id={title}><strong>{item.name}</strong><span>{item.title}</span></span>
             <span className="home-featured-material" id={material}>{item.material}</span>
-            <small className="home-featured-status" id={status}>{h.preview}</small>
+            {item.id === tideOffer.id
+              ? <span className="home-offer-end" id={status}><strong>{money(tideOffer.unitCents, locale)}</strong><span className="home-offer-action">{h.shop}<Icon name="arrow"/></span></span>
+              : <small className="home-featured-status" id={status}>{h.preview}</small>}
           </span>
         </Link>
       </li>;

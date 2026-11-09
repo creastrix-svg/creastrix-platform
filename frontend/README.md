@@ -28,23 +28,33 @@ See the [image sources and credits](public/shop-edition/process-photo-credits.tx
 for the packaging and design-concept artwork.
 
 Popular picks can be narrowed to gifts, home, accessories, desk, kitchen, or
-decor. The catalog link beside the section heading opens that same category;
+decor. The category strip below the heading docks underneath search; its catalog link opens that same category;
 with **All** selected it opens the full catalog. The large campaign above always
 opens the full catalog. These selections are not sales analytics.
-The default shelf shows Loop once and 31 individual design previews: eight rows
+The default shelf shows Loop, the Tide espresso cup, and 30 individual design previews: eight rows
 of four on a wide screen. Thumbnails load lazily; the smaller grids keep the same
 items on tablets and phones. Designs have individual detail URLs, localised
 descriptions and two WebP sizes. Each tile links directly to the product or
 design detail, without a separate quick-view button. Concepts show neither
-prices nor fictional stock. Loop uses its existing
-variant pricing. Purchasing and backend contracts are unchanged.
+prices nor fictional stock. Loop uses its existing variant pricing. Tide is a
+single ready-made local offer at its existing URL, `/collections/objects/tide`.
+The shelf, search, product and cart use the same demo price (€18); the demo
+stock limit is 18 cups. **Loop and Tide use the same product card.** A single
+finish still has a selected swatch. If the product has no model, the 3D control
+remains visible but disabled; it never opens another product's model. The card
+always includes the seller, both recommendation rails, three feature tiles,
+specifications and expandable description. Tide has one photograph and no
+personalisation; its three tiles sit directly below the gallery, including on
+phones. No placeholder replaces the studio entry. The local cart and saved products can
+contain both Tide and Loop; no inventory, payment or order request is sent.
+The catalog's own listing classifications are deferred to the catalog pass.
 
 Open `/catalog` (or its older alias `/preview/collection`) to browse products
 and individual design concepts. Loop has **one** card, irrespective of how
 many finishes match. Buyers choose a finish on its product page; a specific
 colour or sale filter can suggest a matching finish. Favourites retain their
 existing variant identity. The editorial collection is not itself a catalog
-item. Concepts open their own previews with no price or purchase action.
+item. Concept-only items open previews with no purchasing controls.
 
 The **Menu** button opens a left-side drawer for the whole collection or a
 specific selection. Its short slide and backdrop fade respect reduced motion.
@@ -155,7 +165,8 @@ not resize controls.
 The heart saves a product in its selected colour, not a standalone colour or a
 personalised design. Saved products lists each marked variant
 with its own photo or swatch, current sample price and direct variant link.
-Each known variant owns one localStorage key under `creastrix.product.loop.favorites.v1.`:
+Each variant has its own localStorage key. Loop keeps its existing
+`creastrix.product.loop.favorites.v1.` keys; Tide uses `creastrix.product.tide.favorites.v1.cobalt`:
 saving writes a one-character marker and removing deletes only that key. Tabs
 cannot overwrite other colours by writing an outdated list. No design,
 account identifier, cart or price is stored in favorites. Storage failure

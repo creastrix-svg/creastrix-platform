@@ -10,7 +10,7 @@ import { useStudioCreative } from './studioCreativeContext';
 import { restoreStudio, serializeStudio, studioStorage } from './studioStorage';
 import { cartEditNote, studioCartCopy } from './studioCartCopy';
 import { useProductLocale } from './useProductLocale';
-import { isEditionPath } from './routes';
+import { isEditionPath, isTideOfferPath } from './routes';
 
 // Redux outlives the storefront on account routes. Keep its exact CAS
 // baseline with that same lifetime; rereading another tab's record is not
@@ -91,7 +91,8 @@ function PersistenceGate({ children, browsingHome }: StudioGateProps) {
   }, [phase, snapshot]);
   // Reading a public landing page must not depend on local drafts. Only its
   // link-only cart is available until hydration, so it cannot mutate a stale cart.
-  const publicHome = browsingHome !== undefined && (location.pathname === '/' || isEditionPath(location.pathname));
+  const publicHome = browsingHome !== undefined && (location.pathname === '/' ||
+    (isEditionPath(location.pathname) && !isTideOfferPath(location.pathname)));
   if (!publicHome && phase === 'loading') return <p role="status" className="studio-local-status">{c.loading}</p>;
   if (!publicHome && phase === 'failed') return <section className="studio-local-status" role="alert"><p>{c.restoreFailed}</p><button type="button" onClick={() => setPhase('memory')}>{c.memory}</button></section>;
   // Browsing needs no routine save announcements, but an editable cart preview

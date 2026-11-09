@@ -1,16 +1,20 @@
 import { useContext, useId, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../hooks';
-import { concepts, isVariantId, mediaForVariant, photoDescription, swatchBackground, variantById } from './catalog';
+import { concepts, isVariantId } from './catalog';
+import { cartOfferView } from './cartOfferView';
+import { catalogCopy } from './catalogCopy';
+import { tideOffer } from './tideOffer';
+import type { CartSku } from './cartSku';
 import type { VariantId } from './catalog';
 import { productCopy } from './copy';
-import { favoriteRemoved } from './demoStore';
+import { cartLinePrice, favoriteRemoved } from './demoStore';
 import ProductPrice from './ProductPrice';
 import { Icon } from './Icon';
 import { searchCatalog, searchResultSummary } from './search';
 import { useProductLocale } from './useProductLocale';
 import { StorefrontOrigin } from './storefrontOrigin';
-import { isCatalogPath } from './routes';
+import { isCatalogPath, tideOfferPath } from './routes';
 
 function Back() {
   const t = productCopy[useProductLocale()], origin = useContext(StorefrontOrigin);
@@ -27,17 +31,20 @@ export function FavoritesView() {
   const ids = useAppSelector(state => state.productDemo.favorites), dispatch = useAppDispatch();
   const heading = useRef<HTMLHeadingElement>(null);
   const titlePrefix = useId();
-  const links = useRef(new Map<VariantId, HTMLAnchorElement>());
-  const [broken, setBroken] = useState<Partial<Record<VariantId, boolean>>>({});
+  const links = useRef(new Map<CartSku, HTMLAnchorElement>());
+  const [broken, setBroken] = useState<Partial<Record<CartSku, boolean>>>({});
   return <div className="product-preview-page"><Back /><h1 ref={heading} tabIndex={-1}>{t.favorites}</h1>
     {ids.length ? <div className="product-saved-grid">{ids.map((id, index) => {
-      const variant = variantById(id), name = variant.name[language], photo = mediaForVariant(id).photos[0];
+      const offer = cartOfferView(id, language), { photo, detail } = offer;
+      const label = offer.name + ' · ' + detail;
       const titleId = titlePrefix + '-' + id;
-      return <article key={id} className="product-saved-card"><Link aria-labelledby={titleId} to={'/products/loop?variant=' + id} ref={node => { if (node) links.current.set(id, node); else links.current.delete(id); }}>
-        {photo && !broken[id] ? <img src={photo} alt={photoDescription(t.photoAlt, name)} width="425" height="283" onError={() => setBroken(previous => ({ ...previous, [id]: true }))} /> :
-          <span className="product-saved-swatch" role="img" aria-label={name + ' · ' + t.noPhoto} style={{ background: swatchBackground(variant.colors) }} />}
-        <h2 id={titleId}>Loop · {name}</h2></Link><ProductPrice cents={variant.cents} previousCents={variant.previousCents} language={language} t={t} />
-        <button type="button" className="product-text-button" aria-label={t.unfavorite + ' · Loop · ' + name} onClick={() => {
+      return <article key={id} className="product-saved-card"><Link aria-labelledby={titleId} to={offer.href} ref={node => { if (node) links.current.set(id, node); else links.current.delete(id); }}>
+        {photo && !broken[id] ? <img src={photo} alt={offer.alt} width="425" height="283" onError={() => setBroken(previous => ({ ...previous, [id]: true }))} /> :
+          <span className="product-saved-swatch" role="img" aria-label={detail + ' · ' + t.noPhoto} style={{ background: offer.swatch }} />}
+        <h2 id={titleId}>{label}</h2></Link>
+        {offer.finish !== detail && <small>{offer.finish}</small>}
+        <ProductPrice cents={cartLinePrice({variant:id}).baseCents} previousCents={offer.previousCents} language={language} t={t} baseNote={id === tideOffer.sku ? catalogCopy[language].ready : undefined} />
+        <button type="button" className="product-text-button" aria-label={t.unfavorite + ' · ' + label} onClick={() => {
           (links.current.get(ids[index + 1] ?? ids[index - 1]) ?? heading.current)?.focus();
           dispatch(favoriteRemoved(id));
         }}>{t.remove}</button></article>;
@@ -75,29 +82,36 @@ export function InfoView({ studio = false }: { studio?: boolean }) {
   </div>;
 }
 
-export function ReviewsView() {
+type ReviewProduct = 'loop' | 'tide';
+function reviewLinks(product: ReviewProduct, params: URLSearchParams) {
+  const base = product === 'tide' ? tideOfferPath : '/products/loop';
+  const query = product === 'loop' ? '?variant=' + reviewVariant(params) : '';
+  return { product: base + query, form: base + '/reviews/new' + query };
+}
+
+export function ReviewsView({ product = 'loop' }: { product?: ReviewProduct }) {
   const t = productCopy[useProductLocale()];
-  const [params] = useSearchParams(), variant = reviewVariant(params);
-  return <div className="product-preview-page"><ProductBack variant={variant} /><h1>{t.reviews}</h1><div className="product-review-empty"><span className="product-stars" aria-hidden="true">{Array.from({ length: 5 }, (_, i) => <Icon key={i} name="star" />)}</span><h2>{t.noReviews}</h2><Link className="product-secondary" to={'/products/loop/reviews/new?variant=' + variant}>{t.writeReview}</Link></div></div>;
+  const [params] = useSearchParams(), links = reviewLinks(product, params);
+  return <div className="product-preview-page"><ProductBack to={links.product} /><h1>{t.reviews.replace('{product}', product === 'loop' ? 'Loop' : 'Tide')}</h1><div className="product-review-empty"><span className="product-stars" aria-hidden="true">{Array.from({ length: 5 }, (_, i) => <Icon key={i} name="star" />)}</span><h2>{t.noReviews}</h2><Link className="product-secondary" to={links.form}>{t.writeReview}</Link></div></div>;
 }
 
 function reviewVariant(params: URLSearchParams): VariantId {
   const values = params.getAll('variant');
   return values.length === 1 && isVariantId(values[0]) ? values[0] : 'cobalt';
 }
-function ProductBack({ variant }: { variant: VariantId }) {
+function ProductBack({ to }: { to: string }) {
   const t = productCopy[useProductLocale()];
-  return <Link className="product-secondary product-review-return" to={'/products/loop?variant=' + variant}><span className="product-flip"><Icon name="arrow" /></span>{t.backToProduct}</Link>;
+  return <Link className="product-secondary product-review-return" to={to}><span className="product-flip"><Icon name="arrow" /></span>{t.backToProduct}</Link>;
 }
-export function ReviewFormView() {
+export function ReviewFormView({ product = 'loop' }: { product?: ReviewProduct }) {
   const [params] = useSearchParams(), values = params.getAll('rating');
   const rating = values.length === 1 && /^[1-5]$/.test(values[0]) ? Number(values[0]) : null;
-  return <ReviewForm key={params.toString()} initialRating={rating} variant={reviewVariant(params)} />;
+  return <ReviewForm key={product + ':' + params.toString()} initialRating={rating} productHref={reviewLinks(product, params).product} />;
 }
-function ReviewForm({ initialRating, variant }: { initialRating: number | null; variant: VariantId }) {
+function ReviewForm({ initialRating, productHref }: { initialRating: number | null; productHref: string }) {
   const t = productCopy[useProductLocale()], id = useId();
   const [rating, setRating] = useState(initialRating), [text, setText] = useState('');
-  return <div className="product-preview-page"><ProductBack variant={variant} /><h1>{t.reviewFormTitle}</h1><p>{t.reviewDemoNote}</p><form className="product-review-form" aria-label={t.reviewFormTitle} onSubmit={event => event.preventDefault()}>
+  return <div className="product-preview-page"><ProductBack to={productHref} /><h1>{t.reviewFormTitle}</h1><p>{t.reviewDemoNote}</p><form className="product-review-form" aria-label={t.reviewFormTitle} onSubmit={event => event.preventDefault()}>
     <fieldset><legend>{t.reviewRating}</legend><div>{[1, 2, 3, 4, 5].map(value => <label key={value}><input type="radio" name={id + '-rating'} value={value} checked={rating === value} onChange={() => setRating(value)} aria-label={`${t.reviewRating}: ${value} ${t.ratingOutOf}`} /><span>{value}</span></label>)}</div></fieldset>
     {rating === null && <p>{t.reviewChoose}</p>}<label htmlFor={id + '-text'}>{t.reviewText}</label><textarea id={id + '-text'} rows={5} maxLength={2000} value={text} onChange={event => setText(event.target.value.slice(0, 2000))} />
     <button className="product-secondary" type="button" disabled>{t.reviewSubmit}</button>

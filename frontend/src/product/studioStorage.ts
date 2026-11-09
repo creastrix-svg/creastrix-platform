@@ -4,7 +4,8 @@ import { base64Bytes, loadDesign, readDesign, record, saveDesign, studioTargets 
 import type { SavedDesign } from './designSnapshot';
 import { cartLineId } from './demoStore';
 import type { CartLine, ProductDemoState } from './demoStore';
-import { isVariantId, variantById } from './catalog';
+import { cartSkuStock, isCartSku } from './cartSku';
+import { tideOffer } from './tideOffer';
 import type { CreativeSession, CreativeDraft } from './studioCreativeContext';
 import { emptyCreativeDraft } from './studioCreativeContext';
 import type { LoadedStudioFont, createStudioFontLibrary, StudioFontId, BuiltinStudioFont } from './studioFonts';
@@ -109,7 +110,8 @@ export async function restoreStudio(raw: string, fonts: ReturnType<typeof create
   let serial = data.serial as number;
   for (const rawLine of data.lines) {
     const line = record(rawLine);
-    if (!isVariantId(line.variant) || !Number.isSafeInteger(line.quantity) || (line.quantity as number) < 1) throw new Error('STUDIO_STORAGE_CART');
+    if (!isCartSku(line.variant) || !Number.isSafeInteger(line.quantity) || (line.quantity as number) < 1) throw new Error('STUDIO_STORAGE_CART');
+    if (line.variant === tideOffer.sku && line.design !== undefined) throw new Error('STUDIO_STORAGE_CART');
     const saved = line.design ? design(line.design) : undefined;
     if (saved && (typeof line.id !== 'string' || !/^design-[1-9][0-9]{0,11}$/.test(line.id))) throw new Error('STUDIO_STORAGE_LINE_ID');
     if (!saved && line.id !== undefined) throw new Error('STUDIO_STORAGE_LINE_ID');
@@ -117,7 +119,7 @@ export async function restoreStudio(raw: string, fonts: ReturnType<typeof create
     const id = cartLineId(next);
     if (ids.has(id)) throw new Error('STUDIO_STORAGE_DUPLICATE');
     ids.add(id); lines.push(next);
-    if (lines.filter(item => item.variant === next.variant).reduce((sum, item) => sum + item.quantity, 0) > variantById(next.variant).stock) throw new Error('STUDIO_STORAGE_STOCK');
+    if (lines.filter(item => item.variant === next.variant).reduce((sum, item) => sum + item.quantity, 0) > cartSkuStock(next.variant)) throw new Error('STUDIO_STORAGE_STOCK');
     if (saved) { await loadDesign(saved, cache, signal); serial = Math.max(serial, Number(id.slice(7)) + 1); }
   }
   for (const id of builtin) await fonts.loadBuiltin(id, { signal });

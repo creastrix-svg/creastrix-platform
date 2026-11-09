@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { useAppSelector } from '../hooks';
-import { mediaForVariant, money, photoDescription, swatchBackground, variantById } from './catalog';
+import { isVariantId, money } from './catalog';
+import { cartOfferView } from './cartOfferView';
 import { checkoutCopy } from './checkoutCopy';
 import type { CheckoutCopy } from './checkoutCopy';
 import { productCopy } from './copy';
@@ -49,22 +50,23 @@ function CheckoutDetails({ t }: { t: CheckoutCopy }) {
 }
 
 export default function CheckoutView() {
+  const location = useLocation();
   const language = useProductLocale(), t = checkoutCopy[language], product = productCopy[language];
   const demo = useAppSelector(state => state.productDemo);
   return <div className="product-preview-page checkout-view">
-    <Link to="/preview/cart" className="product-back"><span className="product-flip"><Icon name="arrow" /></span>{t.backToCart}</Link>
+    <Link to="/preview/cart" state={location.state} className="product-back"><span className="product-flip"><Icon name="arrow" /></span>{t.backToCart}</Link>
     <header className="checkout-header"><h1>{t.title}</h1><p className="checkout-prototype-note" id="checkout-prototype-note"><strong>{t.prototypeLabel}</strong> · {t.prototypeNote}</p></header>
     {demo.cart.length === 0 ? <section className="checkout-empty" aria-labelledby="checkout-empty-title"><span className="product-cart-empty-icon"><Icon name="bag" /></span><h2 id="checkout-empty-title">{t.emptyTitle}</h2><p>{t.emptyBody}</p></section> : <div className="checkout-layout">
       <CheckoutDetails t={t} />
       <aside className="checkout-panel checkout-summary" aria-labelledby="checkout-summary-title">
         <h2 id="checkout-summary-title">{t.summaryTitle}</h2>
         <div className="checkout-lines">{demo.cart.map(line => {
-          const variant = variantById(line.variant), photo = mediaForVariant(line.variant).photos[0];
+          const offer = cartOfferView(line.variant, language);
           const { baseCents, feeCents, unitCents } = cartLinePrice(line);
-          const designLabel = cartDesignLabel(line, language), context = variant.name[language] + (designLabel ? ' · ' + designLabel : '');
-          return <article className="checkout-line" key={cartLineId(line)} data-cart-line-id={cartLineId(line)} aria-label={'Loop · ' + context}>
-            <div className="checkout-photo">{line.design ? <DesignThumbnail design={line.design} variant={line.variant} label={designLabel} /> : photo ? <img src={photo} alt={photoDescription(product.photoAlt, variant.name[language])} width="88" height="88" /> : <span role="img" aria-label={product.noPhoto} style={{ background: swatchBackground(variant.colors) }} />}</div>
-            <div className="checkout-line-copy"><h3>Loop</h3><p>{variant.name[language]}</p>
+          const designLabel = cartDesignLabel(line, language), context = offer.detail + (designLabel ? ' · ' + designLabel : '');
+          return <article className="checkout-line" key={cartLineId(line)} data-cart-line-id={cartLineId(line)} aria-label={offer.name + ' · ' + context}>
+            <div className="checkout-photo">{line.design && isVariantId(line.variant) ? <DesignThumbnail design={line.design} variant={line.variant} label={designLabel} /> : offer.photo ? <img src={offer.photo} alt={offer.alt} width="88" height="88" /> : <span role="img" aria-label={product.noPhoto} style={{ background: offer.swatch }} />}</div>
+            <div className="checkout-line-copy"><h3>{offer.name}</h3><p>{offer.detail}</p>
               {line.design && <div className="product-cart-design-meta"><span>{designLabel}</span><CartDesignPriceDetails baseCents={baseCents} feeCents={feeCents} language={language} /><Link aria-label={`${studioCartCopy[language].edit} · ${context}`} to={`/products/loop/personalize?variant=${line.variant}&edit=${encodeURIComponent(cartLineId(line))}`}>{studioCartCopy[language].edit}</Link></div>}
               <dl className="checkout-line-amount"><div><dt>{product.price}</dt><dd>{money(unitCents, language)}</dd></div><div><dt>{product.quantity}</dt><dd>{line.quantity}</dd></div><div><dt>{product.cartLineSubtotal}</dt><dd>{money(unitCents * line.quantity, language)}</dd></div></dl>
             </div>

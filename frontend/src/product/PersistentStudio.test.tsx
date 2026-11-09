@@ -32,6 +32,17 @@ beforeEach(() => {
   });
 });
 afterEach(() => { vi.unstubAllGlobals(); });
+it.each(['/collections/objects/tide', '/collections/objects/Tide/'])('waits for the cart before allowing purchases on %s', async path => {
+  const read = deferred<string | null>();
+  vi.mocked(studioStorage).mockReturnValue(read.promise);
+  render(<Provider store={createAppStore('en')}><MemoryRouter initialEntries={[path]}>
+    <PersistentStudio browsingHome={<span>Read-only browsing</span>}><span>Purchase controls</span></PersistentStudio>
+  </MemoryRouter></Provider>);
+  expect(screen.queryByText('Read-only browsing')).toBeNull();
+  expect(screen.queryByText('Purchase controls')).toBeNull();
+  await act(async () => read.resolve(null));
+  expect(screen.getByText('Purchase controls')).toBeVisible();
+});
 it.each(['/', '/collections/objects', '/collections/objects/halo'])('keeps %s readable without exposing a stale cart and preserves a failed restore on navigation', async path => {
   const user = userEvent.setup(), read = deferred<string | null>(), store = createAppStore('en');
   store.dispatch(cartAdded({ variant: 'coral', quantity: 2 }));

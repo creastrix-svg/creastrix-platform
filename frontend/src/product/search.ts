@@ -2,6 +2,7 @@ import type { StorefrontLocale } from './locale';
 import { concepts, mediaForVariant, money, variants } from './catalog';
 import { productCopy } from './copy';
 import { editionCopy, editionItems } from './editionCatalog';
+import { tideOffer } from './tideOffer';
 
 const descriptions: Record<string, Record<StorefrontLocale, string>> = {
   'loop-mini': { en: 'Compact plant pot', de: 'Kompakter Pflanztopf', ru: 'Компактный горшок', pl: 'Mała doniczka', es: 'Maceta compacta', fr: 'Pot compact', it: 'Vaso compatto' },
@@ -48,8 +49,9 @@ export function searchCatalog(query: string, language: StorefrontLocale, limit?:
     ...concepts.map(({ id, name, image }) => ({
       kind: 'concept' as const, id, name, href: '/preview/items/' + id, photo: '/product/reference-asset-' + image + '.webp', description: conceptDescription(id, language),
     })),
-    ...editionItems(language).map(item => ({
-      kind: 'edition' as const, id: 'edition-' + item.id, name: item.name, href: item.href,
+    ...editionItems(language).map((item): SearchResult => ({
+      ...(item.id === tideOffer.id ? { kind: 'product', id: tideOffer.id, cents: tideOffer.unitCents } : { kind: 'edition', id: 'edition-' + item.id }),
+      name: item.name, href: item.href,
       photo: item.thumb, description: item.title + ' · ' + item.material,
     })),
   ];

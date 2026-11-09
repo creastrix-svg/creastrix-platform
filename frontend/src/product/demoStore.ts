@@ -1,8 +1,8 @@
-import { readFavoriteIds } from './favorites';
+import { favoriteSkus, readFavoriteIds } from './favorites';
 import { loopPrice } from './loopPricing';
 import { createSlice, original } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
-import { isVariantId, variantById, variants } from './catalog';
+import { isVariantId, variantById } from './catalog';
 import type { VariantId } from './catalog';
 import { isStorefrontLocale } from './locale';
 import type { StorefrontLocale } from './locale';
@@ -11,18 +11,21 @@ import type { MediaMode, ProductPreferences } from './preferences';
 import { copyDesign, designKey, rebindDesignFonts, visibleDesign } from './designSnapshot';
 import type { SavedDesign } from './designSnapshot';
 import type { StudioFontId } from './studioFonts';
+import { cartSkuStock, isCartSku } from './cartSku';
+import type { CartSku } from './cartSku';
+import { tideOffer } from './tideOffer';
 
-export type CartLine = { variant: VariantId; quantity: number; id?: string; design?: SavedDesign };
+export type CartLine<S extends CartSku = CartSku> = { variant: S; quantity: number; id?: string; design?: SavedDesign };
 export const cartLineId = (line: Pick<CartLine, 'id' | 'variant'>) => line.id ?? line.variant;
 type Line = CartLine;
-type CartChange = { revision: number } & ({ kind: 'other' } | { kind: 'removed' | 'restored'; variant: VariantId; id?: string } | { kind: 'dismissed'; variant: VariantId; id?: string; removedRevision: number });
+type CartChange = { revision: number } & ({ kind: 'other' } | { kind: 'removed' | 'restored'; variant: CartSku; id?: string } | { kind: 'dismissed'; variant: CartSku; id?: string; removedRevision: number });
 type RemovedLine = { quantity: number; revision: number; line?: CartLine };
-export type ProductDemoState = ProductPreferences & { favorites: VariantId[]; favoritesMemoryOnly?: true; cart: Line[]; cartOrder: string[]; cartRemoved: Partial<Record<string, RemovedLine>>; locale: StorefrontLocale | null; addSerial: number; cartSerial: number; cartChange: CartChange };
+export type ProductDemoState = ProductPreferences & { favorites: CartSku[]; favoritesMemoryOnly?: true; cart: Line[]; cartOrder: string[]; cartRemoved: Partial<Record<string, RemovedLine>>; locale: StorefrontLocale | null; addSerial: number; cartSerial: number; cartChange: CartChange };
 const initialState = (): ProductDemoState => ({ favorites: readFavoriteIds() ?? [], cart: [], cartOrder: [], cartRemoved: {}, locale: null, addSerial: 0, cartSerial: 1, cartChange: { revision: 0, kind: 'other' }, ...readProductPreferences() });
-export const variantCartQuantity = (state: Pick<ProductDemoState, 'cart'>, variant: VariantId) => state.cart.reduce((sum, line) => sum + (line.variant === variant ? line.quantity : 0), 0);
-export const lineCapacity = (state: Pick<ProductDemoState, 'cart'>, line: CartLine) => variantById(line.variant).stock - variantCartQuantity(state, line.variant) + line.quantity;
+export const variantCartQuantity = (state: Pick<ProductDemoState, 'cart'>, variant: CartSku) => state.cart.reduce((sum, line) => sum + (line.variant === variant ? line.quantity : 0), 0);
+export const lineCapacity = (state: Pick<ProductDemoState, 'cart'>, line: CartLine) => cartSkuStock(line.variant) - variantCartQuantity(state, line.variant) + line.quantity;
 
-function matchesConfiguration(variant: VariantId, design?: SavedDesign) {
+function matchesConfiguration(variant: CartSku, design?: SavedDesign) {
   const key = designKey(design);
   return (line: CartLine) => line.variant === variant && (design ? !!line.design && designKey(line.design) === key : !line.design);
 }
@@ -45,7 +48,8 @@ function insertCartLine(state: ProductDemoState, line: Line) {
   state.cart.sort((left, right) => state.cartOrder.indexOf(cartLineId(left)) - state.cartOrder.indexOf(cartLineId(right)));
 }
 
-function reconcilePurchase(state: ProductDemoState, variant: VariantId) {
+function reconcilePurchase(state: ProductDemoState, variant: CartSku) {
+  if (!isVariantId(variant)) return; // Only Loop has per-colour draft preferences.
   const remaining = variantById(variant).stock - variantCartQuantity(state, variant);
   // Zero means unavailable, not a purchase. Released capacity never revives an old excess draft.
   state.purchaseQuantities[variant] = remaining === 0 ? 0 : Math.max(1, Math.min(state.purchaseQuantities[variant], remaining));
@@ -65,45 +69,46 @@ const slice = createSlice({
     productMediaModeSelected(state, { payload }: PayloadAction<MediaMode>) { if (payload === 'photo' || payload === 'model') state.mediaMode = payload; },
     productVariantSelected(state, { payload }: PayloadAction<VariantId>) { if (isVariantId(payload)) state.selectedVariant = payload; },
     productLocaleSelected(state, { payload }: PayloadAction<StorefrontLocale>) { if (isStorefrontLocale(payload)) state.locale = payload; },
-    favoriteToggled(state, { payload }: PayloadAction<VariantId>) {
-      if (!isVariantId(payload)) return;
+    favoriteToggled(state, { payload }: PayloadAction<CartSku>) {
+      if (!isCartSku(payload)) return;
       if (state.favorites.includes(payload)) state.favorites = state.favorites.filter(id => id !== payload);
-      else state.favorites = variants.map(v => v.id).filter(id => id === payload || state.favorites.includes(id));
+      else state.favorites = favoriteSkus.filter(id => id === payload || state.favorites.includes(id));
     },
     favoriteStorageReported(state, { payload }: PayloadAction<boolean>) {
       if (payload) delete state.favoritesMemoryOnly; else state.favoritesMemoryOnly = true;
     },
-    favoriteRemoved(state, { payload }: PayloadAction<VariantId>) { state.favorites = state.favorites.filter(id => id !== payload); },
-    favoritesRead(state, { payload }: PayloadAction<VariantId[]>) {
-      const ids = variants.map(v => v.id).filter(id => payload.includes(id));
+    favoriteRemoved(state, { payload }: PayloadAction<CartSku>) { state.favorites = state.favorites.filter(id => id !== payload); },
+    favoritesRead(state, { payload }: PayloadAction<CartSku[]>) {
+      const ids = favoriteSkus.filter(id => payload.includes(id));
       if (ids.length !== state.favorites.length || ids.some((id, i) => id !== state.favorites[i])) state.favorites = ids;
     },
     cartAdded(state, { payload }: PayloadAction<Line>) {
-      if (!isVariantId(payload.variant) || !Number.isSafeInteger(payload.quantity) || payload.quantity < 1) return;
-      const variant = variantById(payload.variant);
+      if (!isCartSku(payload.variant) || !Number.isSafeInteger(payload.quantity) || payload.quantity < 1) return;
+      if (payload.variant === tideOffer.sku && payload.design !== undefined) return;
+      const sku = payload.variant;
       const design = visibleDesign(payload.design) ? payload.design : undefined;
       const line = state.cart.find(matchesConfiguration(payload.variant, design));
-      const capacity = variant.stock - variantCartQuantity(state, variant.id);
+      const capacity = cartSkuStock(sku) - variantCartQuantity(state, sku);
       if (capacity <= 0 || !Number.isSafeInteger(state.cartSerial) || state.cartSerial >= Number.MAX_SAFE_INTEGER) return;
       const revision = nextCartRevision(state); if (revision === null) return;
       if (line) line.quantity += Math.min(capacity, payload.quantity);
       else {
-        const next: CartLine = { variant: variant.id, quantity: Math.min(capacity, payload.quantity), ...(design ? { id: `design-${state.cartSerial++}`, design: copyDesign(design) } : {}) };
+        const next: CartLine = { variant: sku, quantity: Math.min(capacity, payload.quantity), ...(design ? { id: `design-${state.cartSerial++}`, design: copyDesign(design) } : {}) };
         const id = cartLineId(next);
         if (!state.cartOrder.includes(id)) state.cartOrder.push(id);
         insertCartLine(state, next);
       }
-      if (!design) delete state.cartRemoved[variant.id];
+      if (!design) delete state.cartRemoved[sku];
       // Only a successful addition consumes this colour's pending quantity.
-      state.purchaseQuantities[variant.id] = 1;
-      reconcilePurchase(state, variant.id);
+      if (isVariantId(sku)) state.purchaseQuantities[sku] = 1;
+      reconcilePurchase(state, sku);
       state.addSerial = (state.addSerial + 1) % 1_000_000;
       state.cartChange = { revision, kind: 'other' };
     },
     cartQuantityChanged(state, { payload }: PayloadAction<Line>) {
       if (!Number.isSafeInteger(payload.quantity) || payload.quantity < 1) return;
       const line = state.cart.find(item => cartLineId(item) === cartLineId(payload));
-      if (!line) return;
+      if (!line || line.variant !== payload.variant) return;
       const next = Math.min(lineCapacity(state, line), payload.quantity);
       if (next === line.quantity) return;
       const revision = nextCartRevision(state); if (revision === null) return;
@@ -118,21 +123,21 @@ const slice = createSlice({
       state.cart.splice(index, 1); reconcilePurchase(state, line.variant);
       state.cartChange = { revision, kind: 'removed', variant: line.variant, ...(line.id ? { id: line.id } : {}) };
     },
-    cartLineRestored(state, { payload }: PayloadAction<{ variant: VariantId; revision: number; id?: string }>) {
-      if (!isVariantId(payload.variant) || !Number.isSafeInteger(payload.revision) || payload.revision < 1) return;
-      const id = cartLineId(payload), removed = state.cartRemoved[id], variant = variantById(payload.variant), revision = nextCartRevision(state);
+    cartLineRestored(state, { payload }: PayloadAction<{ variant: CartSku; revision: number; id?: string }>) {
+      if (!isCartSku(payload.variant) || !Number.isSafeInteger(payload.revision) || payload.revision < 1) return;
+      const id = cartLineId(payload), removed = state.cartRemoved[id], revision = nextCartRevision(state);
       // Each row owns its token. Other rows may change; this exact snapshot must still exist.
-      if (!removed || removed.revision !== payload.revision || revision === null || state.cartOrder.filter(key => key === id).length !== 1 || !Number.isSafeInteger(removed.quantity) || removed.quantity < 1 || removed.quantity > variant.stock - variantCartQuantity(state, payload.variant) || state.cart.some(line => cartLineId(line) === id)) return;
+      if (!removed || (removed.line?.variant ?? id) !== payload.variant || removed.revision !== payload.revision || revision === null || state.cartOrder.filter(key => key === id).length !== 1 || !Number.isSafeInteger(removed.quantity) || removed.quantity < 1 || removed.quantity > cartSkuStock(payload.variant) - variantCartQuantity(state, payload.variant) || state.cart.some(line => cartLineId(line) === id)) return;
       insertCartLine(state, removed.line ?? { variant: payload.variant, quantity: removed.quantity });
       delete state.cartRemoved[id];
       reconcilePurchase(state, payload.variant);
       state.cartChange = { revision, kind: 'restored', variant: payload.variant, ...(payload.id ? { id: payload.id } : {}) };
     },
-    cartRemovedLineDismissed(state, { payload }: PayloadAction<{ variant: VariantId; revision: number; id?: string }>) {
-      if (!isVariantId(payload.variant) || !Number.isSafeInteger(payload.revision) || payload.revision < 1) return;
+    cartRemovedLineDismissed(state, { payload }: PayloadAction<{ variant: CartSku; revision: number; id?: string }>) {
+      if (!isCartSku(payload.variant) || !Number.isSafeInteger(payload.revision) || payload.revision < 1) return;
       const id = cartLineId(payload), removed = state.cartRemoved[id], revision = nextCartRevision(state);
       // Closing a presentation slot must never remove an active or later re-added line.
-      if (!removed || removed.revision !== payload.revision || revision === null || state.cart.some(line => cartLineId(line) === id) || state.cartOrder.filter(key => key === id).length !== 1) return;
+      if (!removed || (removed.line?.variant ?? id) !== payload.variant || removed.revision !== payload.revision || revision === null || state.cart.some(line => cartLineId(line) === id) || state.cartOrder.filter(key => key === id).length !== 1) return;
       delete state.cartRemoved[id];
       state.cartOrder = state.cartOrder.filter(key => key !== id);
       state.cartChange = { revision, kind: 'dismissed', variant: payload.variant, ...(payload.id ? { id: payload.id } : {}), removedRevision: payload.revision };
@@ -170,9 +175,11 @@ const slice = createSlice({
 export const { favoriteStorageReported, favoritesRead, favoriteToggled, favoriteRemoved, cartAdded, cartQuantityChanged, cartLineRemoved, cartLineRestored, cartRemovedLineDismissed, cartDesignChanged, cartHydrated, productLocaleSelected, productVariantSelected, purchaseQuantityChanged, productDescriptionChanged, productMediaModeSelected } = slice.actions;
 export default slice.reducer;
 export const cartCount = (state: ProductDemoState) => state.cart.reduce((sum, line) => sum + line.quantity, 0);
-export const cartLinePrice = (line: Pick<CartLine, 'variant' | 'design'>) => loopPrice(line.variant, visibleDesign(line.design));
+export const cartLinePrice = (line: Pick<CartLine, 'variant' | 'design'>) => line.variant === tideOffer.sku
+  ? { baseCents: tideOffer.unitCents, unitCents: tideOffer.unitCents, feeCents: 0 }
+  : loopPrice(line.variant, visibleDesign(line.design));
 export const cartTotal = (state: ProductDemoState) => state.cart.reduce((sum, line) => sum + cartLinePrice(line).unitCents * line.quantity, 0);
 export const cartDisplayLines = (state: ProductDemoState) => state.cartOrder.flatMap(id => {
   const active = state.cart.find(line => cartLineId(line) === id), removed = state.cartRemoved[id];
-  return active ? [{ ...active, removedRevision: null as number | null }] : removed ? [{ ...(removed.line ?? { variant: id as VariantId }), quantity: 0, removedRevision: removed.revision }] : [];
+  return active ? [{ ...active, removedRevision: null as number | null }] : removed && (removed.line || isCartSku(id)) ? [{ ...(removed.line ?? { variant: id as CartSku }), quantity: 0, removedRevision: removed.revision }] : [];
 });

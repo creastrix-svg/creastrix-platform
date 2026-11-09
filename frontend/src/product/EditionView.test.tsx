@@ -34,9 +34,14 @@ it.each(storefrontLocales)('shows 32 distinct preview designs with working detai
     expect(links[position]).toHaveAccessibleName([item.name,item.title,item.material].join(' '));
     expect(links[position].querySelector('img')).toHaveAttribute('src', item.thumb);
     const result = searchCatalog(item.name, locale, 1)[0];
-    expect(result).toMatchObject({ href: item.href, photo: item.thumb, kind: 'edition' });
-    expect(searchResultSummary(result, locale)).toContain(editionCopy[locale].status);
-    expect(result.cents).toBeUndefined();
+    expect(result).toMatchObject({ href: item.href, photo: item.thumb, kind: item.id === 'tide' ? 'product' : 'edition' });
+    if (item.id === 'tide') {
+      expect(searchResultSummary(result, locale)).not.toContain(editionCopy[locale].status);
+      expect(result.cents).toBe(1800);
+    } else {
+      expect(searchResultSummary(result, locale)).toContain(editionCopy[locale].status);
+      expect(result.cents).toBeUndefined();
+    }
     expect(searchCatalog(item.material, locale).some(match => match.href === item.href)).toBe(true);
   }
   expect(main.queryByRole('button')).toBeNull();
@@ -44,7 +49,7 @@ it.each(storefrontLocales)('shows 32 distinct preview designs with working detai
   expect(main.getByRole('link',{name:productCopy[locale].home})).toHaveAttribute('href','/');
 });
 
-it.each(editionItems('en'))('opens deep link $href with material, purchase status and canonical collection return', item => {
+it.each(editionItems('en').filter(item => item.id !== 'tide'))('opens deep link $href with material, purchase status and canonical collection return', item => {
   const { main } = open(item.href);
   expect(main.getByRole('heading', { level: 1, name: item.name })).toBeVisible();
   expect(main.getByText(item.description)).toBeVisible();
