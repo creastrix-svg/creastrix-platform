@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useAppSelector } from '../hooks';
-import { isVariantId, money } from './catalog';
-import { cartOfferView } from './cartOfferView';
+import { isVariantId } from './fixtures/loop';
+import { money } from './productDisplay';
+import { cartOfferView } from './cart/cartOfferView';
 import { checkoutCopy } from './checkoutCopy';
 import type { CheckoutCopy } from './checkoutCopy';
 import { productCopy } from './copy';
@@ -10,9 +11,9 @@ import { cartCount, cartLinePrice, cartTotal } from './demoStore';
 import { Icon } from './Icon';
 import { useProductLocale } from './useProductLocale';
 import { cartLineId } from './demoStore';
-import DesignThumbnail from './DesignThumbnail';
-import { cartDesignLabel, studioCartCopy } from './studioCartCopy';
-import CartDesignPriceDetails from './CartDesignPriceDetails';
+import DesignThumbnail from './studio/preview/DesignThumbnail';
+import { cartDesignLabel, studioCartCopy } from './cart/studioCartCopy';
+import CartDesignPriceDetails from './cart/CartDesignPriceDetails';
 
 const fields = ['name', 'email', 'street', 'postalCode', 'city', 'country'] as const;
 type Field = typeof fields[number];

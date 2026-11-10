@@ -1,8 +1,10 @@
 import { useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../hooks';
-import { isVariantId, photoDescription, variantById, variants } from './catalog';
-import type { VariantId } from './catalog';
+import { isVariantId, variantById, variants } from './fixtures/loop';
+import { readCartSku } from './fixtures/cartSkus';
+import { photoDescription } from './productDisplay';
+import type { VariantId } from './fixtures/loop';
 import { productCopy } from './copy';
 import { cartAdded, configurationCartQuantity, favoriteToggled, productDescriptionChanged, productMediaModeSelected, productVariantSelected, purchaseQuantityChanged, variantCartQuantity } from './demoStore';
 import { loopPrice } from './loopPricing';
@@ -10,15 +12,15 @@ import MediaGallery from './MediaGallery';
 import ProductPurchasePanel from './ProductPurchasePanel';
 import { loopCarouselContent } from './carouselContent';
 import ProductPrice from './ProductPrice';
-import PersonalizationEntry from './PersonalizationEntry';
-import { canPersonalize, getStudioProduct } from './studioProducts';
+import PersonalizationEntry from './studio/PersonalizationEntry';
+import { getStudioProduct } from './studio/studioProducts';
 import { useProductLocale } from './useProductLocale';
-import { usePersonalizationSession } from './personalizationSession';
-import { saveDesign, visibleDesign } from './designSnapshot';
-import type { SavedDesign } from './designSnapshot';
-import { firstLettering } from './studioComposition';
+import { usePersonalizationSession } from './studio/session/personalizationSession';
+import { saveDesign, visibleDesign } from './studio/session/designSnapshot';
+import type { SavedDesign } from './studio/session/designSnapshot';
+import { firstLettering } from './studio/design/studioComposition';
 import ProductCardLayout from './ProductCardLayout';
-import { catalogCopy } from './catalogCopy';
+import { catalogCopy } from './browse/catalogCopy';
 
 export default function ProductPage() {
   const [params] = useSearchParams(), location = useLocation(), navigate = useNavigate();
@@ -38,7 +40,9 @@ function ProductCard({ variantId, selectVariant }: { variantId: VariantId; selec
   const language = useProductLocale(), t = productCopy[language];
   const demo = useAppSelector(state => state.productDemo), dispatch = useAppDispatch();
   const variant = variantById(variantId);
-  const { state } = usePersonalizationSession(), applied = state.applied[variantId];
+  const acceptsDesign = readCartSku(variantId).acceptsDesign;
+  const { state } = usePersonalizationSession();
+  const applied = acceptsDesign ? state.applied[variantId] : undefined;
   const design = useMemo(() => {
     const snapshot = saveDesign(applied);
     return visibleDesign(snapshot) ? snapshot : undefined;
@@ -56,7 +60,7 @@ function ProductCard({ variantId, selectVariant }: { variantId: VariantId; selec
     purchase={<PurchaseControls key={variantId} variantId={variantId} unitCents={price.unitCents} design={design} />}
     seller={{ name: 'Loop Studio', byline: t.studioBadge + ' · ' + t.seller, href: '/preview/studio', label: t.studioLink }}
     recommendations={{ studio: recommendations, related: recommendations }}
-    personalization={canPersonalize(profile) ? <PersonalizationEntry profile={profile} variant={variantId} feeCents={price.feeCents} /> : undefined}
+    personalization={acceptsDesign ? <PersonalizationEntry profile={profile} variant={variantId} feeCents={price.feeCents} /> : undefined}
     features={[t.features[0], t.features[1], t.features[2]]}
     about={{ title: t.aboutTitle, body: t.aboutBody, facts }}
     description={{ intro: t.descriptionIntro, sections: [

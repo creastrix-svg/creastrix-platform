@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest';
 import { searchCatalog } from './search';
 import { storefrontLocales } from './locale';
-import { concepts, mediaForVariant, variants } from './catalog';
-import { editionItems } from './editionCatalog';
+import { concepts, mediaForVariant, variants } from './fixtures/loop';
+import { editionItems } from './fixtures/editionCatalog';
 
 it('ranks exact/prefix names first and returns at most five deterministic suggestions', () => {
   expect(searchCatalog('  LOOP MINI ', 'en')[0].id).toBe('loop-mini');

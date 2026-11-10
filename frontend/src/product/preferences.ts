@@ -1,5 +1,5 @@
-import { isVariantId, variants } from './catalog';
-import type { VariantId } from './catalog';
+import { isVariantId, variants } from './fixtures/loop';
+import type { VariantId } from './fixtures/loop';
 
 export type MediaMode = 'photo' | 'model';
 export type ProductPreferences = { selectedVariant: VariantId; purchaseQuantities: Record<VariantId, number>; mediaMode: MediaMode; descriptionOpen: boolean };

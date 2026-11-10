@@ -19,7 +19,7 @@ async function tick() { for (let i = 0; i < 24; i++) await Promise.resolve(); }
 const controllers: Authentication[] = [];
 afterEach(() => { controllers.splice(0).forEach(controller => controller.dispose()); vi.useRealTimers(); });
 
-function fixture(enabled = true) {
+function fixture(enabled = true, nonce?: () => string) {
   const requests: { path: RequestInfo | URL; init?: RequestInit; response: ReturnType<typeof deferred<Response>> }[] = [];
   const fetch = vi.fn<typeof globalThis.fetch>((path, init) => {
     const response = deferred<Response>();
@@ -32,7 +32,7 @@ function fixture(enabled = true) {
   const closePrivate = vi.fn();
   const openPrivate = vi.fn();
   let n = 0;
-  const controller = createAuthentication({ enabled, fetch, storage: () => storage, nonce: () => 'doc-' + ++n, closePrivate, openPrivate,
+  const controller = createAuthentication({ enabled, fetch, storage: () => storage, nonce: nonce ?? (() => 'doc-' + ++n), closePrivate, openPrivate,
     started: (owner, phase, notice) => { store.dispatch(authenticationStarted({ owner, phase, notice })); },
     finished: (owner, result) => { store.dispatch(authenticationFinished({ owner, result })); },
   });
@@ -375,6 +375,33 @@ describe('finite lifecycle, shared storage and deadlines', () => {
     await f.controller.start();
     await f.controller.login(vi.fn());
     expect(f.state()).toMatchObject({ phase: 'UNAVAILABLE', notice: 'DEV_ONLY', user: null });
+    expect(f.fetch).not.toHaveBeenCalled();
+    expect(f.storage.getItem).not.toHaveBeenCalled();
+    expect(f.storage.setItem).not.toHaveBeenCalled();
+  });
+
+  it('disconnected preview never requests a nonce from a throwing source', async () => {
+    const nonce = vi.fn((): string => { throw new Error('nonce-unavailable'); });
+    const f = fixture(false, nonce);
+    expect(nonce).not.toHaveBeenCalled();
+    await f.controller.start();
+    await f.controller.login(vi.fn());
+    expect(f.state()).toMatchObject({ phase: 'UNAVAILABLE', notice: 'DEV_ONLY', user: null });
+    expect(nonce).not.toHaveBeenCalled();
+    expect(f.fetch).not.toHaveBeenCalled();
+    expect(f.storage.getItem).not.toHaveBeenCalled();
+    expect(f.storage.setItem).not.toHaveBeenCalled();
+  });
+
+  it('connected authentication defers a throwing nonce to begin and fails closed', async () => {
+    const nonce = vi.fn((): string => { throw new Error('nonce-unavailable'); });
+    const f = fixture(true, nonce);
+    expect(nonce).not.toHaveBeenCalled();
+    await f.controller.start();
+    expect(nonce).toHaveBeenCalledTimes(1);
+    expect(f.state()).toMatchObject({ phase: 'UNAVAILABLE', notice: 'STORAGE_UNAVAILABLE', user: null });
+    expect(f.closePrivate).toHaveBeenCalled();
+    expect(f.openPrivate).not.toHaveBeenCalled();
     expect(f.fetch).not.toHaveBeenCalled();
     expect(f.storage.getItem).not.toHaveBeenCalled();
     expect(f.storage.setItem).not.toHaveBeenCalled();

@@ -7,11 +7,11 @@ import { createAppStore } from '../store';
 import ProductExperience from './ProductExperience';
 import { cartCount, cartTotal, productLocaleSelected } from './demoStore';
 import { productCopy } from './copy';
-import { money } from './catalog';
-import { shelfCopy } from './homeShelfCopy';
-import { catalogCopy } from './catalogCopy';
-import { variantById } from './catalog';
-import { tideOffer } from './tideOffer';
+import { money } from './productDisplay';
+import { shelfCopy } from './home/homeShelfCopy';
+import { catalogCopy } from './browse/catalogCopy';
+import { variantById } from './fixtures/loop';
+import { tideOffer } from './fixtures/tideOffer';
 import { isStorefrontPath } from './routes';
 
 it('takes a buyer from Gifts to two Tide cups, back to the same cup, and to it again from live search', async () => {

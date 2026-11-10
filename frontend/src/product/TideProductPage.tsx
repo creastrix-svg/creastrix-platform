@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../hooks';
-import { variantById } from './catalog';
+import { variantById } from './fixtures/loop';
 import { productCopy } from './copy';
 import { cartAdded, favoriteToggled, variantCartQuantity } from './demoStore';
-import { editionItems } from './editionCatalog';
-import { shelfCopy } from './homeShelfCopy';
+import { editionItems } from './fixtures/editionCatalog';
+import { shelfCopy } from './home/homeShelfCopy';
 import { OfferMediaGallery } from './MediaGallery';
 import ProductCardLayout from './ProductCardLayout';
 import ProductPrice from './ProductPrice';
 import ProductPurchasePanel from './ProductPurchasePanel';
-import { tideOffer } from './tideOffer';
-import { tideDetails } from './tideDetails';
+import { tideOffer } from './fixtures/tideOffer';
+import { tideDetails } from './fixtures/tideDetails';
 import { useProductLocale } from './useProductLocale';
 
 // An unsubmitted quantity is a local preference, never evidence of stock or a
@@ -29,7 +29,7 @@ function readQuantity() {
 export default function TideProductPage() {
   const locale = useProductLocale(), t = productCopy[locale];
   const edition = editionItems(locale), item = edition.find(entry => entry.id === tideOffer.id)!;
-  const cobalt = variantById('cobalt');
+  const cobalt = variantById(tideOffer.colorId);
   const inCart = useAppSelector(state => variantCartQuantity(state.productDemo, tideOffer.sku));
   const favorite = useAppSelector(state => state.productDemo.favorites.includes(tideOffer.sku));
   const dispatch = useAppDispatch();

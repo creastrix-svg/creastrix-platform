@@ -3,10 +3,10 @@ name: Frontend CI
 on:
   pull_request:
     branches: [main]
-    paths: ['frontend/**', '.github/workflows/frontend-ci.yml']
+    paths: ['frontend/**', 'scripts/**', '.github/workflows/frontend-ci.yml']
   push:
     branches: [main]
-    paths: ['frontend/**', '.github/workflows/frontend-ci.yml']
+    paths: ['frontend/**', 'scripts/**', '.github/workflows/frontend-ci.yml']
 
 permissions:
   contents: read
@@ -39,6 +39,8 @@ jobs:
           npm --version
       - name: Install locked dependencies
         run: npm ci
+      - name: Test model generators
+        run: node --experimental-strip-types --test ../scripts/generate-personalization-models.test.mjs ../scripts/generate-lamp-models.test.mjs
       - name: Typecheck
         run: npm run typecheck
       - name: Lint

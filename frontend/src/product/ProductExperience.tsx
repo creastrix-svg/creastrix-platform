@@ -14,20 +14,20 @@ import { useProductMetadata } from './metadata';
 import { useProductLocale } from './useProductLocale';
 import { useAppearance } from './appearance';
 import StorefrontNavigation from './StorefrontNavigation';
-import CartView from './CartView';
+import CartView from './cart/CartView';
 import CheckoutView from './CheckoutView';
 import { SearchResultsView, ConceptView, FavoritesView, InfoView, NotFoundView, ReviewFormView, ReviewsView } from './PreviewViews';
-import CatalogView from './CatalogView';
+import CatalogView from './browse/CatalogView';
 import EditionView from './EditionView';
 import { editionCollectionPath } from './routes';
-import StorefrontHome from './StorefrontHome';
+import StorefrontHome from './home/StorefrontHome';
 import TideProductPage from './TideProductPage';
-import { tideOffer } from './tideOffer';
-import { catalogCopy } from './catalogCopy';
+import { tideOffer } from './fixtures/tideOffer';
+import { catalogCopy } from './browse/catalogCopy';
 import './product.css';
 import { rememberProductPreferences, serializeProductPreferences } from './preferences';
-import PersonalizationView from './PersonalizationView';
-import PersistentStudio from './PersistentStudio';
+import PersonalizationView from './studio/PersonalizationView';
+import PersistentStudio from './studio/session/PersistentStudio';
 
 export default function ProductExperience() {
   return <PersistentStudio browsingHome={<Storefront cartReady={false} />}><Storefront /></PersistentStudio>;

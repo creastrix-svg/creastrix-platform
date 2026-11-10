@@ -2,8 +2,8 @@ import { expect, it, vi } from 'vitest';
 import { createAppStore } from '../store';
 import { favoriteRemoved, favoriteToggled } from './demoStore';
 import { favoriteKey, readFavoriteIds } from './favorites';
-import type { VariantId } from './catalog';
-import { tideOffer } from './tideOffer';
+import type { VariantId } from './fixtures/loop';
+import { tideOffer } from './fixtures/tideOffer';
 
 it('keeps the Tide cup and cobalt Loop as separate favourites across a fresh store', () => {
   const store = createAppStore('en');

@@ -1,7 +1,7 @@
 import { useContext, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
-import type { SwatchColors } from './catalog';
-import { catalogCopy } from './catalogCopy';
+import type { SwatchColors } from './productDisplay';
+import { catalogCopy } from './browse/catalogCopy';
 import { productCopy } from './copy';
 import { Icon } from './Icon';
 import type { StorefrontLocale } from './locale';

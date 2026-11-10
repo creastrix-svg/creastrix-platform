@@ -10,10 +10,10 @@ import { SVGLoader } from '../frontend/node_modules/three/examples/jsm/loaders/S
 export const lampVariants = ['botanical', 'forest', 'orbit'];
 export const lampDimensions = { width: .152, height: .23, depth: .112, panelThickness: .003 };
 const directory = new URL('../frontend/public/product/', import.meta.url);
-const source = readFileSync(new URL('../frontend/src/product/lampPatterns.ts', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../frontend/src/product/studio/preview/lampPatterns.ts', import.meta.url), 'utf8');
 // Import the small data-only TypeScript descriptor with Node's built-in stripper.
 // There is one source of motif geometry for the sketch, thumbnails and mesh.
-const { lampPatterns } = await import('../frontend/src/product/lampPatterns.ts');
+const { lampPatterns } = await import('../frontend/src/product/studio/preview/lampPatterns.ts');
 const window = new Window();
 globalThis.DOMParser = window.DOMParser;
 const loader = new SVGLoader();

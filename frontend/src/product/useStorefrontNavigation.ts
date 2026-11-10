@@ -1,11 +1,11 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 import { useLocation, useNavigationType } from 'react-router';
-import { isVariantId } from './catalog';
+import { isVariantId } from './fixtures/loop';
 import type { CartSku } from './cartSku';
-import { tideOffer } from './tideOffer';
+import { tideOffer } from './fixtures/tideOffer';
 import { isCatalogPath, isTideOfferPath } from './routes';
-import { catalogQueryKeys } from './catalogBrowse';
+import { catalogQueryKeys } from './browse/catalogBrowse';
 
 // Bounded, document-memory scroll history; not account data or persistent browser identity.
 type ProductDeparture = { left: number; top: number; variant: CartSku };

@@ -4,7 +4,7 @@ import { Provider } from 'react-redux';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { expect, it } from 'vitest';
 import { createAppStore } from '../store';
-import { money } from './catalog';
+import { money } from './productDisplay';
 import { productCopy } from './copy';
 import { productLocaleSelected } from './demoStore';
 import { SearchControl } from './HeaderControls';

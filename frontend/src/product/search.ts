@@ -1,8 +1,9 @@
 import type { StorefrontLocale } from './locale';
-import { concepts, mediaForVariant, money, variants } from './catalog';
+import { concepts, mediaForVariant, variants } from './fixtures/loop';
+import { money } from './productDisplay';
 import { productCopy } from './copy';
-import { editionCopy, editionItems } from './editionCatalog';
-import { tideOffer } from './tideOffer';
+import { editionCopy, editionItems } from './fixtures/editionCatalog';
+import { tideOffer } from './fixtures/tideOffer';
 
 const descriptions: Record<string, Record<StorefrontLocale, string>> = {
   'loop-mini': { en: 'Compact plant pot', de: 'Kompakter Pflanztopf', ru: 'Компактный горшок', pl: 'Mała doniczka', es: 'Maceta compacta', fr: 'Pot compact', it: 'Vaso compatto' },

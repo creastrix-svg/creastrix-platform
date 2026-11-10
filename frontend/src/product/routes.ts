@@ -17,7 +17,7 @@ export function isEditionPath(path: string) {
 }
 
 export function isCatalogPath(path: string) {
-  const normalized = path.replace(/\/+$/, '');
+  const normalized = path.replace(/\/+$/, '').toLowerCase();
   return normalized === '/catalog' || normalized === '/preview/collection';
 }
 

@@ -5,12 +5,12 @@ import type { ProductCopy } from './copy';
 import { Icon, Spinner } from './Icon';
 import { createModelControls } from './modelControls';
 import type { ModelControls } from './modelControls';
-import { createPersonalizationModel } from './personalizationModel';
-import type { ModelDecoration } from './personalizationModel';
-import { createLampModel } from './lampModel';
-import type { LampDecoration } from './lampModel';
-import { createLampZoneSelection } from './lampZoneSelection';
-import type { LampZoneSelection } from './lampZoneSelection';
+import { createPersonalizationModel } from './studio/preview/personalizationModel';
+import type { ModelDecoration } from './studio/preview/personalizationModel';
+import { createLampModel } from './studio/preview/lampModel';
+import type { LampDecoration } from './studio/preview/lampModel';
+import { createLampZoneSelection } from './studio/preview/lampZoneSelection';
+import type { LampZoneSelection } from './studio/preview/lampZoneSelection';
 
 type Props = { t: ProductCopy; target: HTMLElement | null; expanded: boolean; source?: string; decoration?: ModelDecoration; lampDecoration?: LampDecoration; lampZoneSelection?: LampZoneSelection; onDecorationError?: (failed: boolean) => void; onPhase?: (phase: 'importing' | 'loading' | 'ready' | 'failed') => void };
 

@@ -5,10 +5,10 @@ import { MemoryRouter } from 'react-router';
 import { expect, it } from 'vitest';
 import { createAppStore } from '../store';
 import { productCopy } from './copy';
-import { concepts } from './catalog';
-import { catalogCopy } from './catalogCopy';
+import { concepts } from './fixtures/loop';
+import { catalogCopy } from './browse/catalogCopy';
 import { productLocaleSelected } from './demoStore';
-import { editionCollectionPath, editionCopy, editionItems } from './editionCatalog';
+import { editionCollectionPath, editionCopy, editionItems } from './fixtures/editionCatalog';
 import { storefrontLocales } from './locale';
 import type { StorefrontLocale } from './locale';
 import ProductExperience from './ProductExperience';
@@ -84,9 +84,9 @@ it.each(['/catalog','/catalog?format=concept'])('lists individual designs withou
   const { main } = open(path);
   expect(main.queryByRole('link', { name:editionCopy.en.title })).toBeNull();
   const results = main.getByRole('region', { name:catalogCopy.en.conceptsTitle });
-  const expectedLinks = [...editionItems('en').map(item => item.href), ...concepts.map(item => '/preview/items/' + item.id)];
+  const expectedLinks = [...editionItems('en').filter(item => item.id !== 'tide').map(item => item.href), ...concepts.map(item => '/preview/items/' + item.id)];
   expect(within(results).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(expectedLinks);
-  expect(main.getByRole('status')).toHaveTextContent(catalogCopy.en.results + ': ' + (expectedLinks.length + (path === '/catalog' ? 1 : 0)));
+  expect(main.getByRole('status')).toHaveTextContent(catalogCopy.en.results + ': ' + (expectedLinks.length + (path === '/catalog' ? 2 : 0)));
 });
 
 it('opens an individual editorial design and returns to the original filtered catalog', async () => {

@@ -1,28 +1,44 @@
 import { favoriteSkus, readFavoriteIds } from './favorites';
-import { loopPrice } from './loopPricing';
 import { createSlice, original } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
-import { isVariantId, variantById } from './catalog';
-import type { VariantId } from './catalog';
+import { isVariantId, variants } from './fixtures/loop';
+import type { VariantId } from './fixtures/loop';
 import { isStorefrontLocale } from './locale';
 import type { StorefrontLocale } from './locale';
 import { readProductPreferences } from './preferences';
 import type { MediaMode, ProductPreferences } from './preferences';
-import { copyDesign, designKey, rebindDesignFonts, visibleDesign } from './designSnapshot';
-import type { SavedDesign } from './designSnapshot';
-import type { StudioFontId } from './studioFonts';
+import { copyDesign, designKey, rebindDesignFonts, visibleDesign } from './studio/session/designSnapshot';
+import type { SavedDesign } from './studio/session/designSnapshot';
+import type { StudioFontId } from './studio/design/studioFonts';
 import { cartSkuStock, isCartSku } from './cartSku';
 import type { CartSku } from './cartSku';
-import { tideOffer } from './tideOffer';
+import { readCartSku } from './fixtures/cartSkus';
 
 export type CartLine<S extends CartSku = CartSku> = { variant: S; quantity: number; id?: string; design?: SavedDesign };
+/** A plain line uses its SKU; a design line keeps its own identity through edits and undo. */
 export const cartLineId = (line: Pick<CartLine, 'id' | 'variant'>) => line.id ?? line.variant;
 type Line = CartLine;
-type CartChange = { revision: number } & ({ kind: 'other' } | { kind: 'removed' | 'restored'; variant: CartSku; id?: string } | { kind: 'dismissed'; variant: CartSku; id?: string; removedRevision: number });
+type CartChange = { revision: number } & (
+  | { kind: 'other' }
+  | { kind: 'removed' | 'restored'; variant: CartSku; id?: string }
+  | { kind: 'dismissed'; variant: CartSku; id?: string; removedRevision: number }
+);
 type RemovedLine = { quantity: number; revision: number; line?: CartLine };
-export type ProductDemoState = ProductPreferences & { favorites: CartSku[]; favoritesMemoryOnly?: true; cart: Line[]; cartOrder: string[]; cartRemoved: Partial<Record<string, RemovedLine>>; locale: StorefrontLocale | null; addSerial: number; cartSerial: number; cartChange: CartChange };
+export type ProductDemoState = ProductPreferences & {
+  favorites: CartSku[];
+  favoritesMemoryOnly?: true;
+  cart: Line[];
+  // Presentation order also includes removed lines until the buyer dismisses or restores them.
+  cartOrder: string[];
+  cartRemoved: Partial<Record<string, RemovedLine>>;
+  locale: StorefrontLocale | null;
+  addSerial: number;
+  cartSerial: number;
+  cartChange: CartChange;
+};
 const initialState = (): ProductDemoState => ({ favorites: readFavoriteIds() ?? [], cart: [], cartOrder: [], cartRemoved: {}, locale: null, addSerial: 0, cartSerial: 1, cartChange: { revision: 0, kind: 'other' }, ...readProductPreferences() });
 export const variantCartQuantity = (state: Pick<ProductDemoState, 'cart'>, variant: CartSku) => state.cart.reduce((sum, line) => sum + (line.variant === variant ? line.quantity : 0), 0);
+/** Replacement limit for this line: its own units are reusable; sibling designs share the same stock. */
 export const lineCapacity = (state: Pick<ProductDemoState, 'cart'>, line: CartLine) => cartSkuStock(line.variant) - variantCartQuantity(state, line.variant) + line.quantity;
 
 function matchesConfiguration(variant: CartSku, design?: SavedDesign) {
@@ -50,7 +66,7 @@ function insertCartLine(state: ProductDemoState, line: Line) {
 
 function reconcilePurchase(state: ProductDemoState, variant: CartSku) {
   if (!isVariantId(variant)) return; // Only Loop has per-colour draft preferences.
-  const remaining = variantById(variant).stock - variantCartQuantity(state, variant);
+  const remaining = cartSkuStock(variant) - variantCartQuantity(state, variant);
   // Zero means unavailable, not a purchase. Released capacity never revives an old excess draft.
   state.purchaseQuantities[variant] = remaining === 0 ? 0 : Math.max(1, Math.min(state.purchaseQuantities[variant], remaining));
 }
@@ -84,7 +100,7 @@ const slice = createSlice({
     },
     cartAdded(state, { payload }: PayloadAction<Line>) {
       if (!isCartSku(payload.variant) || !Number.isSafeInteger(payload.quantity) || payload.quantity < 1) return;
-      if (payload.variant === tideOffer.sku && payload.design !== undefined) return;
+      if (payload.design !== undefined && !readCartSku(payload.variant).acceptsDesign) return;
       const sku = payload.variant;
       const design = visibleDesign(payload.design) ? payload.design : undefined;
       const line = state.cart.find(matchesConfiguration(payload.variant, design));
@@ -168,16 +184,19 @@ const slice = createSlice({
       state.cart = payload.lines;
       state.cartOrder = payload.lines.map(cartLineId); state.cartRemoved = {};
       state.cartSerial = payload.serial;
-      for (const variant of ['cobalt', 'coral', 'chalk', 'cobalt-chalk'] as const) reconcilePurchase(state, variant);
+      for (const variant of variants) reconcilePurchase(state, variant.id);
     },
   },
 });
 export const { favoriteStorageReported, favoritesRead, favoriteToggled, favoriteRemoved, cartAdded, cartQuantityChanged, cartLineRemoved, cartLineRestored, cartRemovedLineDismissed, cartDesignChanged, cartHydrated, productLocaleSelected, productVariantSelected, purchaseQuantityChanged, productDescriptionChanged, productMediaModeSelected } = slice.actions;
 export default slice.reducer;
 export const cartCount = (state: ProductDemoState) => state.cart.reduce((sum, line) => sum + line.quantity, 0);
-export const cartLinePrice = (line: Pick<CartLine, 'variant' | 'design'>) => line.variant === tideOffer.sku
-  ? { baseCents: tideOffer.unitCents, unitCents: tideOffer.unitCents, feeCents: 0 }
-  : loopPrice(line.variant, visibleDesign(line.design));
+export const cartLinePrice = (line: Pick<CartLine, 'variant' | 'design'>) => {
+  const offer = readCartSku(line.variant);
+  // Disabling new designs does not strip a previously applied design's fee.
+  return offer.priceWithDesign && visibleDesign(line.design) ? offer.priceWithDesign()
+    : { baseCents: offer.cents, feeCents: 0, unitCents: offer.cents };
+};
 export const cartTotal = (state: ProductDemoState) => state.cart.reduce((sum, line) => sum + cartLinePrice(line).unitCents * line.quantity, 0);
 export const cartDisplayLines = (state: ProductDemoState) => state.cartOrder.flatMap(id => {
   const active = state.cart.find(line => cartLineId(line) === id), removed = state.cartRemoved[id];

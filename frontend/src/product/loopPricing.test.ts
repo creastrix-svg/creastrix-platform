@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createAppStore } from '../store';
-import { variants } from './catalog';
+import { variants } from './fixtures/loop';
 import { cartAdded, cartHydrated, cartLinePrice, cartTotal } from './demoStore';
-import type { SavedDesign, SavedObject } from './designSnapshot';
+import type { SavedDesign, SavedObject } from './studio/session/designSnapshot';
 import { loopPrice } from './loopPricing';
-import { defaultLettering } from './personalization';
+import { defaultLettering } from './studio/design/personalization';
 
 const text = (value: string): SavedObject => ({ id: 'studio-object-1', kind: 'text', value: { ...defaultLettering('cobalt'), text: value } });
 const picture: SavedObject = { id: 'studio-object-2', kind: 'image', fit: 'contain',
