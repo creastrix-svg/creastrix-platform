@@ -11,6 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.creastrix.platform.organization.application.OrganizationService;
 import com.creastrix.platform.organization.domain.Organization;
@@ -40,8 +41,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.PreparedStatementCreator;
+import org.springframework.jdbc.core.PreparedStatementSetter;
+import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -110,7 +115,7 @@ class WorkspaceFoundationIntegrationTest {
         // The exact ordered history is asserted, including the V6 foundation,
         // V7 lifecycle, V8 manual quantity-delta, V9 foundation isolation,
         // V10 creation-lock, V11 identity-binding, V12 platform-access storage and V13 identity selector.
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15");
     }
 
     /**
@@ -617,15 +622,16 @@ class WorkspaceFoundationIntegrationTest {
         Workspace organizationOwned =
                 workspaceService.createOrganizationOwnedWorkspace(organization.id(), orgOwner.id());
 
-        // Add an EDITOR with explicit scope grants through raw SQL to prove
-        // reconstruction of the immutable scope set.
         User editor = activeUser();
+        User viewer = activeUser();
         transactionTemplate.executeWithoutResult(status -> {
             addMembershipThroughRawSql(userOwned.id(), editor.id(), "EDITOR", "ACTIVE");
-            jdbcTemplate.update(
-                    "INSERT INTO workspace_membership_scopes (workspace_id, user_id, scope) "
-                            + "VALUES (?, ?, 'PROJECTS'), (?, ?, 'LISTINGS')",
-                    userOwned.id(), editor.id(), userOwned.id(), editor.id());
+            addScopeThroughRawSql(userOwned.id(), editor.id(), "PROJECTS");
+            addScopeThroughRawSql(userOwned.id(), editor.id(), "LISTINGS");
+            addMembershipThroughRawSql(userOwned.id(), viewer.id(), "VIEWER", "INVITED");
+            // The same user in another Workspace must not contribute a scope here.
+            addMembershipThroughRawSql(organizationOwned.id(), editor.id(), "VIEWER", "SUSPENDED");
+            addScopeThroughRawSql(organizationOwned.id(), editor.id(), "READY_MADE_PRODUCTS");
         });
 
         assertThat(workspaceService.findWorkspace(userOwned.id()))
@@ -640,7 +646,9 @@ class WorkspaceFoundationIntegrationTest {
                         WorkspaceRole.ADMIN, WorkspaceMembershipStatus.ACTIVE, Set.of()),
                 new WorkspaceMembership(userOwned.id(), editor.id(),
                         WorkspaceRole.EDITOR, WorkspaceMembershipStatus.ACTIVE,
-                        Set.of(WorkspacePermissionScope.PROJECTS, WorkspacePermissionScope.LISTINGS)));
+                        Set.of(WorkspacePermissionScope.PROJECTS, WorkspacePermissionScope.LISTINGS)),
+                new WorkspaceMembership(userOwned.id(), viewer.id(),
+                        WorkspaceRole.VIEWER, WorkspaceMembershipStatus.INVITED, Set.of()));
         // Deterministic ordering by user_id, matching PostgreSQL's uuid order
         // (which differs from Java's signed UUID comparison).
         List<UUID> databaseOrder = jdbcTemplate.queryForList(
@@ -649,6 +657,61 @@ class WorkspaceFoundationIntegrationTest {
         assertThat(memberships)
                 .extracting(WorkspaceMembership::userId)
                 .containsExactlyElementsOf(databaseOrder);
+    }
+
+    @Test
+    @Timeout(30)
+    void membershipReadKeepsOneStatementSnapshotAcrossConcurrentCommit() {
+        Workspace workspace = workspaceService.createUserOwnedWorkspace(activeUser().id());
+        UUID workspaceId = workspace.id(), userId = activeUser().id();
+        var before = new WorkspaceMembership(workspaceId, userId, WorkspaceRole.VIEWER,
+                WorkspaceMembershipStatus.INVITED, Set.of(WorkspacePermissionScope.PROJECTS));
+        var after = new WorkspaceMembership(workspaceId, userId, WorkspaceRole.EDITOR,
+                WorkspaceMembershipStatus.SUSPENDED, Set.of(WorkspacePermissionScope.LISTINGS));
+        transactionTemplate.executeWithoutResult(status -> {
+            addMembershipThroughRawSql(workspaceId, userId, "VIEWER", "INVITED");
+            addScopeThroughRawSql(workspaceId, userId, "PROJECTS");
+        });
+        assertThat(workspaceRepository.findMembershipsByWorkspaceId(workspaceId)).contains(before);
+
+        var tx = new TransactionTemplate(transactionTemplate.getTransactionManager());
+        tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        tx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+        tx.setTimeout(10);
+        var reads = new AtomicInteger();
+        var observed = tx.execute(reader -> {
+            Integer readerPid = jdbcTemplate.queryForObject("SELECT pg_backend_pid()", Integer.class);
+            Runnable commitChange = () -> tx.executeWithoutResult(writer -> {
+                assertThat(jdbcTemplate.queryForObject("SELECT pg_backend_pid()", Integer.class))
+                        .isNotNull().isNotEqualTo(readerPid);
+                assertThat(jdbcTemplate.update(
+                        "UPDATE workspace_memberships SET role = 'EDITOR', status = 'SUSPENDED' "
+                                + "WHERE workspace_id = ? AND user_id = ?", workspaceId, userId)).isOne();
+                assertThat(jdbcTemplate.update(
+                        "DELETE FROM workspace_membership_scopes "
+                                + "WHERE workspace_id = ? AND user_id = ? AND scope = 'PROJECTS'",
+                        workspaceId, userId)).isOne();
+                addScopeThroughRawSql(workspaceId, userId, "LISTINGS");
+            });
+            // Spring invokes the extractor after executeQuery. The writer returns after commit;
+            // the reader's original SQL, bindings and ResultSet pass through unchanged.
+            var observedJdbc = new JdbcTemplate(jdbcTemplate.getDataSource()) {
+                @Override
+                public <T> T query(PreparedStatementCreator statement, PreparedStatementSetter parameters,
+                        ResultSetExtractor<T> extractor) {
+                    return super.query(statement, parameters, rows -> {
+                        if (reads.incrementAndGet() == 1) {
+                            commitChange.run();
+                        }
+                        return extractor.extractData(rows);
+                    });
+                }
+            };
+            return new JdbcWorkspaceRepository(observedJdbc).findMembershipsByWorkspaceId(workspaceId);
+        });
+        assertThat(workspaceRepository.findMembershipsByWorkspaceId(workspaceId)).contains(after);
+        assertThat(observed).filteredOn(member -> member.userId().equals(userId)).containsExactly(before);
+        assertThat(reads.get()).isOne();
     }
 
     // ------------------------------------------------------------------

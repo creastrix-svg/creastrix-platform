@@ -56,8 +56,9 @@ public interface ReadyMadeProductRepository {
      *
      * <p>Future Workspace Membership/scope mutation workflows must acquire
      * Membership before scope. A scope-to-Membership workflow would oppose
-     * this canonical order and could deadlock. Future quantity operations must
-     * likewise acquire authorization rows before Product. If PostgreSQL emits
+     * this canonical order and could deadlock. Manual quantity-delta registration
+     * and application also lock authorization rows before the Product, then
+     * resolve the command for that Product. If PostgreSQL emits
      * SQLSTATE 40P01, the whole transaction must be retried by a future retry
      * policy; this slice does not implement retry.
      */

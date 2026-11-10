@@ -226,7 +226,8 @@ class UserFoundationIntegrationTest {
                 "users_enforce_status_transition",
                 "users_require_profile",
                 "user_profiles_preserve_mandatory",
-                "user_profiles_preserve_mandatory_on_truncate");
+                "user_profiles_preserve_mandatory_on_truncate",
+                "user_profiles_require_read_committed");
 
         var initialStatus = trigger(triggers, "users_enforce_initial_status");
         assertThat(initialStatus.get("relation")).isEqualTo("users");

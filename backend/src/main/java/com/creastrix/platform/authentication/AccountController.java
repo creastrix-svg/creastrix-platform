@@ -72,11 +72,13 @@ public final class AccountController {
             AuthenticationConfiguration.jsonError(response, 409);
             return;
         }
-        if (!contexts.canStart(BrowserSessionContextRegistry.cookie(request), contexts.capture(request.getSession(false)))) {
+        var session = request.getSession(false);
+        var coordinator = AuthenticationAttemptCoordinator.existing(session);
+        if (coordinator == null || !coordinator.publishLoginIntent(session, contexts,
+                BrowserSessionContextRegistry.cookie(request), contexts.capture(session), clock)) {
             AuthenticationConfiguration.jsonError(response, 409);
             return;
         }
-        request.getSession().setAttribute(AuthenticationConfiguration.LOGIN_INTENT, clock.instant());
         AuthenticationConfiguration.redirect(response, properties.entryUri());
     }
 

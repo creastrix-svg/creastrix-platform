@@ -735,6 +735,41 @@ class AuthenticationHttpIntegrationTest {
     }
 
     @Test
+    @Timeout(20)
+    void unavailableLoginIntentCoordinatorPreservesOriginalIntentForOneLaterEntry() throws Exception {
+        Browser jar = browser();
+        String csrf = csrf(jar);
+        String entryPath = "/oauth2/authorization/" + AuthenticationProperties.REGISTRATION_ID;
+        assertRedirect(loginPost(jar, csrf, Map.of()), origin + entryPath);
+        HttpSession session = probe().sessions.get(jar.sessionId());
+        Object original = session.getAttribute(AuthenticationConfiguration.LOGIN_INTENT);
+        assertThat(original).isInstanceOf(Instant.class);
+        var coordinator = AuthenticationAttemptCoordinator.existing(session);
+        assertThat(coordinator).isNotNull();
+        // The test thread owns the real lock before either sequential request reaches a servlet worker.
+        coordinator.lock();
+        try {
+            var post = loginPost(jar, csrf, Map.of());
+            assertJsonError(post, 503);
+            assertThat(post.body()).isEqualTo("{\"error\":\"request_not_completed\"}");
+            assertThat(session.getAttribute(AuthenticationConfiguration.LOGIN_INTENT)).isSameAs(original);
+            var get = jar.get(entryPath);
+            assertJsonError(get, 503);
+            assertThat(get.body()).isEqualTo("{\"error\":\"request_not_completed\"}");
+            assertThat(session.getAttribute(AuthenticationConfiguration.LOGIN_INTENT)).isSameAs(original);
+        }
+        finally {
+            coordinator.unlock();
+        }
+        var retry = jar.get(entryPath);
+        assertThat(retry.statusCode()).isEqualTo(302);
+        assertThat(URI.create(location(retry)).getPath()).isEqualTo("/authorize");
+        assertJsonError(jar.get(entryPath), 403);
+        assertThat(provider.authorizationRequests()).isEmpty();
+        assertThat(provider.tokenRequests()).isEmpty();
+    }
+
+    @Test
     @Timeout(60)
     void cookieContextRemediationCapacityUnavailableEntryConsumesIntentAndPreservesBoundaries() throws Exception {
         Browser jar = browser();

@@ -14,12 +14,17 @@ This page helps readers find the correct source. It is a navigation aid and does
 
 - [Domain Specifications Index](domain/README.md) — current specification statuses and links to individual specifications.
 - [Entity Template](domain/entity-template.md) — required structure for domain specifications.
+- [Cross-domain decision notes](engineering/domain-decision-notes.md) — relationships and constraints, including draft commerce rules; check the source specification before implementation.
 
 ## Engineering and Contribution
 
 - [Team Code](../creastrix-team-code.md) — durable engineering culture and principles.
 - [Agent Instructions](../AGENTS.md) — operational governance for repository work.
 - [Backend README](../backend/README.md) — backend setup and implementation guidance.
+- [Frontend README](../frontend/README.md) — local startup, feature locations and verification.
+- [Personalisation zones](frontend-personalization-zones.md) — configured buyer tools and the gap to production fulfillment.
+- [Local account pilot](authentication-pilot.md) and [provider migration](authentication-provider-migration.md) — current boundaries and operator procedures.
+- [Engineering history](engineering/integration-history.md) — dated integration and verification records, separate from current instructions.
 
 ## Authority Boundaries
 

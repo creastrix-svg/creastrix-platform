@@ -1,11 +1,9 @@
 package com.creastrix.platform.workspace.persistence;
 
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 import com.creastrix.platform.workspace.application.port.WorkspaceRepository;
@@ -99,33 +97,36 @@ public class JdbcWorkspaceRepository implements WorkspaceRepository {
     }
 
     /**
-     * Reconstructs the Memberships of one Workspace with their immutable
-     * granted-scope sets in two bounded queries (no N+1). Results are ordered
-     * by User for deterministic assertions.
+     * Reads roles, statuses and explicit grants from the same statement snapshot
+     * at READ COMMITTED. The outer join retains Memberships without grants.
      */
     @Override
     public List<WorkspaceMembership> findMembershipsByWorkspaceId(UUID workspaceId) {
-        Map<UUID, Set<WorkspacePermissionScope>> scopesByUser = new HashMap<>();
-        jdbcTemplate.query(
-                "SELECT user_id, scope FROM workspace_membership_scopes WHERE workspace_id = ?",
-                rs -> {
-                    scopesByUser
-                            .computeIfAbsent(rs.getObject("user_id", UUID.class), key -> new HashSet<>())
-                            .add(WorkspacePermissionScope.valueOf(rs.getString("scope")));
-                },
-                workspaceId);
-        return jdbcTemplate.query(
-                "SELECT workspace_id, user_id, role, status FROM workspace_memberships "
-                        + "WHERE workspace_id = ? ORDER BY user_id",
-                (rs, rowNum) -> {
-                    UUID userId = rs.getObject("user_id", UUID.class);
-                    return new WorkspaceMembership(
-                            rs.getObject("workspace_id", UUID.class),
-                            userId,
-                            WorkspaceRole.valueOf(rs.getString("role")),
-                            WorkspaceMembershipStatus.valueOf(rs.getString("status")),
-                            scopesByUser.getOrDefault(userId, Set.of()));
-                },
-                workspaceId);
+        return jdbcTemplate.query("""
+                SELECT m.user_id, m.role, m.status, s.scope
+                FROM workspace_memberships m
+                LEFT JOIN workspace_membership_scopes s
+                    ON s.workspace_id = m.workspace_id AND s.user_id = m.user_id
+                WHERE m.workspace_id = ?
+                ORDER BY m.user_id
+                """, rs -> {
+            List<WorkspaceMembership> memberships = new ArrayList<>();
+            boolean hasRow = rs.next();
+            while (hasRow) {
+                UUID userId = rs.getObject("user_id", UUID.class);
+                WorkspaceRole role = WorkspaceRole.valueOf(rs.getString("role"));
+                WorkspaceMembershipStatus status = WorkspaceMembershipStatus.valueOf(rs.getString("status"));
+                var scopes = EnumSet.noneOf(WorkspacePermissionScope.class);
+                do {
+                    String scope = rs.getString("scope");
+                    if (scope != null) {
+                        scopes.add(WorkspacePermissionScope.valueOf(scope));
+                    }
+                    hasRow = rs.next();
+                } while (hasRow && userId.equals(rs.getObject("user_id", UUID.class)));
+                memberships.add(new WorkspaceMembership(workspaceId, userId, role, status, scopes));
+            }
+            return memberships;
+        }, workspaceId);
     }
 }

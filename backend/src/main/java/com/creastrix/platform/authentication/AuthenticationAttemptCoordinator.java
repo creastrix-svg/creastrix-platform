@@ -1,5 +1,7 @@
 package com.creastrix.platform.authentication;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
@@ -125,6 +127,47 @@ final class AuthenticationAttemptCoordinator implements HttpSessionBindingListen
         catch (IllegalStateException invalidated) {
             return false;
         }
+    }
+
+    boolean publishLoginIntent(HttpSession session, BrowserSessionContextRegistry contexts, String q,
+                               BrowserSessionContextRegistry.Stamp originalStamp, Clock clock) {
+        lock();
+        try {
+            if (!live(session) || authenticated(session) || originalStamp == null
+                    || !originalStamp.equals(contexts.capture(session)) || !contexts.canStart(q, originalStamp)) {
+                return false;
+            }
+            session.setAttribute(AuthenticationConfiguration.LOGIN_INTENT, clock.instant());
+            return true;
+        }
+        catch (IllegalStateException failure) {
+            if (live(session)) throw failure;
+            return false;
+        }
+        finally { unlock(); }
+    }
+
+    enum LoginIntent { ACCEPTED, REQUIRED, ALREADY_AUTHENTICATED }
+
+    LoginIntent consumeLoginIntent(HttpSession session, Clock clock) {
+        lock();
+        try {
+            if (!live(session)) return LoginIntent.REQUIRED;
+            if (authenticated(session)) return LoginIntent.ALREADY_AUTHENTICATED;
+            Object value = session.getAttribute(AuthenticationConfiguration.LOGIN_INTENT);
+            if (value == null) return LoginIntent.REQUIRED;
+            // Consume this publication once. Later Q/chain failures never clear or restore the slot.
+            session.removeAttribute(AuthenticationConfiguration.LOGIN_INTENT);
+            Instant now = clock.instant();
+            return value instanceof Instant start && !start.isAfter(now)
+                    && now.isBefore(start.plus(AuthenticationProperties.FLOW_LIFETIME))
+                    ? LoginIntent.ACCEPTED : LoginIntent.REQUIRED;
+        }
+        catch (IllegalStateException failure) {
+            if (live(session)) throw failure;
+            return LoginIntent.REQUIRED;
+        }
+        finally { unlock(); }
     }
 
     void lock() {

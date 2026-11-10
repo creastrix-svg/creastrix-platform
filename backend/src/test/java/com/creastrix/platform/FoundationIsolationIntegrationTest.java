@@ -50,7 +50,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/** Author regression evidence: real V8 reproductions and V9 admission in owned disposable databases. */
+/** Author regression evidence: V8/V14 reproductions and V9/V15 admission in owned disposable databases. */
 @SpringBootTest
 @Testcontainers
 @Timeout(120)
@@ -60,6 +60,10 @@ class FoundationIsolationIntegrationTest {
     private static final String MARKER = "CREASTRIX_FOUNDATION_WRITE_ISOLATION_V1";
     private static final String FUNCTION = "foundation_require_read_committed";
     private static final String V8_DATABASE = "foundation_v8_" + UUID.randomUUID().toString().replace("-", "");
+    private static final String PROFILE_BASELINE_DATABASE = "profile_v14_" + UUID.randomUUID().toString().replace("-", "");
+    private static final String PROFILE_CANDIDATE_DATABASE = "profile_v15_" + UUID.randomUUID().toString().replace("-", "");
+    private static final List<String> GUARDED_TABLES = List.of("organizations", "organization_memberships",
+            "workspaces", "workspace_memberships", "user_profiles");
     private static final List<String> DOMAIN_TABLES = List.of("users", "user_profiles", "organizations",
             "organization_memberships", "workspaces", "workspace_memberships", "workspace_membership_scopes",
             "ready_made_products", "ready_made_product_manual_quantity_delta_commands");
@@ -90,12 +94,24 @@ class FoundationIsolationIntegrationTest {
             connection.commit();
             connection.setAutoCommit(true);
             execute(connection, "CREATE DATABASE " + V8_DATABASE);
+            execute(connection, "CREATE DATABASE " + PROFILE_BASELINE_DATABASE);
+            execute(connection, "CREATE DATABASE " + PROFILE_CANDIDATE_DATABASE);
         }
         Flyway.configure().dataSource(url(true), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .target("8").load().migrate();
+        Flyway.configure().dataSource(url(PROFILE_BASELINE_DATABASE), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .target("14").configuration(Map.of("flyway.postgresql.transactional.lock", "false")).load().migrate();
+        Flyway.configure().dataSource(url(PROFILE_CANDIDATE_DATABASE), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .configuration(Map.of("flyway.postgresql.transactional.lock", "false")).load().migrate();
         assertThat(database(true).queryForList("SELECT version FROM public.flyway_schema_history "
                 + "WHERE success AND version IS NOT NULL ORDER BY installed_rank", String.class))
                 .containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
+        assertThat(profileDatabase(PROFILE_BASELINE_DATABASE).queryForObject(
+                "SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",
+                String.class)).isEqualTo("14");
+        assertThat(profileDatabase(PROFILE_CANDIDATE_DATABASE).queryForObject(
+                "SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",
+                String.class)).isEqualTo("15");
     }
 
     static Stream<Arguments> forbiddenModesAndTables() {
@@ -221,6 +237,206 @@ class FoundationIsolationIntegrationTest {
                     () -> assertGuard(nativeFailure, "public", "organizations", "TRUNCATE", actual));
             connection.rollback();
         }
+    }
+
+    @Test
+    void userProfileTruncateRejectsFixedSnapshotsButRetainsTheConditionalV2Invariant() throws Exception {
+        assertThat(profileDatabase(PROFILE_BASELINE_DATABASE).queryForObject(
+                "SELECT count(*) FROM pg_trigger WHERE tgrelid='public.user_profiles'::regclass "
+                        + "AND tgname='user_profiles_require_read_committed'", Integer.class)).isZero();
+        UUID missedByV14 = overlapProfileCreationAndTruncate(PROFILE_BASELINE_DATABASE,
+                Connection.TRANSACTION_REPEATABLE_READ, false);
+        assertThat(profileCount(PROFILE_BASELINE_DATABASE, "users", missedByV14)).isOne();
+        assertThat(profileCount(PROFILE_BASELINE_DATABASE, "user_profiles", missedByV14)).isZero();
+
+        // The V2 check is conditional: an empty READ COMMITTED TRUNCATE is legal.
+        try (Connection connection = connection(PROFILE_CANDIDATE_DATABASE, Connection.TRANSACTION_READ_COMMITTED)) {
+            assertThat(number(connection, "SELECT count(*) FROM public.users")).isZero();
+            execute(connection, "TRUNCATE public.user_profiles CONTINUE IDENTITY RESTRICT");
+            connection.commit();
+        }
+        for (int isolation : List.of(Connection.TRANSACTION_READ_UNCOMMITTED,
+                Connection.TRANSACTION_REPEATABLE_READ, Connection.TRANSACTION_SERIALIZABLE)) {
+            try (Connection connection = connection(PROFILE_CANDIDATE_DATABASE, isolation)) {
+                String actual = text(connection, "SHOW transaction_isolation");
+                assertThat(actual).isEqualTo(isolationName(isolation));
+                Throwable failure = assertThrows(SQLException.class,
+                        () -> execute(connection, "TRUNCATE public.user_profiles CONTINUE IDENTITY RESTRICT"));
+                assertGuard(failure, "public", "user_profiles", "TRUNCATE", actual);
+                connection.rollback();
+            }
+        }
+        UUID protectedByV15 = overlapProfileCreationAndTruncate(PROFILE_CANDIDATE_DATABASE,
+                Connection.TRANSACTION_READ_COMMITTED, true);
+        assertThat(profileCount(PROFILE_CANDIDATE_DATABASE, "users", protectedByV15)).isOne();
+        assertThat(profileCount(PROFILE_CANDIDATE_DATABASE, "user_profiles", protectedByV15)).isOne();
+        assertThat(profileDatabase(PROFILE_CANDIDATE_DATABASE).queryForObject(
+                "SELECT count(*) FROM public.users u WHERE NOT EXISTS "
+                        + "(SELECT 1 FROM public.user_profiles p WHERE p.user_id=u.id)", Integer.class)).isZero();
+
+        // DELETE is still governed by V2's deferred row-level invariant, not
+        // the new TRUNCATE-only isolation admission rule.
+        for (int isolation : List.of(Connection.TRANSACTION_READ_COMMITTED,
+                Connection.TRANSACTION_REPEATABLE_READ)) {
+            try (Connection connection = connection(PROFILE_CANDIDATE_DATABASE, isolation)) {
+                execute(connection, "DELETE FROM public.user_profiles WHERE user_id='" + protectedByV15 + "'");
+                Throwable failure = assertThrows(SQLException.class, connection::commit);
+                PSQLException error = rootPostgres(failure);
+                assertThat(error.getSQLState()).isEqualTo("23514");
+                assertThat(error.getServerErrorMessage().getMessage()).contains("exactly one User Profile")
+                        .doesNotContain(MARKER);
+                connection.rollback();
+            }
+            assertThat(profileCount(PROFILE_CANDIDATE_DATABASE, "users", protectedByV15)).isOne();
+            assertThat(profileCount(PROFILE_CANDIDATE_DATABASE, "user_profiles", protectedByV15)).isOne();
+        }
+    }
+
+    private static UUID overlapProfileCreationAndTruncate(String databaseName, int isolation,
+            boolean expectV2Rejection) throws Exception {
+        UUID user = UUID.randomUUID();
+        var workers = Executors.newSingleThreadExecutor();
+        Connection truncator = null;
+        Connection creator = null;
+        AtomicReference<Connection> pendingHandoff = new AtomicReference<>();
+        Throwable failure = null;
+        boolean interrupted = false;
+        try {
+            truncator = connection(databaseName, isolation);
+            creator = connection(databaseName, Connection.TRANSACTION_READ_COMMITTED);
+            assertThat(number(truncator, "SELECT count(*) FROM public.users")).isZero();
+            int truncatorPid = (int) number(truncator, "SELECT pg_backend_pid()");
+            int creatorPid = (int) number(creator, "SELECT pg_backend_pid()");
+            assertThat(truncatorPid).isNotEqualTo(creatorPid);
+            execute(creator, "INSERT INTO public.users(id) VALUES ('" + user + "')");
+            execute(creator, "INSERT INTO public.user_profiles(user_id) VALUES ('" + user + "')");
+            // Flush V2's deferred creation check before queuing AccessExclusive;
+            // the creator's later commit should only release its existing locks.
+            execute(creator, "SET CONSTRAINTS ALL IMMEDIATE");
+            // Bound the client's socket read as well as the server statement.
+            // The atomic claim leaves cleanup able to close an unstarted task's
+            // connection, without ever touching one already owned by the worker.
+            int socketTimeoutMillis = 45_000;
+            truncator.setNetworkTimeout(Runnable::run, socketTimeoutMillis);
+            assertThat(truncator.getNetworkTimeout()).isEqualTo(socketTimeoutMillis);
+            pendingHandoff.set(truncator);
+            truncator = null;
+            Future<Throwable> truncate = workers.submit(() -> {
+                try (Connection owned = pendingHandoff.getAndSet(null)) {
+                    if (owned == null) {
+                        return new SQLException("TRUNCATE connection handoff was cancelled");
+                    }
+                    execute(owned, "TRUNCATE public.user_profiles CONTINUE IDENTITY RESTRICT");
+                    owned.commit();
+                    return null;
+                } catch (SQLException sqlFailure) {
+                    return sqlFailure;
+                }
+            });
+            awaitExactBlock(databaseName, truncatorPid, creatorPid, truncate);
+            creator.commit();
+            Throwable truncateFailure = truncate.get(60, TimeUnit.SECONDS);
+            if (expectV2Rejection) {
+                PSQLException error = rootPostgres(truncateFailure);
+                assertThat(error.getSQLState()).isEqualTo("23514");
+                assertThat(error.getServerErrorMessage().getMessage())
+                        .isEqualTo("TRUNCATE of user_profiles would leave an existing User without its mandatory User Profile")
+                        .doesNotContain(MARKER);
+            } else {
+                assertThat(truncateFailure).as("V14 RED: fixed-snapshot TRUNCATE misses the committed User").isNull();
+            }
+        } catch (Throwable caught) {
+            failure = caught;
+            interrupted = caught instanceof InterruptedException;
+        } finally {
+            // Release the creator's locks before joining the TRUNCATE worker.
+            // Once claimed, only the worker closes the TRUNCATE connection.
+            if (creator != null) {
+                try {
+                    creator.rollback();
+                } catch (Throwable cleanup) {
+                    failure = retainFailure(failure, cleanup);
+                }
+                try {
+                    creator.close();
+                } catch (Throwable cleanup) {
+                    failure = retainFailure(failure, cleanup);
+                }
+            }
+            boolean stopped = false;
+            try {
+                workers.shutdown();
+                stopped = workers.awaitTermination(50, TimeUnit.SECONDS);
+            } catch (Throwable cleanup) {
+                failure = retainFailure(failure, cleanup);
+                interrupted |= cleanup instanceof InterruptedException;
+            } finally {
+                try {
+                    workers.shutdownNow();
+                } catch (Throwable cleanup) {
+                    failure = retainFailure(failure, cleanup);
+                }
+            }
+            if (!stopped) {
+                try {
+                    stopped = workers.awaitTermination(10, TimeUnit.SECONDS);
+                } catch (Throwable cleanup) {
+                    failure = retainFailure(failure, cleanup);
+                    interrupted |= cleanup instanceof InterruptedException;
+                }
+            }
+            if (!stopped) {
+                failure = retainFailure(failure, new AssertionError("TRUNCATE worker did not stop within bounded cleanup"));
+            }
+            Connection unclaimed = pendingHandoff.getAndSet(null);
+            if (truncator != null) {
+                try {
+                    truncator.rollback();
+                } catch (Throwable cleanup) {
+                    failure = retainFailure(failure, cleanup);
+                }
+                try {
+                    truncator.close();
+                } catch (Throwable cleanup) {
+                    failure = retainFailure(failure, cleanup);
+                }
+            }
+            if (unclaimed != null) {
+                try {
+                    unclaimed.rollback();
+                } catch (Throwable cleanup) {
+                    failure = retainFailure(failure, cleanup);
+                }
+                try {
+                    unclaimed.close();
+                } catch (Throwable cleanup) {
+                    failure = retainFailure(failure, cleanup);
+                }
+            }
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        if (failure instanceof Exception exception) {
+            throw exception;
+        }
+        if (failure instanceof Error error) {
+            throw error;
+        }
+        if (failure != null) {
+            throw new AssertionError(failure);
+        }
+        return user;
+    }
+
+    private static Throwable retainFailure(Throwable primary, Throwable cleanup) {
+        if (primary != null) {
+            if (primary != cleanup) {
+                primary.addSuppressed(cleanup);
+            }
+            return primary;
+        }
+        return cleanup;
     }
 
     @Test
@@ -429,10 +645,10 @@ class FoundationIsolationIntegrationTest {
         try {
             jdbc.execute("CREATE FUNCTION " + schema + "." + FUNCTION
                     + "() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$");
-            for (Target target : Target.values()) {
-                jdbc.execute("CREATE TABLE " + schema + "." + target.table + " (id uuid)");
-                jdbc.execute("CREATE TRIGGER " + target.table + "_require_read_committed BEFORE UPDATE ON "
-                        + schema + "." + target.table + " FOR EACH ROW EXECUTE FUNCTION " + schema + "." + FUNCTION + "()");
+            for (String table : GUARDED_TABLES) {
+                jdbc.execute("CREATE TABLE " + schema + "." + table + " (id uuid)");
+                jdbc.execute("CREATE TRIGGER " + table + "_require_read_committed BEFORE UPDATE ON "
+                        + schema + "." + table + " FOR EACH ROW EXECUTE FUNCTION " + schema + "." + FUNCTION + "()");
             }
             assertThat(jdbc.queryForObject("SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace "
                     + "WHERE p.proname=? AND n.nspname IN ('public', ?)", Integer.class, FUNCTION, schema)).isEqualTo(2);
@@ -557,9 +773,13 @@ class FoundationIsolationIntegrationTest {
     }
 
     private static void awaitExactBlock(boolean v8, int waiter, int blocker, Future<?> future) throws Exception {
+        awaitExactBlock(v8 ? V8_DATABASE : POSTGRES.getDatabaseName(), waiter, blocker, future);
+    }
+
+    private static void awaitExactBlock(String databaseName, int waiter, int blocker, Future<?> future) throws Exception {
         assertThat(waiter).isNotEqualTo(blocker);
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
-        try (Connection observer = connection(v8, Connection.TRANSACTION_READ_COMMITTED)) {
+        try (Connection observer = connection(databaseName, Connection.TRANSACTION_READ_COMMITTED)) {
             while (System.nanoTime() < deadline) {
                 assertThat(future.isDone()).as("worker must still be blocked, not failed or completed early").isFalse();
                 try (var statement = observer.prepareStatement("SELECT count(*) FROM pg_stat_activity w "
@@ -590,21 +810,21 @@ class FoundationIsolationIntegrationTest {
         String definition = jdbc.queryForObject("SELECT pg_get_functiondef(CAST(? AS oid))", String.class, functionOid);
         assertThat(definition).contains(MARKER, "transaction_isolation", "TG_TABLE_SCHEMA", "TG_TABLE_NAME", "TG_OP", "0A000");
         Map<String, Map<String, Object>> result = new LinkedHashMap<>();
-        for (Target target : Target.values()) {
+        for (String table : GUARDED_TABLES) {
             Long relationOid = jdbc.queryForObject("SELECT c.oid::bigint FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
-                    + "WHERE n.nspname='public' AND c.relname=? AND c.relkind='r'", Long.class, target.table);
+                    + "WHERE n.nspname='public' AND c.relname=? AND c.relkind='r'", Long.class, table);
             Map<String, Object> row = jdbc.queryForMap("SELECT oid::bigint AS trigger_oid, tgrelid::bigint AS relation_oid, "
                     + "tgfoid::bigint AS function_oid, tgtype::integer AS trigger_type, tgenabled::text AS enabled, "
                     + "tgdeferrable, tginitdeferred, tgisinternal, tgnargs::integer AS arguments "
                     + "FROM pg_trigger WHERE tgrelid=CAST(? AS oid) AND tgname=?", relationOid,
-                    target.table + "_require_read_committed");
+                    table + "_require_read_committed");
             assertThat(row).containsEntry("relation_oid", relationOid).containsEntry("function_oid", functionOid)
-                    .containsEntry("trigger_type", 62).containsEntry("enabled", "O")
+                    .containsEntry("trigger_type", table.equals("user_profiles") ? 34 : 62).containsEntry("enabled", "O")
                     .containsEntry("tgdeferrable", false).containsEntry("tginitdeferred", false)
                     .containsEntry("tgisinternal", false).containsEntry("arguments", 0);
-            result.put(target.table, row);
+            result.put(table, row);
         }
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgfoid=CAST(? AS oid)", Integer.class, functionOid)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgfoid=CAST(? AS oid)", Integer.class, functionOid)).isEqualTo(5);
         return result;
     }
 
@@ -738,16 +958,35 @@ class FoundationIsolationIntegrationTest {
         return new JdbcTemplate(new DriverManagerDataSource(url(v8), POSTGRES.getUsername(), POSTGRES.getPassword()));
     }
 
+    private static JdbcTemplate profileDatabase(String databaseName) {
+        assertThat(POSTGRES.isRunning()).isTrue();
+        return new JdbcTemplate(new DriverManagerDataSource(url(databaseName), POSTGRES.getUsername(), POSTGRES.getPassword()));
+    }
+
+    private static int profileCount(String databaseName, String table, UUID user) {
+        String key = table.equals("users") ? "id" : "user_id";
+        return profileDatabase(databaseName).queryForObject(
+                "SELECT count(*) FROM public." + table + " WHERE " + key + "=?", Integer.class, user);
+    }
+
     private static String url(boolean v8) {
+        return url(v8 ? V8_DATABASE : POSTGRES.getDatabaseName());
+    }
+
+    private static String url(String databaseName) {
         String original = POSTGRES.getJdbcUrl();
-        return v8 ? original.replace("/" + POSTGRES.getDatabaseName(), "/" + V8_DATABASE) : original;
+        return original.replace("/" + POSTGRES.getDatabaseName(), "/" + databaseName);
     }
 
     private static Connection connection(boolean v8, int isolation) throws SQLException {
+        return connection(v8 ? V8_DATABASE : POSTGRES.getDatabaseName(), isolation);
+    }
+
+    private static Connection connection(String databaseName, int isolation) throws SQLException {
         assertThat(POSTGRES.isRunning()).isTrue();
-        Connection connection = DriverManager.getConnection(url(v8), POSTGRES.getUsername(), POSTGRES.getPassword());
+        Connection connection = DriverManager.getConnection(url(databaseName), POSTGRES.getUsername(), POSTGRES.getPassword());
         try {
-            assertThat(text(connection, "SELECT current_database()")).isEqualTo(v8 ? V8_DATABASE : POSTGRES.getDatabaseName());
+            assertThat(text(connection, "SELECT current_database()")).isEqualTo(databaseName);
             assertThat(text(connection, "SHOW server_version")).startsWith("18.4");
             connection.setTransactionIsolation(isolation);
             connection.setAutoCommit(false);
