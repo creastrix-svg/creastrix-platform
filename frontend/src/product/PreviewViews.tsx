@@ -1,12 +1,12 @@
 import { useContext, useId, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../hooks';
-import { concepts, isVariantId } from './catalog';
-import { cartOfferView } from './cartOfferView';
-import { catalogCopy } from './catalogCopy';
-import { tideOffer } from './tideOffer';
+import { concepts, isVariantId } from './fixtures/loop';
+import { cartOfferView } from './cart/cartOfferView';
+import { catalogCopy } from './browse/catalogCopy';
+import { tideOffer } from './fixtures/tideOffer';
 import type { CartSku } from './cartSku';
-import type { VariantId } from './catalog';
+import type { VariantId } from './fixtures/loop';
 import { productCopy } from './copy';
 import { cartLinePrice, favoriteRemoved } from './demoStore';
 import ProductPrice from './ProductPrice';

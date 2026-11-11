@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router';
-import { catalogCopy } from './catalogCopy';
+import { catalogCopy } from './browse/catalogCopy';
 import { isCatalogPath } from './routes';
 import { useAppDispatch } from '../hooks';
 import { productCopy } from './copy';

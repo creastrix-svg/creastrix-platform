@@ -6,7 +6,7 @@ import { expect, it } from 'vitest';
 import { createAppStore } from '../store';
 import ProductExperience from './ProductExperience';
 import { productCopy } from './copy';
-import { tideOffer } from './tideOffer';
+import { tideOffer } from './fixtures/tideOffer';
 
 it.each([
   ['Loop', '/products/loop', true],

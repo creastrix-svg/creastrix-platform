@@ -1,7 +1,7 @@
-import { variants } from './catalog';
+import { variants } from './fixtures/loop';
 import { isCartSku } from './cartSku';
 import type { CartSku } from './cartSku';
-import { tideOffer } from './tideOffer';
+import { tideOffer } from './fixtures/tideOffer';
 
 // One bounded key per known colour: saving Coral cannot replace another tab's
 // Chalk. Removal deletes only that key; no startup or bulk snapshot writes.

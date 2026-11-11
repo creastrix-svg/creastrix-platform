@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createAppStore, authenticationStarted, authenticationFinished } from '../store';
-import { swatchBackground, variants } from './catalog';
-import type { VariantId } from './catalog';
+import { variants } from './fixtures/loop';
+import { swatchBackground } from './productDisplay';
+import type { VariantId } from './fixtures/loop';
 import { cartAdded, cartCount, cartLineRemoved, cartQuantityChanged, cartTotal, favoriteRemoved, favoriteToggled, productVariantSelected, purchaseQuantityChanged, productDescriptionChanged } from './demoStore';
 
 const defaultPurchase = { cobalt: 1, coral: 1, chalk: 1, 'cobalt-chalk': 1 };

@@ -29,7 +29,7 @@ export function createAuthBoundary(options: {
   closePrivate: () => void;
   invalidated: (owner: Owner, reason: BoundaryReason) => void;
 }) {
-  const document = options.nonce();
+  let document: string | null = null;
   let epoch = 0;
   let request = 0;
   let owner: Owner | null = null;
@@ -38,7 +38,8 @@ export function createAuthBoundary(options: {
 
   function invalidate(reason: BoundaryReason, nextRevision = '') {
     options.closePrivate();
-    owner = { document, epoch: ++epoch, request: ++request, revision: nextRevision };
+    // A failed first nonce still needs an owner for fail-closed state invalidation.
+    owner = { document: document ?? '', epoch: ++epoch, request: ++request, revision: nextRevision };
     revision = nextRevision || null;
     options.invalidated(owner, reason);
   }
@@ -50,6 +51,7 @@ export function createAuthBoundary(options: {
     options.closePrivate();
     epoch++;
     try {
+      document ??= options.nonce();
       let current = read();
       if (announce) {
         current = { nonce: options.nonce(), phase };

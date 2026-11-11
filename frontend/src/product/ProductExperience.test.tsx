@@ -11,17 +11,18 @@ import type { Language } from '../language';
 import ProductExperience from './ProductExperience';
 import { productCopy } from './copy';
 import { loopPricingCopy } from './loopPricingCopy';
-import { catalogCopy } from './catalogCopy';
+import { catalogCopy } from './browse/catalogCopy';
 import { checkoutCopy } from './checkoutCopy';
-import { personalizationCopy } from './personalizationCopy';
+import { personalizationCopy } from './studio/personalizationCopy';
 import { cartAdded, favoriteToggled } from './demoStore';
 import Carousel from './Carousel';
 import { loopCarouselContent } from './carouselContent';
 import indexSource from '../../index.html?raw';
 import { storefrontLocales } from './locale';
 import MediaGallery from './MediaGallery';
-import { mediaForVariant, money, photoDescription, variantById } from './catalog';
-import * as catalog from './catalog';
+import { mediaForVariant, variantById } from './fixtures/loop';
+import { money, photoDescription } from './productDisplay';
+import * as catalog from './fixtures/loop';
 
 vi.mock('@google/model-viewer', () => ({}));
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -1341,6 +1342,8 @@ describe('bounded storefront navigation, accessibility and nonpublic metadata', 
     ['/preview/search?q=Mini', productCopy.en.results + ' · Mini', productCopy.en.searchNote],
     ['/catalog', catalogCopy.en.title, catalogCopy.en.intro],
     ['/preview/collection', catalogCopy.en.title, catalogCopy.en.intro],
+    ['/preview/Collection', catalogCopy.en.title, catalogCopy.en.intro],
+    ['/preview/Collection/', catalogCopy.en.title, catalogCopy.en.intro],
     ['/preview/studio', 'Loop Studio', productCopy.en.studioBody],
     ['/preview/info/help', productCopy.en.help, productCopy.en.helpBody],
     ['/preview/info/legal', productCopy.en.legal, productCopy.en.legalBody],

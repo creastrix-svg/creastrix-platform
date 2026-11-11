@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { money } from './catalog';
+import { money } from './productDisplay';
 import { productCopy } from './copy';
 import { Icon } from './Icon';
 import type { StorefrontLocale } from './locale';

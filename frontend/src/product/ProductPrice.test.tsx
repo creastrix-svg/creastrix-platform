@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import ProductPrice from './ProductPrice';
-import { sampleDiscount } from './catalog';
+import { discountPercent } from './productDisplay';
 import { productCopy } from './copy';
 import { storefrontLocales } from './locale';
 
@@ -22,7 +22,7 @@ it.each([-1, NaN, Infinity, 1990.5, Number.MAX_SAFE_INTEGER + 1])('rejects malfo
   expect(container.querySelector('del')).toBeNull(); expect(container.querySelector('.product-price-badge')).toBeNull();
 });
 it.each([[1990, 2400, 17], [750, 1000, 25], [995, 1000, 1], [996, 1000, null], [0, 2400, 100]])('rounds a checked comparison %i/%i to %s', (cents, previous, expected) => {
-  expect(sampleDiscount(cents, previous)).toBe(expected);
+  expect(discountPercent(cents, previous)).toBe(expected);
 });
 it.each(storefrontLocales)('announces current, previous and sample discount in %s without relying only on red', locale => {
   const t = productCopy[locale], { container } = render(<ProductPrice cents={1990} previousCents={2400} language={locale} t={t} />);

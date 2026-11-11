@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 // Both the rendered sketch and this lathe use this same measured visual profile.
 // Radius is in units of maximum radius; the sample ordinate is a fraction of height.
-export const loopShape = JSON.parse(readFileSync(new URL('../frontend/src/product/loopShape.json', import.meta.url), 'utf8'));
+export const loopShape = JSON.parse(readFileSync(new URL('../frontend/src/product/studio/preview/loopShape.json', import.meta.url), 'utf8'));
 export const loopHeightMeters = loopShape.height * loopShape.outerRadiusMeters;
 const segments = 96;
 const colors = { cobalt: '#244bcc', coral: '#e17763', chalk: '#f0eee8' };

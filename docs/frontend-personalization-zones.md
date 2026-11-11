@@ -1,6 +1,6 @@
 # Personalisation studio: configured areas
 
-Status: owner-approved product direction and bounded frontend prototype.
+Status: owner-approved product direction, demonstrated in the integrated local storefront.
 This document is not an approved domain specification.
 
 ## Buyer experience
@@ -40,7 +40,7 @@ Whether the physical product already exists does not by itself enable this featu
 
 ## Current frontend examples
 
-The profiles in `frontend/src/product/studioProducts.ts` are local UI fixtures.
+The [studio profiles](../frontend/src/product/studio/studioProducts.ts) are local UI fixtures.
 They are not seller records, an authoring dashboard or server-side authorization.
 
 | Example | Area | Operation | Buyer tools |
@@ -137,7 +137,7 @@ keeping the current tab open and reconciling deliberately. Browser eviction or
 clearing site data can still remove local work. No server durability is promised.
 
 There is no account save, manufacturing export, production quote or commercial
-order in this scope. The frontend proposal does not implement domain cart/order
+order in this scope. The integrated frontend preview does not implement domain cart/order
 contracts or approve the DRAFT Personalization specification.
 The buyer-facing layout uses concise editing labels and one collapsed explanation
 of these limits. Only Loop shows a local price preview; Luma is not for sale.

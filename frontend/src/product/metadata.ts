@@ -1,15 +1,15 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router';
 import type { ProductCopy } from './copy';
-import { concepts } from './catalog';
+import { concepts } from './fixtures/loop';
 import type { StorefrontLocale } from './locale';
 import { checkoutCopy } from './checkoutCopy';
-import { personalizationCopy } from './personalizationCopy';
-import { studioZoneCopy } from './studioZoneCopy';
-import { catalogCopy } from './catalogCopy';
-import { homeCopy } from './homeCopy';
+import { personalizationCopy } from './studio/personalizationCopy';
+import { studioZoneCopy } from './studio/studioZoneCopy';
+import { catalogCopy } from './browse/catalogCopy';
+import { homeCopy } from './home/homeCopy';
 import { isCatalogPath, isTideOfferPath, tideOfferPath, tideReviewRoute } from './routes';
-import { editionCollectionPath, editionCopy, editionItems } from './editionCatalog';
+import { editionCollectionPath, editionCopy, editionItems } from './fixtures/editionCatalog';
 
 export function useProductMetadata(t: ProductCopy, locale: StorefrontLocale) {
   const { pathname: rawPath, search } = useLocation();

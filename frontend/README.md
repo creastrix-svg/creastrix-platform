@@ -1,668 +1,76 @@
 # Creastrix frontend
 
-FRONTEND-BOOTSTRAP-001 established this separately built React/TypeScript/Vite
-application in the existing repository. [PR #35](https://github.com/creastrix-svg/creastrix-platform/pull/35)
-integrated the independently reviewed bounded authentication client and finite
-local React/dev-proxy/browser F. A separate bounded real Auth0 owner walkthrough P
-completed on 2026-10-11; this historical evidence is not a Cognito transfer.
-Public access and rollout remain unverified and unauthorized.
-
-## Buyer homepage and catalog (local preview)
-
-Open `/` to explore the buyer storefront without signing in. It shares search,
-saved products, cart, language and appearance controls with the catalog and
-product pages. Account access is still available from the header. The homepage
-is readable while local drafts and cart contents are being restored; the
-mini-cart does not offer edits against a cart that has not been restored.
-
-The wide campaign opens the complete catalog. The carved-pattern banner
-opens `/catalog?group=custom-or-made`: personalised items, made-to-order goods
-**or** production files. It does not open an editor until a product is chosen.
-Three category entrances below it show a closed gift box with a denim-blue ribbon,
-embroidery in progress, and a carved figure holding an amber sphere beside its
-sketch and drafting tools. They open **Ready-made**, **To personalise** and
-**Design concepts** respectively. The two desktop banners use the same three
-column tracks as the entrances: the catalog spans the first two, and the
-customisation banner occupies the third. Phones stack the banners.
-See the [image sources and credits](public/shop-edition/process-photo-credits.txt)
-for the packaging and design-concept artwork.
-
-Popular picks can be narrowed to gifts, home, accessories, desk, kitchen, or
-decor. The category strip below the heading docks underneath search; its catalog link opens that same category;
-with **All** selected it opens the full catalog. The large campaign above always
-opens the full catalog. These selections are not sales analytics.
-The default shelf shows Loop, the Tide espresso cup, and 30 individual design previews: eight rows
-of four on a wide screen. Thumbnails load lazily; the smaller grids keep the same
-items on tablets and phones. Designs have individual detail URLs, localised
-descriptions and two WebP sizes. Each tile links directly to the product or
-design detail, without a separate quick-view button. Concepts show neither
-prices nor fictional stock. Loop uses its existing variant pricing. Tide is a
-single ready-made local offer at its existing URL, `/collections/objects/tide`.
-The shelf, search, product and cart use the same demo price (€18); the demo
-stock limit is 18 cups. **Loop and Tide use the same product card.** A single
-finish still has a selected swatch. If the product has no model, the 3D control
-remains visible but disabled; it never opens another product's model. The card
-always includes the seller, both recommendation rails, three feature tiles,
-specifications and expandable description. Tide has one photograph and no
-personalisation; its three tiles sit directly below the gallery, including on
-phones. No placeholder replaces the studio entry. The local cart and saved products can
-contain both Tide and Loop; no inventory, payment or order request is sent.
-The catalog's own listing classifications are deferred to the catalog pass.
-
-Open `/catalog` (or its older alias `/preview/collection`) to browse products
-and individual design concepts. Loop has **one** card, irrespective of how
-many finishes match. Buyers choose a finish on its product page; a specific
-colour or sale filter can suggest a matching finish. Favourites retain their
-existing variant identity. The editorial collection is not itself a catalog
-item. Concept-only items open previews with no purchasing controls.
-
-The **Menu** button opens a left-side drawer for the whole collection or a
-specific selection. Its short slide and backdrop fade respect reduced motion.
-Filters distinguish the offer (ready-made, made to order, production file, or
-design concept) from the making technique and the buyer's personalisation
-options. Colours can be combined: a match can satisfy any checked option in a
-group, but must satisfy every active group. Made-to-order items and production
-files currently have no matches; a concept is neither a file nor a promise
-to manufacture. The cards show fixture details and the actual empty review
-state, not generated ratings or popularity.
-
-Filter selections and sorting live in the URL (`format`, `custom`,
-`technique`, `color`, `sale`, `category`, `group`, `sort`). Browser Back and the
-product breadcrumb return to the previous selection. The page can sort by
-displayed base price, name or available quantity. This is a local React storefront:
-no catalog API, published listings, or checkout integration is included.
-
-## Product experience — FRONTEND-PRODUCT-001
-
-FRONTEND-PRODUCT-001 adds a standalone
-`/products/loop` storefront with scoped system/light/dark appearance and a native
-DE/EN/RU/PL/ES/FR/IT language selector. Storefront language stays in public
-document-memory state; it never expands or rewrites the authentication DE/EN
-preference or its storage. It translates the owner's final product mockup,
-not the Lovable redesign or an embedded HTML/iframe. The original external HTML
-is unchanged. The new footer, native smooth rails and main-photo thumbnails are
-explicit owner-approved exceptions to that reference. The shared footer leads to
-store sections, not individual products or their studios.
-
-The opaque theme-aware header is sticky, with a compact two-row mobile layout.
-Its measured height supplies local anchor/focus clearance; resize does not scroll
-the page. Search/cart popups and the icon menu remain below the modal layer.
-
-Loop uses the [cobalt hero photo](public/product/reference-asset-01.webp) as its
-shape reference. The [shared profile](src/product/loopShape.json) defines the
-foot, curved sides and open rim for both the four colour-specific product models
-(`loop-shaped-*.glb`) and the [2D studio sketch](src/product/loopSketchProjection.ts).
-Cobalt keeps its three original photos; coral, chalk and cobalt/chalk each have
-one illustrative AI image. The legacy `loop.glb` is not used. The profile is a
-visual approximation from the photo, not measured CAD or fabrication geometry.
-Photo/3D share a viewport-centred keyboard modal, with focus
-restoration and background inertness. `@google/model-viewer` 4.0.0 is a pinned,
-lazy renderer loaded only on 3D selection, with an explicit loading/error fallback.
-No CDN, external model/environment image, AR or backend work is added. The 3D
-chunk is separate from ordinary storefront and authentication code. Expanded
-view adds public-API quaternion arcball rotation, roll, pinch/twist, bounded zoom,
-reset and keyboard controls only after actual load. Inline has bounded orbit
-controls and a reset to the normal product view. Fullscreen captures the actual
-numeric inline orbit/target and opens from that angle with extra framing room.
-Closing restores the original inline view and its bounds unless Reset/Home was
-used: reset centres the model at its normal product angle and zoom for each
-viewport. Further free rotation in the dialog does not change the card's view.
-One viewer survives host/language changes for the same source. Colour changes
-retain the selected Photo/3D intent while a keyed gallery resets source-owned
-photo index, errors, loading and viewer pose. 3D loads that colour's own model,
-ignores old load/error events and offers explicit Photos recovery if unavailable,
-without silently switching modes. Controls clean up pointer capture,
-listeners and queued frames before restoring inline. The reference's 4.0.0 renderer
-avoids the observed 4.4.0 non-AR orientation-update regression without a private
-patch; this older renderer/Three peer choice still requires real browser/WebGL
-verification and does not establish general dependency security.
-Inline instructions stay available through `aria-describedby` without covering
-the model; fullscreen retains its visible rotation guidance.
-Main photos, thumbnails, gallery images and model import/load show only natural
-pending spinners, with cached-ready handling and bounded terminal fallbacks.
-Only media actions requiring the pending asset are disabled; close, navigation,
-colour selection and unrelated cart/theme controls remain usable. Photo failures
-and explicit retries belong to the exact variant/source, not neighbouring images.
-The thumbnail strip retains its height for zero, one or three photos; missing or
-failed assets use noninteractive placeholders, and a single photo has no arrows.
-
-Public Redux sample cart/favorite state is unrelated to credentials, account
-identity or private authentication state. The local studio adapter below now
-persists active cart lines; saved colours use independent local keys. A separate version-1 bounded
-`creastrix.product.loop.preferences` record remembers only selected colour,
-per-colour quantity to add next, Photo/3D intent and description disclosure across
-refresh. A cart visit leaves an unsubmitted quantity alone. A successful add resets
-only that colour's picker to one (zero and disabled when exhausted). The product
-page separately shows the active cart quantity matching its colour and applied
-design; stock is shared across all designs of that colour. An explicit valid URL
-colour wins; invalid/duplicate colour queries use cobalt. Unknown versions/fields,
-malformed or oversized records fall back safely;
-quantities are safe integers clamped to each sample stock. A cart-exhausted zero
-restores as one before cart hydration reconciles the remaining capacity. Denied/full storage keeps in-memory use.
-No account, authentication, cart, favorite, locale or appearance value is persisted
-by this adapter; existing locale/theme behavior and auth lifecycle are unchanged.
-Preferences are local to this browser origin, not account synchronization or
-cross-tab ordering. The native description summary switches localized Show more /
-Show less with the saved open state; both labels reserve one shared width at
-weight 600, hover only underlines and keyboard focus remains visible.
-The owner requires future
-authenticated cart/favorites to be stored by the backend for the internal User;
-that needs a separate identity/target slice and is not delivered here. Browser
-preference storage is not a substitute; guest-cart merge is not simulated.
-Quantity is whole-digit input,
-bounded by each sample stock (24/8/15/6), not nine; cart totals use integer cents.
-Sample variants have one or two swatch colours with an exact-half diagonal split.
-The product picker uses a vector circle for a smooth contour; cart fallbacks use
-the same colours in a diagonal background. The cobalt/chalk combination has its
-own demo identity, €28 price and six-unit stock; no seller editor or catalog API
-is implemented. Five separate star buttons open a demo review form with the
-chosen 1–5 rating and validated variant; the review text remains a separate link
-to the list. Both routes provide a concrete return to that product/variant.
-The form has an editable rating and text; invalid/missing ratings remain unselected.
-It publishes nothing and submits no request or persistent data. Star-prefix hover
-is decoration, not a submitted or stored rating; quantity and swatch feedback do
-not resize controls.
-The heart saves a product in its selected colour, not a standalone colour or a
-personalised design. Saved products lists each marked variant
-with its own photo or swatch, current sample price and direct variant link.
-Each variant has its own localStorage key. Loop keeps its existing
-`creastrix.product.loop.favorites.v1.` keys; Tide uses `creastrix.product.tide.favorites.v1.cobalt`:
-saving writes a one-character marker and removing deletes only that key. Tabs
-cannot overwrite other colours by writing an outdated list. No design,
-account identifier, cart or price is stored in favorites. Storage failure
-leaves the current view usable, without guaranteeing recovery after reload.
-The icon-only appearance popup uses menu-radio keyboard navigation and localized
-accessible names, without changing authentication appearance. Chalk's sample
-€24.00-to-€19.90 comparison produces a checked, rounded17% demo tag; all totals
-and saved prices use current integer cents. This is not live offer/pricing logic.
-Refresh restores a valid local preview cart through the studio adapter below.
-Header hover/focus preview supports editing
-and removal. Its bounded last-five item list alone scrolls; header, total and
-View cart remain outside that scroll area, including short viewports.
-Click/touch opens `/preview/cart`. The small `/preview/*` routes and
-`/products/loop/reviews` are demo/info views, not a marketplace API or real reviews.
-
-CART-UI-001 provides a separate responsive cart view with variant-owned media,
-current unit prices (including the existing Chalk comparison), numeric sample
-stock, line subtotals and distinct product-line/unit counts. Continue shopping
-replaces the cart's top Back link and keeps the existing product-return preference
-and scroll contract, including a visit to the checkout prototype. Shared memory-only presentation slots
-keep deleted rows in place, with disabled zero quantity/subtotal and a readable
-muted appearance. Each row has an independent, one-use Restore for its previous
-quantity; unrelated edits/removals do not invalidate it. Explicit re-add of the
-same variant uses the new quantity and retires only its old restore token, without
-duplicates, merging or exceeding stock. Removed rows never enter active totals,
-badges or the minicart, including when all rows are removed. Fixed-width cart
-counters do not grow with colour labels. Unit price, quantity and line subtotal
-share three aligned columns, also below the product heading on phones; sale prices
-stay within the unit-price column. Cart limit notices expand around the centre
-counter without widening the page. Full-cart and minicart quantity buttons include
-the variant in their accessible names. The same keyed Remove/Restore action
-retains focus without scrolling, with hidden live status and no top Undo area.
-Only removed rows offer a separate X to discard their presentation slot and
-Restore snapshot. Active quantities/totals and other snapshots are unaffected;
-a later explicit add creates a new row. Focus moves to the nearest surviving
-row action or Continue shopping, without scrolling. This never deletes a product
-from the catalogue or an account.
-When the summary moves below the items, it stays right-aligned and at most 360px
-wide, shrinking to fit phones rather than stretching its Checkout link across a tablet.
-The summary's Checkout link opens `/preview/checkout`; it is disabled when only
-removed rows remain. Direct access with an empty active cart offers a return to
-the cart instead of a form. The checkout prototype shows the active selection,
-current item subtotal and a local contact/address preview. Use fictitious details:
-form state disappears on departure or when the active cart becomes empty. Nothing
-is submitted, persisted or placed into Redux. Required/email browser validation is
-only presentation validation, not address verification. Shipping, tax calculation,
-orders and payment are not implemented; the subtotal is not a final payable total.
-No timers or artificial loading are added. Account persistence, guest merge and
-backend cart/favorite APIs remain outside this interface-only slice.
-
-Both recommendation rails keep their DOM items and use native horizontal scrolling,
-snap/swipe and edge controls; motion requests are instant under reduced motion.
-
-Storefront routes retain the shell DOM and use React Router links. One feature-owned
-focus/scroll hook covers path and query navigation and bounded document-memory
-Back/Forward positions; the original auth shell does not also scroll these routes.
-Titles/descriptions follow the current route/language. The nonpublic pilot is
-`noindex,nofollow`, with no fabricated canonical/hreflang or Product/Offer/review
-structured data. SSR/SSG and public catalog SEO need a separate decision.
-Fixed media frames and out-of-flow quantity-limit notices avoid layout jumps.
-One-shot favorite-add, cart-add badge and photo-change effects respect reduced
-motion. Existing photo hover and button colour feedback are preserved.
-
-Search suggestions are immediate local matching/ranking of all seven storefront
-fixture text: exact/prefix names first, at most five, with IME-aware combobox
-keyboard control and no query logging, behavioral analytics, polling or fake HTTP.
-Search submit uses the same matcher. A future real endpoint would need a roughly
-200–300 ms debounce, cancellation plus latest-result ownership, bounded results
-and distinct loading/error/empty states; no such endpoint is implemented here.
-
-Creastrix remains the MVP seller/merchant; Loop Studio is only a demo design author.
-Personalisation opens the local creative studio described below. Checkout is a separate
-interface prototype; payment, product/Workspace API, account linking, a new approved
-domain model and rollout are not delivered. Existing `/login`, `/confirm-email`,
-`/account`, authentication lifecycle and fixed development proxy are unchanged.
-
-### Personalisation studio — interface prototype
-
-`/products/loop/personalize?variant=cobalt` opens an area-based local studio.
-The product is selected by the route; there is no in-editor demonstration switcher.
-The existing `?product=lamp` route opens Luma directly. Each product profile supplies its available areas, operations, tools, fonts and
-colours. Loop offers text, pictures and AI ideas on its front surface. Luma offers
-prepared cut-out patterns, visual stencil text/pictures and AI ideas on its front panel, and text/pictures on
-its base. Switching areas preserves their separate drafts. An unavailable or
-unconfigured profile exposes no active personalisation entry or editor tools.
-These are local fixtures, not a seller configuration API.
-
-The AI service is not connected: its brief stays local and a concise availability
-message explains this beside the field. No example gallery substitutes for generated
-results. Prepared lamp patterns remain in the configured pattern tool. There is no
-paid generation, provider call or Python manufacturing service in this slice.
-
-The Loop text editor has a live front sketch, six font styles, three ink colours,
-size and bounded position controls, drag with slider alternatives, grouped undo/redo,
-comparison without text and a confirmed, undoable reset.
-Input is limited to 32 complete graphemes and two lines; overflowing text remains
-editable but cannot be applied. The visual working area is a UI fixture, not an
-approved production constraint or `Personalization` domain record.
-Loop text and Luma base text share their respective area bounds with the visible
-frame and texture mapping. Position limits account for the whole measured text
-block and glyph overhang, with a small inset at the edges. The base uses its full
-front face; both 2D sketches support dragging and slider alternatives. Panel cut
-text stays in its fixed, visibly marked lower band.
-
-Apply creates a separate product-preview snapshot, rendered on the Loop product
-card in 2D and 3D. Drafts/applied snapshots remain per colour and separately per
-Luma area. Returning preserves colour and scroll; removing an applied preview keeps
-its draft. Add to cart copies the entire applied composition into a stable local
-line. Equal designs of the same variant add to that line; different designs and plain
-items stay separate. Exact-line editing owns a detached draft: explicit Save updates
-only that line, while cancel/back leaves both the cart and product draft unchanged.
-The AI brief is product-local and not part of a cart design; line editing exposes
-only text/image controls. All design lines share the variant's stock capacity.
-Minicart, remove/undo and checkout summaries preserve those identities and amounts.
-
-`creastrix-studio-local` IndexedDB version 1 stores one atomic bounded snapshot:
-current/applied documents, deduplicated PNG resources, custom font bytes, prepared
-motifs/local briefs and active cart lines. It excludes undo histories, removal
-tombstones, unsaved cart-editor edits, checkout contact fields and private account
-state. Existing preferences retain their key/shape; live plain cart lines are not
-overwritten by hydration. There was no historical persisted cart schema to migrate.
-Restoration validates and decodes before enabling editing, remapping runtime font,
-image and object counters without collisions. No network/storage URL or executable
-image payload is accepted. Luma drafts persist without making Luma purchasable.
-Returning from the account shell remounts the resource library without replacing live
-cart quantities or identities. Custom font IDs are rebound only to the exact
-previous font bytes; a different tab's coincident ID cannot substitute another
-font. An unavailable resource fails visibly rather than silently using a fallback.
-
-The record is limited to 24 Mi characters, 48 distinct raster assets, 64 million
-decoded pixels and three custom fonts. Normalized PNG restoration has a separate
-10 MiB/1536-pixel-edge limit; the public compressed upload remains 5 MiB/16 MP.
-Writes are queued; saved means transaction completion, not request success. A
-compare-and-write in the same transaction refuses to overwrite a changed record
-from another tab. This is single-tab editing with conflict detection, not cross-tab
-merge. A late old save cannot mark a newer failed/oversized draft saved. Corrupt or
-unsupported stored state is retained, with explicit memory-only continuation.
-Quota, unavailable storage and serialization failure show a not-saved notice while
-keeping live work usable. Browser site-data clearing/eviction is outside this local
-durability boundary. No account save/quote/upload/order endpoint is called.
-Loop uses one illustrative €5 surcharge per personalised unit, independent of
-the number of text or picture layers. The studio previews the draft's unit
-price; the product uses the applied design and each cart line uses its own saved
-design. For example, two personalised Cobalt units cost 2 × (€24 + €5) = €58.
-The current variant price is used, including sale prices. Refresh recomputes
-amounts from the local fixtures; prices are not persisted or guaranteed.
-Luma has no purchase price. No server quote, payment or order is created.
-
-Each configured area now owns an ordered composition of up to eight text/image
-objects. Selection, addition, deletion, layer order, resizing and dragging use one
-canonical composition; SVG and 3D texture adapters consume the same object order
-and zone-relative image bounds. Object edits share a 40-step per-area history;
-selection is not an edit and text reset affects only the selected object. Prepared
-motifs and local AI briefs remain outside that object history. Apply validates all
-text objects in both lamp areas and snapshots the complete composition. Image modes
-are free, contain and cover; contain/cover use the complete zone, keep aspect ratio
-and crop cover without stretching. File/font request ownership includes object ID,
-zone and a supersession epoch. Undo/delete/selection cannot redirect a late result.
-Image assets are shared by history snapshots and may remain retained for undo;
-the mounted-storefront lifetime, object cap and history bounds limit retention.
-
-The 3D view reuses the existing lazy local viewer and its inline/expanded controls.
-The four `studio-loop-*.glb` assets use the same pot geometry as the product
-models and separate the outer wall so lettering and images stay off the rim and
-interior. Two reusable canvas textures decorate that wall without replacing its
-normal map. The sketch shows the same profile in a fixed front view; it guides
-placement, not exact print dimensions. If a model fails to load, 2D remains available.
-GPU resource lifetime remains controlled by the renderer; canvas backing stores
-and material bindings are cleaned up, without claiming immediate GPU disposal.
-After changing `loopShape.json`, regenerate all eight Loop assets and check
-them from the repository root:
-
-```sh
-node scripts/generate-personalization-models.mjs
-node --test scripts/generate-personalization-models.test.mjs
-```
-
-Pictures are decoded locally: PNG/JPEG/WebP up to 5 MiB and 16 megapixels, with a
-header-dimension guard before decoding and an 8192-pixel edge limit. The resulting
-canvas is reduced proportionally to a maximum edge of 1536 and normalised to PNG.
-Reading and decoding each have a 12-second bound. Cancelled or obsolete results
-cannot replace a draft; failed replacement preserves the previous picture. SVG,
-remote image URLs and production vectorisation are outside this upload control.
-
-Loop's six font styles include locally bundled Nunito, Cormorant Garamond and Caveat;
-licenses, pinned sources and hashes are in `public/fonts/`. Where the configured
-area permits custom fonts, buyers can add up to three TTF/OTF/WOFF2 files per mounted
-studio session, each at most 2 MiB. Luma's base offers only sans, serif and mono;
-its front panel offers the bundled Allerta Stencil. A file
-header check precedes browser FontFace decoding, with an eight-second bound and
-owned cleanup. Unique accepted font IDs preserve applied previews and text undo.
-Font files are not transmitted. Rights and available glyphs remain the buyer's
-responsibility; browser fallback is not proof of a usable manufacturing font.
-
-Luma is a plywood-lamp example, not another purchasable catalog item. Its prepared
-botanical, forest and orbit cut-out patterns include their connecting material.
-The buyer cannot remove or tune bridges. The panel offers prepared patterns plus
-optional stencil text in a reserved lower band (one line, at most 14 Latin letters,
-digits, spaces or hyphens). Font loading and visual fit are checked before applying;
-unsupported glyphs are reported rather than replaced by a fallback font. Arbitrary
-pictures are not converted to cut geometry. The base separately accepts text and
-pictures as visual engraving references. The panel also permits a visual image/text
-composition in the same lower band, explicitly not an image-to-cut service. Both
-composition drafts and undo histories remain
-independent; applying validates both areas, even when one is not selected.
-The 3D preview contains the lamp assembly and pattern openings; surface previews
-do not create new text-shaped holes or simulate engraving depth. Neither the model
-nor visual fit certifies material-dependent bridge strength,
-manufacturing validity or a production-ready cutting file.
-The three `studio-lamp-*.glb` files share their prepared pattern descriptors with
-the flat panel view. Their sampled, extruded openings are display geometry rather
-than an engineering mesh; the warm inner diffuser is an illustrative material.
-Generate/check these fixtures from the repository root with:
-
-```sh
-node --experimental-strip-types scripts/generate-lamp-models.mjs
-node --experimental-strip-types --test scripts/generate-lamp-models.test.mjs
-```
-
-The studio supports all seven storefront languages and light/dark appearance.
-Connected AI, computer vision/vector validation, seller-side area authoring,
-authoritative manufacturing limits, saved account designs, commercial cart/order
-integration and manufacturing export require later, separately approved slices.
-The owner's accepted direction includes configured personalisation on existing
-stock, but that hybrid workflow is outside the current APPROVED Ready-Made Product
-scope and DRAFT Personalization/Listing rules. See the
-[configured-area decision and domain gap](../docs/frontend-personalization-zones.md).
-Current fixtures do not approve those drafts or change backend behaviour.
-
-The disconnected built preview can be run on the separately agreed loopback port:
-
-```sh
-npm run build
-npm run preview -- --host 127.0.0.1 --port 4173 --strictPort
-```
-
-This does not connect authentication or use the existing port-3000 development
-server. Component/Redux, static and build checks are distinct from responsive
-browser/3D/visual verification; the latter is a separate coordinator gate. Source
-changes, independent review, publication and integration remain separate states.
+The buyer storefront and the local account pilot are two journeys in one React application. The storefront works without a server or sign-in. Connected login requires a separately configured local backend; it does not save the guest cart to an account.
 
 ## Local use
 
-Use pinned Node **22.14.0** / npm **10.9.2**, without upgrading the locked packages.
-From the repository root:
+Use **Node 22.14.0** and **npm 10.9.2**. From the repository root:
 
 ```sh
 cd frontend
 npm ci
-npm run dev
 ```
 
-For the authorized Cognito/backend setup, use the canonical
-[connected local authentication pilot runbook](../backend/README.md#connected-local-authentication-pilot).
+**Work on the interface:** run `npm run dev` and open [the storefront](http://localhost:3000/). Vite binds to loopback on a strict port. For the connected account pilot, use the exact origin `http://localhost:3000` and follow the [backend runbook](../backend/README.md#connected-local-authentication-pilot). Do not put provider credentials in frontend configuration.
 
-Connected authentication requires exactly `http://localhost:3000` and the separately
-configured backend on `127.0.0.1:8080`. Vite binds loopback `127.0.0.1:3000` with
-strict port selection. Resolve conflicts explicitly; do not stop unrelated
-processes, bind publicly or select another origin automatically.
+**Show the built interface without connecting authentication:**
+
+```sh
+npm run build
+npm run preview -- --port 4173 --strictPort
+```
+
+Open [the built storefront](http://localhost:4173/). The preview serves `dist/`, has no backend proxy and is not a production deployment. Prices, stock, personalisation fees and offers in this storefront are local examples. Checkout neither places an order nor takes payment.
+
+## Find a feature
+
+| Change | Start here |
+| --- | --- |
+| Homepage campaigns and product discovery | [Home](src/product/home/) |
+| Catalog cards, filters and sorting | [Browse](src/product/browse/) |
+| Cart lines, totals and undo | [Cart](src/product/cart/) |
+| Personalisation tools, design documents, preview and local saves | [Studio](src/product/studio/) |
+| Local example products and the catalog adapter | [Product fixtures](src/product/fixtures/) and [catalog mapping](src/product/browse/catalogFixtures.ts) |
+| Shared product layout | [ProductCardLayout.tsx](src/product/ProductCardLayout.tsx) |
+| Storefront shell and URL wiring | [ProductExperience.tsx](src/product/ProductExperience.tsx) |
+| Sign-in and account screens | [App.tsx](src/App.tsx) and the [client contract](docs/account-pilot.md) |
+
+Keep tests, styles and interface copy near the feature they exercise. A product name is appropriate in example data, media and compatibility URLs, not as a condition in general catalog rules. The catalog matches supplied offers; the product detail routes and local storage formats still have fixture-specific adapters. Adding a browse record does not automatically create a purchasable product page. Preserve existing links, stored browser keys and cart-line identities when moving code.
+
+<a id="buyer-homepage-and-catalog-local-preview"></a>
+<a id="product-experience--frontend-product-001"></a>
+<a id="personalisation-studio--interface-prototype"></a>
+
+## Follow a buyer journey
+
+Start at `/` → `/catalog` → a product page. Buy as offered or open the studio if the product supports personalisation. Applying a design makes a snapshot; adding it to the cart does not change a previously added, different design. Go to `/preview/cart`; `/preview/checkout` is a local preview only.
+
+[Storefront behaviour and fixtures](docs/storefront.md) covers search, languages, stock limits, image/model fallbacks and navigation. [Studio and persistence](docs/personalisation.md) describes allowed zones, artwork/fonts, cart snapshots and storage limits. The [domain boundary](../docs/frontend-personalization-zones.md) explains why visual personalisation is not a production specification.
+
+## Verify a change
+
+From `frontend/` run the same checks used by [frontend CI](../.github/workflows/frontend-ci.yml):
 
 ```sh
 npm run typecheck
 npm run lint
 npm test
 npm run build
-npm run preview
 ```
 
-Stop your own dev server before preview. Both support direct reloads of `/`,
-`/login`, `/account` and not-found routes. Build preview serves `dist`, has **no
-backend proxy**, and disables connected authentication with a visible explanation.
-It is not a deployment service or an authenticated account demo.
-
-## Bounded client behavior
-
-- The selected **3C / SYMMETRY** logo, neutral layout, DE/EN copy, keyboard navigation
-  and focus remain. Colour palette and Atelier/Studio decisions remain open.
-- Redux holds language and **memory-only** authentication state. Own-account display
-  requires a current validated `/api/me` response containing only `id/status`.
-  No fictional Alex, name/email/role claims or inferred Workspace inventory is shown.
-- The states are CHECKING, ANONYMOUS, AUTHENTICATED, TRANSITION, RECOVERY_REQUIRED,
-  DENIED and UNAVAILABLE. Every state except AUTHENTICATED closes private content.
-  A URL, callback redirect or `auth=failed` parameter is not proof of identity.
-- Explicit hosted login performs two sequential bounded `GET /auth/csrf` requests
-  (bootstrap/echo), then a native same-window form POST to `/auth/login`.
-  CSRF is transient, not Redux/localStorage state. No fetch-follow to the provider,
-  password fields, OAuth SDK, browser token or provider-claim persistence is added.
-- Logout obtains current CSRF and posts once. Only actual 204 reports presented-Q
-  revocation; 409 is caller-SID cleanup only. Security refusal, 503, malformed
-  response, timeout or transport loss is not logout success or proof of rollback.
-  Recovery/switch clears private state, performs cleanup, and only after 204 or the
-  defined cleanup-only 409 performs bootstrap/echo. A new full sign-in remains an
-  explicit next action; actions are not automatically retried.
-- Google, Apple and separate signup remain unavailable. No Workspace/RMP API/forms,
-  staff/admin access, linking, commerce or rollout is included. Workspace is
-  voluntary; account/login does not create one or grant business authority.
-
-## Ownership and lifecycle
-
-One per-document controller is created outside StrictMode effects. Every operation
-captures document, epoch, request and shared revision ownership. Checks surround
-fetch/body awaits, error handling and further steps; the reducer also rejects
-stale owners. Old A success, denial, parse error, CSRF or cleanup completion cannot
-replace or clear a newer owned B. Abort controls resources; it does not undo
-server effects or prevent browser cookie delivery. Reads have a 10-second deadline;
-each client preparation/cleanup action has a 30-second deadline, not 30 seconds per
-request. Native submission ends that client deadline; it does not bound OIDC flow,
-browser navigation or delivery. A stalled navigation requires explicit return/reload.
-
-The only new persisted value is `creastrix.auth.boundary`: a replaceable opaque
-nonce plus intent phase, never identity, credential, stable browser ID or permission.
-It is written only at document startup or explicit auth intent. Completion, peer
-events, recheck, focus and lifecycle events **do not write it**. Phase describes
-intent, not completion; there is no completion CAS, nonce restoration or outcome
-broadcast. Events wake a synchronous current-storage re-read, not adoption of event
-payload. Invalid/unavailable storage disables connected authentication instead of
-falling back to an unsupported multi-tab guarantee. Language persistence remains
-separate and usable when storage is blocked.
-
-Peer invalidation and hide/pagehide close a direct DOM curtain and clear private
-state/pending material synchronously. Visible/focus/pageshow re-entry requires a
-fresh owned check before reopening after the current React DOM commit. Hot-reload
-disposal removes owned listeners. Actual bfcache behavior has finite local browser
-coverage; instant clearing of paused tabs or already-delivered pixels is not guaranteed.
-
-This is not a cross-tab lock or absolute latest-login-wins. Server G1/G2 remain:
-G2 may deny with 401 and require explicit recovery instead of preserving B
-seamlessly. L1 (an earlier request under another still-live Q can first be admitted
-after B and return A) is not closed by discarding stale UI responses. Future
-business writes and global/provider/all-device logout are not covered.
-
-## Fixed development transport and limits
-
-The development proxy routes segment namespaces `/auth`, `/api`, `/oauth2` and
-`/login/oauth2`, including percent-encoded letters, before SPA fallback. `/login`
-and `/account` remain React routes. Unknown backend namespace routes must reach
-backend denial, not HTML. The fixed target is `http://127.0.0.1:8080`; configuration
-does not rewrite URI/query, Host, Origin, Location, cookie Domain/Path or Set-Cookie,
-does not follow redirects, and does not add forwarded-header trust or CORS.
-Unit regex/options checks do **not** prove actual Vite proxy or browser cookie behavior.
-
-Early top-level login 403/409/503 may display the backend's opaque JSON page outside
-React. This bounded UX debt is not hidden by rewriting a response or adding a
-backend endpoint. The user explicitly returns/reloads; there is no blind retry.
-
-## Verification and remaining gates
-
-Historical author-side typecheck, lint, Vitest and build evidence belongs to the external
-author report, not backend CI, native IDE or browser verification. Vitest uses
-Testing Library/happy-dom, injected finite responses and deferred bodies; it is
-not an actual HTTP/OIDC/cookie/bfcache proof. Separate source review and native
-WebStorm verification completed before integration. Consolidated independent
-review accepted the finite local F matrix from actual React/Vite/backend,
-synthetic OIDC and isolated native Chrome runs, including both late-success A
-branches, explicit recovery, late-failure preservation and stale UI responses.
-Earlier INCOMPLETE attempts and helper failures retain their original outcomes.
-Bounded Auth0 P subsequently completed separately on 2026-10-11.
-
-The 2026-10-09
-[post-merge Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37962373086)
-passed 135 tests, typecheck, lint and build. It is a separate unit/static/build
-gate, not a browser run. Both PR and post-merge npm installations reported one
-HIGH vulnerability warning; those historical results are retained.
+For media or navigation changes, also exercise the affected path in a browser. Unit tests do not render WebGL or prove a browser session flow. Generated media has separate [studio fixture checks](docs/personalisation.md). No account, live provider or Docker is needed for frontend unit checks.
 
 <a id="dependency-follow-up"></a>
-
-The accompanying single-record lockfile update pins `source-map-js` 1.2.2 for
-[GHSA-68fv-2mgg-jv7q / CVE-2026-93749](https://github.com/advisories/GHSA-68fv-2mgg-jv7q).
-Isolated author verification passed 234 tests, typecheck, lint, build and both
-development/omit-dev lockfile audits with zero findings; evidence is retained in
-`frontend-high-triage-20261014-YiOqAj/ISOLATED-REPORT.md`.
-Installed environments need reinstallation/restart to use the patched version.
-The lockfile update is integrated through [PR #38](https://github.com/creastrix-svg/creastrix-platform/pull/38);
-installed-environment updates and deployment remain separate.
-Audit zero covers known advisories for that lock snapshot, not full security.
-
-The [local cookie disposition and retained public gate](../docs/authentication-pilot.md#open-cookie-follow-up) records scoped local closure. S003 is integrated through PR #34;
-finite local F and bounded Auth0 P are complete. Cognito owner transfer completed
-separately on 2026-10-13. Real unverified/admitted backend refusal remains NOT RUN;
-the owner accepted a narrower EMAIL evidence combination for owner-only local
-source readiness, not that missing real scenario or public access. The original follow-up
-is closed only for the accepted local pilot scope; `AUTH-PUBLIC-READINESS-001` remains OPEN for public-access/rollout. L1 and future business-write limits
-are unchanged. The PR #35 client changed no dependencies, backend, workflows or domain decisions.
-
-Use the existing WebStorm/project settings; do not commit IDE state. Ignored
-dependencies/build output may remain locally. [Frontend CI](../.github/workflows/frontend-ci.yml)
-has separate frontend/workflow path filters; no tests or CI were run by this
-documentation change. See the [root context](../README.md#frontend-ui-foundation)
-and [authentication contract](../docs/authentication-pilot.md#react-client-and-f-boundary).
-
 <a id="selected-provider-boundary-author-wip"></a>
-
-## Integrated selected provider boundary
-
-The frontend keeps its native POST to `/auth/login`; it does not choose the
-provider, store provider tokens or collect a password. Backend configuration
-selects exactly one registration. [PR #39](https://github.com/creastrix-svg/creastrix-platform/pull/39)
-integrated Cognito-only source support on 2026-10-14; legacy AUTH0 configuration
-fails closed and the Auth0 entry/callback paths are unsupported. The existing proxy namespaces route
-`/oauth2/authorization/cognito` and `/login/oauth2/code/cognito`, including accepted
-encoded segments, without rewriting headers, URI/query, Location or cookies.
-Config-unit checks are not a real Cognito/browser proxy proof. The live backend
-still runs older Cognito-configured binaries; integration did not rebuild/restart it.
-
-Hosted Cognito self-registration and provider email/recovery are separate from
-the owner's exact closed Creastrix admission. No separate React signup form,
-social provider, Workspace creation or rollout is delivered by this client.
-The [controlled migration runbook](../docs/authentication-provider-migration.md)
-records the separately authorized 2026-10-13 local owner transfer: same internal
-ACTIVE User, local logout/private refusal, repeat login and new-password login.
-The local backend selects Cognito existing-only for that one owner through private
-environment. Integrated retirement makes COGNITO/existing-only the source
-defaults without changing that internal account or the frontend's provider-neutral
-login form. The 2026-10-13 transfer retained Auth0 externally, not as a current alias;
-the separately confirmed deletion of its old client is recorded in the
-[operator evidence](../docs/authentication-provider-migration.md#2026-10-14-auth0-retirement-boundary).
-The DE/EN pilot notice
-reflects the bounded local Cognito runtime only.
-
-Matching email never merges Creastrix accounts; the owner continuity above came
-from an authorized exact-identity transfer. The planned unified email/password,
-Google and Apple experience needs separate secure linking implementation/review,
-not a new AWS prerequisite. This client has no such linking or social-login feature.
-
-PR #39's separate post-merge [Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38562912006)
-passed 234/234, typecheck, lint and build. This is unit/static/build evidence,
-not a new browser or real-provider walkthrough on the newly integrated backend.
-
-The earlier migration/recovery source was integrated by [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37) as
-`e5b58d43a9dc07c76efc905bc63d8269feaa40fe`. Historical independent frontend 140,
-backend 1690/package and native 417/scoped views remain separate; overall IDE
-schema/background completion is UNKNOWN/INCOMPLETE. Real unverified/admitted
-backend refusal is NOT RUN, and hosted-provider refusal before code/token is not
-that proof. This alignment does not rerun browser/provider tests, rebuild the
-live backend or extend the accepted local cookie scope. PR #37
-publication/integration is complete; public access and rollout remain unauthorized.
-
 <a id="email-confirmation-recovery-author-wip"></a>
+<a id="integrated-selected-provider-boundary"></a>
+<a id="integrated-email-confirmation-recovery"></a>
 
-## Integrated email-confirmation recovery
+**Account pilot references:** [dependency follow-up](docs/account-pilot.md#dependency-follow-up), [Cognito boundary](docs/account-pilot.md#integrated-selected-provider-boundary), [email confirmation and resend](docs/account-pilot.md#integrated-email-confirmation-recovery), and [public-readiness gate](../docs/authentication-pilot.md#open-cookie-follow-up).
 
-`/confirm-email` is reachable from `/login` and directly after closing the hosted
-confirmation page. It has only transient email/code fields and explicit Confirm,
-Resend, Cancel and Back to login actions; it does not collect a password or create
-a provider/internal account. Exact input case is retained. Form/request data is
-not written to URL/query/history, Redux, storage or logs and is cleared on
-unmount/suspension. Edits, cancellation, navigation and unsafe account/lifecycle changes
-invalidate older results. Disconnected preview/known authenticated or transitioning
-state cannot submit; no live-Q/echo/canStart prerequisite is added.
+<a id="bounded-client-behavior"></a>
+<a id="ownership-and-lifecycle"></a>
+<a id="fixed-development-transport-and-limits"></a>
+<a id="verification-and-remaining-gates"></a>
 
-Each explicit action fetches fresh standard `/auth/csrf` once, then performs one
-same-origin POST under a 30-second whole-action deadline. Success/CSRF bodies are
-streamed with an 8192-byte cap before decoding; incomplete, invalid UTF-8 and
-malformed responses fail closed. Strict success schemas
-distinguish confirmed 200 from conditional resend 202; HTML/arbitrary 200 and
-technical/transport uncertainty are never confirmation/delivery proof. No automatic
-retry, logout, Q reset or login occurs. The anonymous selected-Cognito backend
-boundary is authoritative; ordinary OIDC and exact admission are still needed for
-Creastrix access. Existing login/logout/private-state ownership is unchanged.
-Mock-fetch/DOM tests do not prove actual Cognito email delivery or browser recovery.
-Retiring the Auth0 source adapter does not change these recovery claims.
-The limited owner EMAIL disposition is in the
-[runbook](../docs/authentication-provider-migration.md#limited-email-gate-disposition);
-it did not itself approve recovery code or close native/cookie/publication gates.
-The later independent review and PR #37 integration are separate evidence.
-
-The bounded CFA06 correction retains a visible anonymous form's fields and settled
-result only through passive, same-document/same-shared-revision
-ANONYMOUS → CHECKING → ANONYMOUS revalidation. Focus still starts a fresh owned
-`/api/me` and closes the private curtain; confirmation actions are disabled during
-CHECKING. Every authentication transition is observed synchronously, so an unsafe
-intermediate state cannot disappear inside a React batch. Peer revision/document
-changes, hidden/pagehide/pageshow, departure/unmount, explicit clearing,
-TRANSITION/AUTHENTICATED, DENIED, UNAVAILABLE and RECOVERY_REQUIRED erase the old
-form/result permanently. The latter three retain the existing eligibility for a
-new empty provider-only form; no live-Q prerequisite or broader admission is added.
-
-Passive revalidation cancels old confirmation work before it can advance. CSRF
-fetch/body cancellation is NOT_SENT: the provider action was not submitted, not
-a claim that no HTTP request occurred. Once POST invocation begins, including a
-throwing transport or delayed headers/body, cancellation is UNKNOWN because the
-provider action may have happened. Already-recorded terminal results are not
-downgraded before cleanup. Retention never restores old network ownership or
-continues/retries an action automatically. The small production lifecycle binder
-is shared with enabled-controller/store DOM regressions; these finite mocks are
-not new native/browser, Cognito/email, cookie-race or rollout evidence.
-
-Fresh isolated author verification of this recovery frontend passed 234/234 in
-seven Vitest files, typecheck, lint and build; all 140 preceding testcase
-identities remain. The first lint attempt failed on render-time ref use and was
-retained in external evidence; lifecycle-owned initialization was then verified.
-These remain mocked fetch/DOM/static/build results, not browser or CI proof.
-Separate scoped native, independent source/JAR review and owner recovery/fresh
-OIDC results on 2026-10-14 are recorded in the
-[dated recovery evidence](../docs/authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
-Overall IDE background/schema remains UNKNOWN/INCOMPLETE. The separate PR #37
-post-merge [Frontend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38534930663)
-passed 234/234, locked install, typecheck, lint and build. It did not rerun browser
-F or settle global IDE health. Public-access readiness remains OPEN; local cookie closure is separately scoped.
+For the [account state model](docs/account-pilot.md#bounded-client-behavior), [request ownership](docs/account-pilot.md#ownership-and-lifecycle), [development proxy](docs/account-pilot.md#fixed-development-transport-and-limits) and [verification history](docs/account-pilot.md#verification-and-remaining-gates), see the account guide.

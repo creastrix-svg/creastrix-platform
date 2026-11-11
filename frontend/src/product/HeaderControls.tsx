@@ -1,10 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../hooks';
-import { isVariantId, money } from './catalog';
-import { cartOfferView } from './cartOfferView';
+import { isVariantId } from './fixtures/loop';
+import { money } from './productDisplay';
+import { cartOfferView } from './cart/cartOfferView';
 import { isTideOfferPath } from './routes';
-import { tideOffer } from './tideOffer';
+import { tideOffer } from './fixtures/tideOffer';
 import { productCopy } from './copy';
 import { cartCount, cartLinePrice, cartLineRemoved, cartQuantityChanged, cartTotal } from './demoStore';
 import { Icon } from './Icon';
@@ -12,9 +13,9 @@ import QuantityInput from './QuantityInput';
 import { searchCatalog, searchResultSummary } from './search';
 import { useProductLocale } from './useProductLocale';
 import { cartLineId, lineCapacity } from './demoStore';
-import DesignThumbnail from './DesignThumbnail';
-import { cartDesignLabel, studioCartCopy } from './studioCartCopy';
-import CartDesignPriceDetails from './CartDesignPriceDetails';
+import DesignThumbnail from './studio/preview/DesignThumbnail';
+import { cartDesignLabel, studioCartCopy } from './cart/studioCartCopy';
+import CartDesignPriceDetails from './cart/CartDesignPriceDetails';
 
 export function SearchControl() {
   const language = useProductLocale(), t = productCopy[language];
