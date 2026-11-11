@@ -524,25 +524,24 @@ public class AuthenticationConfiguration {
                 jsonError(response, 409);
                 return;
             }
-            HttpSession session = entry ? request.getSession(false) : null;
-            if (entry) {
-                Object intent = session == null ? null : session.getAttribute(LOGIN_INTENT);
-                if (session != null) {
-                    session.removeAttribute(LOGIN_INTENT);
-                }
-                if (!"GET".equals(request.getMethod()) || !(intent instanceof Instant start)
-                        || start.isAfter(clock.instant())
-                        || !clock.instant().isBefore(start.plus(AuthenticationProperties.FLOW_LIFETIME))) {
-                    Diagnostics.mark(Diagnostics.Event.ACCESS_DENIED, Diagnostics.Reason.LOGIN_INTENT_REQUIRED);
-                    jsonError(response, 403);
-                    return;
-                }
-            }
             AuthenticationAttemptCoordinator.Attempt attempt = null;
             try {
-                if (entry && !contexts.canStart(BrowserSessionContextRegistry.cookie(request), contexts.capture(session))) {
-                    jsonError(response, 409);
-                    return;
+                if (entry) {
+                    var session = request.getSession(false);
+                    var coordinator = AuthenticationAttemptCoordinator.existing(session);
+                    var intent = coordinator == null ? AuthenticationAttemptCoordinator.LoginIntent.REQUIRED
+                            : coordinator.consumeLoginIntent(session, clock);
+                    if (intent != AuthenticationAttemptCoordinator.LoginIntent.ACCEPTED) {
+                        boolean authenticated = intent == AuthenticationAttemptCoordinator.LoginIntent.ALREADY_AUTHENTICATED;
+                        Diagnostics.mark(Diagnostics.Event.ACCESS_DENIED, authenticated
+                                ? Diagnostics.Reason.ALREADY_AUTHENTICATED : Diagnostics.Reason.LOGIN_INTENT_REQUIRED);
+                        jsonError(response, authenticated ? 409 : 403);
+                        return;
+                    }
+                    if (!contexts.canStart(BrowserSessionContextRegistry.cookie(request), contexts.capture(session))) {
+                        jsonError(response, 409);
+                        return;
+                    }
                 }
                 if (callback) {
                     if (!contexts.echo(BrowserSessionContextRegistry.cookie(request), contexts.capture(request.getSession(false)))) {
@@ -577,9 +576,10 @@ public class AuthenticationConfiguration {
                 }
             }
             catch (ServletException failure) {
-                // MVC wraps the controller's expected registry refusal once. Do not
+                // MVC wraps the controller's expected coordination refusal once. Do not
                 // reinterpret unrelated failures or traverse arbitrary cause chains.
-                if (!(failure.getCause() instanceof BrowserSessionContextRegistry.Capacity)) {
+                if (!(failure.getCause() instanceof BrowserSessionContextRegistry.Capacity)
+                        && !(failure.getCause() instanceof AuthenticationAttemptCoordinator.Unavailable)) {
                     throw failure;
                 }
                 Diagnostics.mark(Diagnostics.Event.REQUEST_FAILURE, Diagnostics.Reason.SESSION_COORDINATION_UNAVAILABLE);

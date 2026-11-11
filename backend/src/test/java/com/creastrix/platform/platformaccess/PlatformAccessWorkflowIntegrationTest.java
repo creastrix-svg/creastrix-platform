@@ -606,6 +606,28 @@ class PlatformAccessWorkflowIntegrationTest {
     }
 
     @Test
+    void laterReceiptUsesItsOwnSessionGenerationWithoutCreatingAnotherOutcome() throws Exception {
+        DataSource source = fresh();
+        WorkflowFixture f = workflow(source, false);
+        var service = f.service();
+        Intent intent = f.readIntent(UUID.randomUUID());
+        UUID firstGeneration = f.facts().get().sessionGeneration();
+        success(service.registerUserSecurityRead(intent));
+        assertThat(success(service.readUserSecurity(intent))).isEqualTo(new UserSecurity(f.target(), UserStatus.ACTIVE));
+        assertThat(auditCount(source, "READ_ADMITTED")).isOne();
+
+        // Establish fresh trusted synthetic assurance between calls, not during either admission.
+        f.facts().set(null);
+        f.refreshFacts();
+        assertThat(f.facts().get().sessionGeneration()).isNotEqualTo(firstGeneration);
+        Receipt receipt = success(service.readUserSecurityReceipt(intent, ReadReason.USER_REQUESTED_SUPPORT));
+        assertThat(receipt.intent()).isEqualTo(intent);
+        assertThat(receipt.kind()).isEqualTo(OutcomeKind.READ_ADMITTED);
+        assertThat(auditCount(source, "READ_ADMITTED")).isEqualTo(2);
+        assertThat(count(source, "platform_access_operation_outcomes")).isOne();
+    }
+
+    @Test
     void readReceiptCurrentPurposeDoesNotRewriteOriginalIntentOrStoreStatus() throws Exception {
         DataSource source = fresh();
         WorkflowFixture f = workflow(source, true);

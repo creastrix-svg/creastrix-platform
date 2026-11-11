@@ -180,7 +180,7 @@ public final class PlatformAccessService {
         try { initiating = facts.current(); }
         catch (RuntimeException failure) { return new Failure<>(Code.UNEXPECTED_FAILURE); }
         if (initiating == null || initiating.userId() == null) { return new Denied<>(); }
-        Attempt context = new Attempt(initiating.userId(), intent, mode, readReason,
+        Attempt context = new Attempt(initiating.userId(), initiating.sessionGeneration(), intent, mode, readReason,
                 UUID.randomUUID(), UUID.randomUUID(), new AtomicReference<>());
         Phase<T> primary = transactions.primary(operation, (connection, deadline) -> {
             if (mode != Mode.RECEIPT && !context.actor().equals(intent.initiatorUserId())) {
@@ -236,7 +236,10 @@ public final class PlatformAccessService {
 
     private Gate authorize(Authority a, Instant now, Attempt context) {
         TrustedPlatformAccessFacts.Snapshot current = facts.current();
-        if (current == null || !context.actor().equals(current.userId())) {
+        // Fresh assurance must belong to the session that initiated this call.
+        // A later receipt call captures its own generation, not the original read's.
+        if (current == null || !context.actor().equals(current.userId())
+                || !Objects.equals(context.sessionGeneration(), current.sessionGeneration())) {
             throw denied(PlatformAccessDecision.Code.STAMP_MISMATCH);
         }
         Intent intent = context.intent();
@@ -360,7 +363,7 @@ public final class PlatformAccessService {
 
     private enum Mode { REGISTER, EXECUTE, RECEIPT }
     private record Gate(Authority authority, Instant at) { }
-    private record Attempt(UUID actor, Intent intent, Mode mode, ReadReason readReason,
+    private record Attempt(UUID actor, UUID sessionGeneration, Intent intent, Mode mode, ReadReason readReason,
                            UUID correlation, UUID attempt, AtomicReference<Authority> observed) { }
     @FunctionalInterface
     private interface Work<T> { T run(Session session, Gate gate, Attempt context) throws Exception; }

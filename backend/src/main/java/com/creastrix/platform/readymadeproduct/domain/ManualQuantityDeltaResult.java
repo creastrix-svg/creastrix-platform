@@ -6,9 +6,10 @@ import java.util.UUID;
 /**
  * Immutable application read model for one Product-scoped manual delta.
  *
- * <p>This is an internal command result, not a new core domain entity or an
- * inventory movement. Its nullable fields follow the same closed outcome
- * shape enforced structurally by Flyway V8.
+ * <p>Once the command is APPLIED or REJECTED, its quantities describe the
+ * original decision. Replaying it returns those values even if later commands
+ * have changed the Product's available quantity. Query the Product for current
+ * stock. The nullable fields mirror the outcome shapes enforced by Flyway V8.
  */
 public record ManualQuantityDeltaResult(
         UUID readyMadeProductId,

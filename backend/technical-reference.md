@@ -1,0 +1,1122 @@
+# Backend technical reference
+
+Start with the [backend developer guide](README.md) for setup, tests, and the
+source map. This reference records implemented contracts and the evidence behind
+them. Dated provider, migration, and CI results describe those specific runs;
+they are not current test results or production deployment instructions.
+
+## Implemented domain foundation
+
+- User stable UUID platform identity;
+- User account and access status lifecycle (`ACTIVE`, `SUSPENDED`,
+  `DEACTIVATED`), enforced both in the Java domain layer and in PostgreSQL;
+- mandatory one-to-one User Profile persistence, created atomically with its
+  User;
+- Organization stable UUID platform identity;
+- Organization Membership between a User and an Organization (role `OWNER`,
+  status `ACTIVE`), with the initial `ACTIVE` `OWNER` Membership created
+  atomically with its Organization;
+- structural last-owner invariant: a committed Organization always has at
+  least one `ACTIVE` `OWNER` Organization Membership, enforced in PostgreSQL
+  with deferred constraint triggers;
+- PostgreSQL concurrency protection for the last-owner invariant: every
+  invariant-changing Membership check is serialized through a `FOR UPDATE`
+  lock on the parent Organization row, which prevents the two-owner
+  write-skew race under the V9 READ COMMITTED write contract below;
+- Workspace stable UUID platform identity with exactly one immutable owner
+  that is either one User or one Organization;
+- User-owned and Organization-owned Workspace creation, each atomic with the
+  creator's initial `ACTIVE` `ADMIN` Workspace Membership;
+- Workspace Membership between a User and a Workspace (roles `ADMIN`,
+  `EDITOR`, `VIEWER`; statuses `INVITED`, `ACTIVE`, `SUSPENDED`) with explicit
+  permission-scope grant persistence (`PROJECTS`, `READY_MADE_PRODUCTS`,
+  `LISTINGS`);
+- Workspace-layer read/write scope capability semantics in the domain model
+  (ADMIN covers all current scopes by role; EDITOR/VIEWER only through
+  explicit grants; VIEWER never writes; only ACTIVE User + ACTIVE Membership
+  produce ordinary access); a positive result does not bypass stricter rules
+  of concrete domain operations;
+- structural Workspace invariants enforced in PostgreSQL with deferred
+  constraint triggers: immutable ownership, no deletion/TRUNCATE, at least one
+  `ACTIVE` `ADMIN`, the User owner's permanent `ACTIVE` `ADMIN` Membership,
+  and the Organization `OWNER`/Workspace `ADMIN` same-User intersection,
+  enforced bidirectionally from both Membership tables;
+- PostgreSQL concurrency protection for the Workspace invariants: a scoped
+  row-lock protocol (Organization row, then affected Workspace rows in UUID
+  order, then User rows) under that READ COMMITTED contract, closing the tested races:
+  concurrent removal of the last `ACTIVE` `ADMIN` alternatives, cross-table
+  Organization `OWNER` / Workspace `ADMIN` write skew, Workspace creation
+  versus removal of the creator's Organization `OWNER` Membership, and
+  creation-time `ACTIVE` User validation versus a concurrent User status
+  change;
+- Ready-Made Product structural foundation (partial coverage of the approved
+  Ready-Made Product specification): the stable UUID identity, exactly one
+  immutable Workspace, exactly one immutable Created By User, the `ACTIVE` /
+  `ARCHIVED` lifecycle state as a stored value, and the non-negative simple
+  available quantity (zero allowed);
+- safe Ready-Made Product creation in one transaction: the creator must exist
+  and be `ACTIVE` (`SUSPENDED` and `DEACTIVATED` are rejected separately), the
+  Workspace must exist, and the creator must have effective Workspace-layer
+  write authorization for the `READY_MADE_PRODUCTS` scope through the existing
+  Workspace Membership semantics (`ADMIN` by role without stored grants,
+  `EDITOR` only with an explicit grant, `VIEWER` never, `INVITED` and
+  `SUSPENDED` Memberships never);
+- the initial `ACTIVE` lifecycle state is established by the application
+  service, never by the caller, and creating a Ready-Made Product creates no
+  Listing;
+- structural Ready-Made Product invariants enforced independently in
+  PostgreSQL: `RESTRICT` foreign keys to `workspaces` and `users`, the closed
+  `ACTIVE`/`ARCHIVED` check set, the non-negative quantity check, immutable
+  identity, Workspace, and Created By, and unconditional rejection of `DELETE`
+  and `TRUNCATE` regardless of lifecycle state, stock, or commercial
+  references;
+- a two-phase PostgreSQL creation gate that also protects a direct SQL `INSERT`
+  bypassing the application service: initial state `ACTIVE` only, an existing
+  `ACTIVE` Created By User at the linearized creation point, an `ACTIVE`
+  Membership, and effective `READY_MADE_PRODUCTS` write authority (other scopes
+  never substitute for it), rejected with SQLSTATE `23514`;
+- PostgreSQL race enforcement for Ready-Made Product creation, implemented as
+  an explicit two-phase lock protocol (see the lock note below), which closes
+  the tested races where an authorization change (User `ACTIVE` →
+  `SUSPENDED`/`DEACTIVATED`, revocation of the `READY_MADE_PRODUCTS` grant,
+  Membership suspension, Membership role downgrade to `VIEWER`, or Membership
+  deletion) commits first and the stale creation must fail with SQLSTATE
+  `23514` and no surviving product;
+- creation authorization is a creation-time gate only: a later creator
+  suspension or loss of Membership or scope never deletes, rewrites, or
+  invalidates an already created historical Ready-Made Product or its Created
+  By;
+- bounded Ready-Made Product lifecycle operations for `ACTIVE → ARCHIVED` and
+  `ARCHIVED → ACTIVE`, with actor authorization revalidated under row locks,
+  Product-row serialization, expected-state updates, typed application
+  outcomes, and structural PostgreSQL rejection of same-state or unsupported
+  transitions with SQLSTATE `23514`;
+- two explicit transactional operations for manual quantity deltas: durable
+  registration first, followed by a separately invoked apply/retry/replay;
+- Product-local command identity `(Product ID, Command ID)`, immutable non-zero
+  signed `BIGINT` delta binding, and permanent `REGISTERED`, `APPLIED`, or
+  `REJECTED` records;
+- exactly-once available-quantity changes under the Product row lock, checked
+  signed 64-bit arithmetic, immutable replay, and the closed terminal rejection
+  reasons `UNDERFLOW` and `OVERFLOW`;
+- V8 structural command protection through a composite primary key, a
+  `RESTRICT` Product foreign key, closed outcome-shape checks, guarded state
+  transitions, immutable bindings and terminal rows, and rejected deletion or
+  truncation. V8 adds no global Command-ID lookup, timestamp, actor, audit, JSON,
+  expiry, cleanup lifecycle, or speculative secondary index.
+
+The Ready-Made Product implementation remains deliberately partial. Structural
+creation, lifecycle transitions, and the manual available-quantity command
+protocol are present. Order Item allocation facts, release, dispatch, and their
+future contribution to accounted physical quantity are not present and remain
+listed below as deferred behavior.
+
+### Foundation write isolation contract and V9 upgrade
+
+V9 admits writes to `public.organizations`, `public.organization_memberships`,
+`public.workspaces`, and `public.workspace_memberships` only when the actual
+transaction isolation is `read committed`. A shared PostgreSQL function and one
+non-deferred `BEFORE STATEMENT` trigger per table cover `INSERT`, `UPDATE`,
+`DELETE`, and `TRUNCATE`, including zero-row and multi-row statements. Prepared
+statements, UPSERT, COPY FROM, and MERGE use the same admission boundary.
+
+READ UNCOMMITTED, REPEATABLE READ, and SERIALIZABLE are rejected with SQLSTATE
+`0A000` and message
+`CREASTRIX_FOUNDATION_WRITE_ISOLATION_V1: foundation write requires READ COMMITTED`.
+The server error carries the exact schema/table and DETAIL fields `operation`
+and `actual_isolation`, without row data. PostgreSQL may reject an invalid
+statement before any trigger runs; a native error with the same SQLSTATE is not
+evidence that this guard executed. READ UNCOMMITTED is deliberately unsupported
+even though PostgreSQL gives it READ COMMITTED visibility semantics.
+
+Existing REQUIRED Organization/Workspace service calls join an ambient
+transaction: a forbidden ambient mode fails at its first guarded write. Neither
+the guard nor the services change isolation, add REQUIRES_NEW, or retry. Direct
+unpooled JDBC can recover to a savepoint, but another guarded write in that
+transaction is still rejected. The current Hikari policy treats SQLSTATE
+`0A000` as a broken connection and closes it. In the verified Spring ambient
+transaction path, rollback then raises a different `TransactionSystemException`;
+`getApplicationException()` retains the original service exception. A generic
+rollback error or `Connection is closed` is not guard evidence. The failed
+transaction's writes are rolled back and a subsequent new READ COMMITTED
+service transaction can commit through the pool; continuation of the same
+pooled transaction via savepoint is not guaranteed. No SQLExceptionOverride or
+SQLSTATE change is included. Read-only queries are not prohibited. V9 itself
+adds no guard to User, User Profile, scope-grant, or Ready-Made Product tables.
+Since V15, however, `TRUNCATE public.user_profiles` requires actual READ
+COMMITTED, including when the table is empty; its new `BEFORE TRUNCATE` trigger
+reuses the V9 guard function and rejects other isolation levels with SQLSTATE
+`0A000`. The V2 `AFTER TRUNCATE` mandatory-Profile check still applies, and
+ordinary `DELETE` is unchanged. Other existing table protections remain.
+Structural OWNER/ADMIN qualification still counts ACTIVE Memberships even
+when the associated User is SUSPENDED; ordinary
+actor actionability remains a separate requirement. This is not protection
+against a privileged schema owner disabling or replacing triggers.
+
+V9 first verifies actual READ COMMITTED, then takes four separate top-level
+`SHARE ROW EXCLUSIVE` table locks in this order: organizations →
+organization_memberships → workspaces → workspace_memberships. On the same
+physical Flyway connection and transaction, a separate command after the
+complete barrier validates the permanent OWNER, User-owner ADMIN, generic ADMIN,
+and Organization OWNER/Workspace ADMIN intersection predicates from a fresh
+snapshot. Only then are the new function and triggers created. Validation, DDL,
+and successful migration history commit atomically. Invalid data, an incomplete
+transaction barrier, unexpected table descendants, or a timeout stops the upgrade without repairing data or
+terminating other sessions. V1–V8 and their row-lock protocols are unchanged.
+
+This boundary requires `spring.flyway.postgresql.transactional-lock=false`,
+with `spring.flyway.execute-in-transaction=true` and `spring.flyway.group=false`.
+Standalone Flyway must use the equivalent PostgreSQL transactional-lock setting.
+Session advisory locking remains enabled: concurrent migrators serialize, and
+Flyway explicitly releases the lock after success or rollback. The compatibility
+proof covers the installed Flyway execution path and direct PostgreSQL sessions;
+it does not establish compatibility with transaction-pooling proxies or replace
+deployment-specific verification.
+
+The migration tests use only owned disposable PostgreSQL databases. A real
+deployment still requires a separately authorized drain and operational lock/
+statement deadlines; no user or deployed database rollout is claimed. V9 fixes
+the isolation admission gap (PROD-002), not the separate same-owner
+Workspace-creation lock problem addressed by the integrated V10 correction below.
+
+### Workspace creation lock compatibility and V10
+
+V10 replaces only `public.workspaces_require_initial_foundation()` in place.
+The owner User, owner Organization, and ordered ADMIN User creation locks use
+`FOR NO KEY UPDATE` instead of `FOR UPDATE`. The predicates, exception semantics,
+UUID ordering, deferred timing, and subsequent structural validation remain
+unchanged. Function OID and the existing trigger binding are preserved. V1–V9
+migration files, last OWNER/ADMIN preservation locks, Ready-Made Product lock
+protocols, transaction propagation, and the V9 READ COMMITTED-only contract are
+unchanged.
+
+The regression reproduces the original V9 `40P01` with two coherent public
+creation calls awaiting normal commit, then proves two successful V10 commits
+without retry for a shared User owner or Organization with distinct OWNER
+actors. Controls include distinct owners, distinct Organizations sharing an
+actor, mixed User/Organization creation, and exact PID-directed forced-constraint
+waiting. A forced-constraint control alone is not the RED discriminator.
+
+Interaction coverage keeps the real public services and checks both lock orders
+against User status changes, Organization OWNER removal, and Ready-Made Product
+creation, archive, and activation in an existing Workspace. Existing Workspace
+Membership mutation has an independent-completion control. Queued status/OWNER
+writers must not prevent already-coherent creators from committing; exact
+writer-to-creator waits are observed successively because a PostgreSQL MultiXact
+wait need not expose all conflicting members at once. Creation-time rejection
+and permanent structural preservation remain strict `23514` outcomes, not
+generic exceptions, deadlocks, or timeouts.
+
+Manual-delta interaction uses the actual public `REQUIRES_NEW` entry points.
+A test-only wrapping spy invokes the real repository method exactly once,
+captures the bound inner transaction PID before lock acquisition, and holds
+after the real operation but before return and commit. It proves both directed
+wait orders, a distinct suspended outer PID, and inner COMMITTED completion.
+Registration, application, authorized retry, and terminal APPLIED/REJECTED
+replay are checked against committed command rows and exact quantity; replay
+fixtures have a different current quantity from their stored historical result.
+Null/wrong PID, unrelated blocked backends, early failures, and absent overlap
+cannot satisfy the observer. Worker SQL, pool acquisition, gates, polling,
+futures, and cleanup are bounded; tests add no production retry or lock changes.
+
+This is an integrated, bounded lock-compatibility correction, not global deadlock freedom,
+support for non-READ-COMMITTED foundation writes, or a claim of production
+rollout. PROD-001 is fixed in main within the tested Workspace-creation scope;
+contention and arbitrary multi-operation transaction ordering still require
+separate consideration. MIN-01 remains an accepted nonblocking coverage limitation:
+the defensive early-admission test branch did not execute, while required
+queued-writer scenarios were verified.
+
+### Ready-Made Product creation lock protocol
+
+Creation authorization is validated in two phases, and the phase order is the
+point of the design:
+
+- phase 1 is a plain `BEFORE INSERT` row trigger. It runs before the row is
+  inserted, and therefore before PostgreSQL takes the implicit referential
+  integrity `KEY SHARE` row locks on the referenced `workspaces` and `users`
+  rows. It acquires explicit `FOR UPDATE` locks in a fixed order — the creator's
+  Workspace Membership row, then (for `EDITOR`) the exact
+  `READY_MADE_PRODUCTS` scope-grant row, then the creator's User row — and
+  validates the authorization it just locked;
+- phase 2 is a `DEFERRABLE INITIALLY DEFERRED` `AFTER INSERT` constraint
+  trigger. It re-validates the final state at commit and deliberately acquires
+  no new row lock, because the phase 1 locks are still held; it therefore adds
+  no opposing lock order and still catches a later change made inside the same
+  transaction.
+
+The full lock set of a creating transaction is therefore not only Membership →
+scope grant → User: the `INSERT` additionally takes implicit foreign-key
+`KEY SHARE` locks on the referenced Workspace and User rows, after the explicit
+phase 1 locks. This ordering matters because the already integrated V4 deferred
+Workspace Membership invariant trigger fires on every Membership `UPDATE` or
+`DELETE` at commit and requests the parent Workspace row `FOR UPDATE` while
+holding the changed Membership row. A commit-time-only creation check would
+hold the implicit Workspace `KEY SHARE` lock first and then wait for the
+Membership row, which is a real cycle that PostgreSQL resolves with SQLSTATE
+`40P01`; acquiring the authorization locks before the insert removes that cycle.
+V1–V6 are unchanged by the lifecycle migration.
+
+Both commit sequences are covered by deterministic tests for the creator User
+status axis, the permission-scope axis, and the Membership status, role, and
+deletion axes: when the authorization mutation commits first, the stale creation
+is rejected with SQLSTATE `23514` and no product survives; when the creation
+commits first, the mutation really waits, the creation commits, the mutation
+then commits, and the historical product with its immutable Workspace and
+Created By is preserved.
+
+This foundation does not claim universal deadlock freedom for arbitrary future
+transactions that combine Membership mutations, or Ready-Made Product creation,
+across multiple domains or resources. A transaction changing both a Workspace
+Membership and an Organization Membership may request these row locks in an
+order opposite to another concurrent transaction, and PostgreSQL may then abort
+one of them with SQLSTATE `40P01`. The structural invariants remain safe,
+because an aborted transaction changes nothing; only availability is affected.
+Future Membership mutation workflows must therefore define a canonical
+ordering of all affected Organizations and Workspaces and must safely retry the
+complete transaction after a deadlock. No such general mutation workflow, and
+no retry behavior, is implemented in this slice.
+
+### Ready-Made Product lifecycle lock protocol
+
+The supported application path first reads the Product without a lock only to
+obtain its immutable Workspace identity. It then acquires row locks in one
+canonical order: Workspace Membership → exact `READY_MADE_PRODUCTS` scope grant
+for an ACTIVE `EDITOR` → actor User → Ready-Made Product. Under the Product
+lock it re-reads persisted status, requires the exact expected state, performs
+an expected-state update, and returns the complete updated Product. Missing
+Membership or scope rows cannot be locked and therefore fail closed; this does
+not claim serialization against concurrent issuance of a previously absent
+grant.
+
+Future Membership/scope mutation workflows must preserve Membership → scope.
+A workflow that changes scope first and Membership second would introduce the
+opposing scope → Membership order and could deadlock. That general mutation
+workflow does not exist yet, global deadlock freedom is not claimed, and retry
+is not implemented: on SQLSTATE `40P01`, a future retry policy must repeat the
+whole transaction. The manual quantity-delta commands use the same
+authorization-before-Product order described in the next section.
+
+PostgreSQL V7 enforces only the structural transition set. The migration owner
+and runtime database role currently coincide, so a client with runtime database
+credentials can execute a structurally valid raw transition without proving an
+actor. The supported Java/JDBC path proves authorization for the represented
+actor identity, but it is not connected to an authenticated Workspace/RMP HTTP
+API. The integrated authentication pilot below does not expose those services. Database-role
+separation is deferred to a dedicated security task.
+
+### Ready-Made Product manual quantity-delta protocol
+
+Registration and application are separate public service calls and therefore
+separate commit opportunities. Registration checks the represented actor for
+the supplied Product and stores a non-zero delta as `REGISTERED`; it never
+changes stock. There is no automatic application, scheduler, or background
+retry. A later explicit call rechecks current authorization and either attempts
+the registered command or returns its stored terminal result. Actor identity is
+not command payload, so any currently authorized actor may apply or replay it.
+
+The supported JDBC path may first read the Product only to resolve its immutable
+Workspace. It then locks Membership → the exact `READY_MADE_PRODUCTS` grant
+when an ACTIVE `EDITOR` requires one → actor User → Product → the exact command
+row or insert conflict. Command existence, binding, state, and outcome are not
+read before this authorization boundary succeeds. Missing Product, missing or
+inactive actor, and ineffective authorization use the same opaque internal
+access failure. Authenticated HTTP mapping and proven caller identity for these
+Product operations remain absent, while privileged raw SQL remains outside actor authorization because
+the runtime role is not separated from the migration owner.
+
+For a still-`REGISTERED` command, the locked available quantity is changed with
+pre-addition boundary checks: there is no wrapping, clamping, partial result, or
+unsafe negation of `Long.MIN_VALUE`. A successful Product update and
+`REGISTERED → APPLIED` result commit atomically. Underflow or overflow leaves
+the Product unchanged and atomically stores `REGISTERED → REJECTED` with the
+reason and observed quantity. Infrastructure failure rolls back the transaction
+instead of manufacturing a business rejection. Replays never recalculate or
+mutate, and the same Command ID can be used independently for another Product.
+
+No Order Item allocation persistence exists in the current integrated schema,
+so reachable outstanding allocated quantity is zero and accounted physical
+quantity equals locked available quantity. Any later approved confirmation,
+release, or dispatch integration must derive outstanding allocations from real
+facts and serialize through this same Product quantity boundary. Neither that
+commerce work nor a general whole-transaction retry policy for SQLSTATE `40P01`
+is claimed here.
+
+Intentionally not implemented yet:
+
+- MFA and public user-facing login (backend B, S003 and finite local React/browser F
+  are integrated; bounded Auth0 and local Cognito owner walkthroughs are separate
+  external results, not public-provider coverage);
+- concrete User Profile personal fields, which remain unimplemented until the
+  approved specification defines them;
+- domain mutation HTTP APIs for User, Organization, or Workspace (the integrated
+  `/api/me` is only the current authenticated account read);
+- general Organization authorization and delegation;
+- Organization recovery;
+- Organization invitations;
+- additional Organization roles or Membership statuses;
+- Workspace or Workspace Membership invitations and invitation acceptance;
+- general Workspace Membership creation, removal, suspension, restoration,
+  role changes, or scope-grant mutation APIs;
+- Workspace ownership transfer, deletion, archival, lifecycle states, or
+  personal Workspace recovery;
+- additional Workspace roles, statuses, or permission scopes;
+- Ready-Made Product allocation, confirmation-time decrement, eligible
+  pre-dispatch release, dispatch completion, and integration of those facts
+  with accounted physical quantity and manual deltas;
+- Order, Order Item, Shipment, Listing, Payment, and every other commerce
+  integration (Order Item, Shipment, and Listing specifications remain DRAFT);
+- Product Variant, and any name, description, SKU, brand, model, media,
+  dimension, weight, or shipping fields;
+- Manufacturer and Supplier relationships, Inventory, Stock Movement,
+  Reservation, and warehouse entities;
+- Ready-Made Product list, search, and paging APIs;
+- destructive deletion of a Ready-Made Product.
+
+## Platform access policy foundation
+
+Main contains integrated bounded I1 + I2A coverage of
+[Platform Access Grant APPROVED 1.1](../docs/domain/platform-access-grant.md):
+the unchanged pure policy, V12 storage/account-eligibility generation, and
+constructor-only registration, READ, REVOKE and receipt workflows.
+[PR #33](https://github.com/creastrix-svg/creastrix-platform/pull/33) integrated the
+reviewed coverage. Its separate 2026-10-05
+[post-merge Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37312461778)
+passed 1513 tests, zero failures/errors/skipped and tests/package BUILD SUCCESS
+with PostgreSQL 18.4 / Flyway V1 → V12. Integration is not live staff authentication
+or activation of real authority.
+
+### Pure policy and persisted authority facts
+
+The six pure types remain `PlatformPermission`, `PlatformRole`,
+`PlatformAccessGrant`, `PlatformAccessContext`, `PlatformAccessDecision` and
+`PlatformAccessPolicy`, with `PlatformAccessPolicyTest` and
+`PlatformAccessDelegationTest`. The finite catalog still has six permissions:
+`STAFF_GRANTS_READ`, `STAFF_INVITE`, `STAFF_GRANT_CHANGE`,
+`STAFF_GRANT_SUSPEND_REVOKE`, `USER_SECURITY_READ` and `SECURITY_AUDIT_READ`.
+`PLATFORM_OWNER` contains exactly those six; `SUPPORT_READ` contains only
+`USER_SECURITY_READ` for an exact 1–100 target-User set and UUID/status projection.
+There is no wildcard, role union, provider-role authority or tenant-domain bypass.
+
+I1 evaluates immutable supplied snapshots, finite resource/reason predicates,
+delegation, revisions, validity and bound 10/5/5-minute assurance. Its `ALLOW`
+is not authentication, persistence, current freshness or commit proof.
+It retains exact Instant/nanosecond semantics and has no logging side effects.
+
+V12 adds a positive per-User eligibility counter, initialized/backfilled to 1.
+The four existing committed account-status transitions advance it atomically
+with checked arithmetic; direct counter UPDATE is rejected and rollback
+does not consume a generation. The adapter encodes the counter in the accepted
+typed UUID representation, bound with the exact User in the complete stamp.
+Reactivation cannot revive old elevation; User lifecycle/version is unchanged.
+
+The five V12 tables store grants, immutable exact scope targets, registered
+intents, terminal outcomes and access-workflow audit events. Immediate partial
+uniqueness allows one non-REVOKED grant per recipient: suspension, expiry or
+an inactive recipient does not release that slot. Retained references preserve
+identity/history. Scope and expiry are fixed after creation in this partial
+storage slice; the only implemented application mutation is REVOKE.
+The approved CHANGE/SUSPEND/RESUME rules remain valid but their execution is
+deferred; future CHANGE needs a separately designed storage protocol/migration.
+Structural fixture transitions are not grant issuance or operational authority.
+
+V12 guards structure, associations, retention and READ COMMITTED writes, not
+the identity/authority of arbitrary SQL callers. Runtime and migration database
+ownership are not separated here; no DBA tamper protection or universal reverse
+success-audit-to-outcome guard is claimed. Supported workflow associations are
+an application transaction obligation, not an inference from a standalone audit row.
+
+### Named workflows and final admission
+
+`PlatformAccessService` has six distinct entry points:
+`registerUserSecurityRead`, `registerSupportRevoke`, `readUserSecurity`,
+`revokeSupportGrant`, `readUserSecurityReceipt` and `readRevokeReceipt`.
+Only USER_SECURITY_READ and SUPPORT_REVOKE intent kinds exist.
+Registration independently commits the immutable initiator/operation-ID and
+complete target/reason/expected-revision tuple; it does not execute the action
+or lease authority. Exact duplicates need fresh authorization and a new
+READ_ADMITTED audit without repeating INTENT_RECORDED. Only registration of
+the current initiator's own key can return ID_UNAVAILABLE after supplied-target
+authorization; execution/receipt use separate normalized nondisclosure results.
+A registration timestamp records binding, not acknowledgement or delivery.
+
+Each call rechecks current persisted User status/generation, grant/revision/scope
+and trusted session/assurance facts before operation-history disclosure.
+The trusted-facts port has synthetic adapters only; a supplied UUID, role,
+browser DTO or operation ID is not a credential. READ discloses only exact
+User UUID/status. REVOKE targets another User's SUPPORT grant with exact expected
+revision and checked increment. A terminal execution requires a separate receipt
+call, not another mutation. READ receipts are original-initiator-only and contain
+no historical/current account status. Exact REVOKE receipts require current
+owner grant-read authority; the former initiator/recipient need not remain active.
+Every receipt admission is freshly authorized and audited.
+
+The workflow owns one physical READ COMMITTED transaction; it does not join an
+ambient transaction or depend on a Spring proxy. Existing transaction,
+synchronization-only or bound datasource state is rejected before trusted-facts,
+SQL, worker, fallback or diagnostic-sink work. Locks follow PostgreSQL UUID
+order: bounded Users with NO KEY UPDATE, grants, then exact intent/unique slot.
+Changed discovery fails closed without growing that lock set.
+After completed waits and target lookup, current facts and a separate
+`clock_timestamp()` command are refreshed before the final gate, including
+again after intent/unique-slot waits. An expired idle window cannot refresh itself.
+
+Primary work has a nonrenewable 15-second budget, fallback audit 2 seconds;
+lock and statement caps are 3 and 5 seconds, constrained by remaining budget.
+Acquisition/network/commit are budgeted; cancellation has a separate bounded
+2-second cleanup grace. This is not a guaranteed total wall-clock bound against
+arbitrary driver/OS hangs. A thrown commit remains UNKNOWN even if a subsequent
+rollback returns. Completion, resource cleanup and permission to release the
+result are separate. Only positive commit acknowledgement, completed cleanup
+and a permitted release produce `Success`; an ordinary post-ACK cleanup warning
+does not fabricate business failure. Cancellation or incomplete cleanup after
+ACK produces payload-free `CommittedResultWithheld`, not `COMMIT_UNKNOWN`.
+It refers to the current registration/read/revoke/receipt phase: registration
+does not yet have an execution outcome. Known rollback with incomplete cleanup
+returns `RESOURCE_CLEANUP_INCOMPLETE`; failed acquisition remains NOT_OBSERVED.
+Reconciliation uses the same intent under new current disclosure authorization,
+not desired-state inference or automatic new-ID retry.
+
+Within this owned JDBC path, typed changed authority is generic `Denied` with
+`AUTHORITY_CHANGED` diagnostics and `ACCESS_DENIED / INCONSISTENT_FACTS` audit.
+`55P03` is `LOCK_NOT_AVAILABLE`; `57014` is `STATEMENT_CANCELLED`, not proof of
+timeout or caller interruption. Owned budget/cancellation evidence uses
+`DEADLINE_EXCEEDED`/`INTERRUPTED`; connection/acquisition unavailability and
+mandatory audit failure stay separate from unexpected SQL/implementation faults.
+V14 extends only the confirmed-attempt-failure CHECK with those two SQL reasons;
+V1–V13 and existing authorization, intent, success/outcome and history guards
+are unchanged. No failure audit follows commit, UNKNOWN, incomplete cleanup or
+an unobserved transaction. Fresh authorization still precedes reconciliation;
+after a successful REVOKE, execution replay can be denied before history lookup.
+
+The JDBC boundary rejects submicrosecond or unrepresentable persisted inputs.
+Its finite database/Java interval is
+`[-4713-11-24T00:00:00Z, +294277-01-01T00:00:00Z)`; canonical bound UTC text
+avoids driver infinity sentinels. Raw SQL coercion can discard precision before
+guards see it and is not equivalent to this validation. I1 assurance precision
+is unchanged.
+
+### Durable access-workflow audit and remaining gates
+
+INTENT_RECORDED records new registration. READ_ADMITTED records user-security
+read admission, exact-duplicate registration acknowledgement and receipt admission.
+GRANT_REVOKED commits with the exact mutation and terminal outcome. Required
+audit/outcome failure prevents successful commit/disclosure; read admission does
+not prove transport delivery or human reading. ACCESS_DENIED and OPERATION_FAILED
+are separate bounded attempt-audit paths only after confirmed owned rollback,
+never after ambient rejection or UNKNOWN; fallback does not execute the action
+again or manufacture a failed terminal outcome. Supplied targets stay distinct
+from verified references. This is durable access-workflow audit, not Logback
+diagnostics, a general Audit Log implementation or staff-editable history.
+
+Spring beans/controllers/staff HTTP APIs, a live provider/session/MFA/step-up
+adapter, issuance/invitations, CHANGE/SUSPEND/RESUME execution, maintenance,
+UI and full Audit Log remain absent. No real owner inference, grant activation
+or maintenance assurance mechanism is selected. The specification's independent
+maintenance authority, assurance floor and cause-resolved recovery remain
+unchanged. Workspace/Organization, User identity, MoR and payout boundaries are
+not overridden. No rollout or next slice is selected.
+
+From `backend`, the focused offline pure-policy command remains:
+
+```shell
+./mvnw -o -Dtest=PlatformAccessPolicyTest,PlatformAccessDelegationTest test
+```
+
+It selects only the two pure-policy classes, not storage/workflow verification,
+and requires cached artifacts. Separate accepted S independent evidence reports
+1319 full tests and package PASS; the W author reports 1502 and package PASS.
+Those earlier results have different scopes and authorship; they are not new runs
+for this documentation or substitutes for the subsequent reviewed PR #33 integration
+and its separate CI above. Historical test/CI results below remain historical.
+The [local cookie disposition and retained public gate](../docs/authentication-pilot.md#open-cookie-follow-up) records scoped local closure. Integrated S003 has scoped
+browser/server evidence and an exact-candidate full/package result, as recorded
+in the [authentication verification boundary](../docs/authentication-pilot.md#s003-evidence-and-open-gates).
+None supplies missing staff HTTP/MFA wiring or composes the separate PA observer/HOLD.
+
+## Technology baseline
+
+- Java 25 (required)
+- Spring Boot 4.1.0
+- Maven Wrapper (Apache Maven 3.9.16) — no system Maven required
+- PostgreSQL (integration tested against `postgres:18.4-alpine`)
+- Spring JDBC with explicit SQL (no JPA, no Hibernate, no ORM)
+- Flyway (version managed by Spring Boot 4.1.0)
+- Testcontainers (version managed by Spring Boot 4.1.0)
+
+A Docker-compatible runtime is required to run the integration tests, which
+start a real PostgreSQL container via Testcontainers.
+
+## PostgreSQL JDBC override
+
+The PostgreSQL JDBC driver is intentionally pinned to `42.7.13`, above the
+version currently managed by Spring Boot 4.1.0 (`42.7.11`). This is a
+deliberate security/maintenance override defined via the `postgresql.version`
+property in `pom.xml`. Do not remove it without review.
+
+## Runtime dependency overrides
+
+The integrated SC-01 update defines four additional explicit properties in
+[pom.xml](pom.xml), affecting nine runtime artifacts:
+
+- `tomcat.version`: `11.0.25` — `tomcat-embed-core`, `tomcat-embed-el`,
+  and `tomcat-embed-websocket`;
+- `jackson-bom.version`: `3.1.6` — `tools.jackson.core:jackson-core`
+  and `tools.jackson.core:jackson-databind`;
+- `log4j2.version`: `2.25.5` — `log4j-api` and `log4j-to-slf4j`;
+- `logback.version`: `1.6.3` — `logback-core` and `logback-classic`.
+
+These are project overrides, not versions supplied automatically by the unchanged
+Spring Boot 4.1.0 BOM. The independent compatibility comparison confirmed only
+these nine runtime-artifact updates: Boot/Spring and the remaining resolved
+coordinates and scopes were unchanged, with no additions or removals. The
+existing PostgreSQL JDBC override remains unchanged. See the
+[integration and post-merge verification summary](../docs/engineering/integration-history.md#runtime-dependency-update)
+for the bounded SC-01 result; compatibility verification and integration do not
+constitute rollout to external applications or proof of a vulnerability-free graph.
+
+## Bounded application diagnostics
+
+This section describes the bounded application diagnostics in this checkout.
+Verification and integration status must be established from the separate delivery
+evidence; this section does not report a new test run or establish integration.
+The diagnostics use the existing
+SLF4J and Logback dependencies; these diagnostics introduce no logging service,
+collector, file sink or audit table. The separate V12 access-workflow audit above
+is not a Logback sink. The console configuration keeps INFO as the default and includes
+the server-generated request correlation ID. Do not enable global DEBUG/TRACE,
+SQL parameter logging or request/body/header dumps to diagnose authentication.
+
+The application logger is `com.creastrix.platform.diagnostics`. Its fixed
+vocabulary separates observed results from inferred effects:
+
+| Event | Meaning and bounded fields |
+| --- | --- |
+| `HTTP_COMPLETED` | One synchronous request-chain return/throw; route category, method category, selected status, elapsed `duration_ms`, `RETURNED` or `THREW` |
+| `LOGIN_RESULT` | Explicit intent accepted, local success selected, protocol rejection, admission denial, callback conflict or safely classified resolution failure |
+| `ACCESS_DENIED` | Missing authenticated session, current-user/admission denial, already-authenticated entry, missing intent or generic request-boundary rejection |
+| `SESSION_EXPIRED` | Observed absolute lifetime exceeded; never inferred idle expiry from a missing session |
+| `LOGOUT_RESULT` | Local logout handler completed; not provider/global logout or proof of cookie delivery |
+| `REQUEST_FAILURE` | Safe technical failure category; a later failure retains bounded `prior_event` / `prior_reason` (or `NONE`), without exception text |
+| `DOMAIN_TRANSACTION` | Legacy successful-return transaction observation, or an actually attempted owned platform phase after cleanup; operation and completion, with optional closed reason |
+| `DIAGNOSTIC_LIMIT` | Request-local transaction observations exceeded the fixed limit; reason `REQUEST_TRANSACTION_LIMIT` |
+
+Reason codes include `LOGIN_INTENT_ACCEPTED`, `LOCAL_SUCCESS_SELECTED`,
+`PROTOCOL_REJECTED`, `NO_AUTHENTICATED_SESSION`, `ABSOLUTE_LIFETIME_EXPIRED`,
+`ADMISSION_DENIED`, `CURRENT_USER_DENIED`, `REQUEST_BOUNDARY_REJECTED`,
+`ALREADY_AUTHENTICATED`, `CALLBACK_CONFLICT`, `LOGIN_INTENT_REQUIRED` and
+`LOCAL_LOGOUT_COMPLETED`. These expected outcomes use INFO, not ERROR.
+`SESSION_COORDINATION_UNAVAILABLE`, `IDENTITY_RESOLUTION_UNAVAILABLE`,
+`DATABASE_UNAVAILABLE`, `DEADLINE_EXCEEDED` and `INTERRUPTED` use WARN;
+`UNEXPECTED_FAILURE` uses ERROR. Transaction `COMMITTED` and `ROLLED_BACK` use
+INFO; `UNKNOWN` and `NOT_OBSERVED`, and a diagnostic-limit event, use WARN.
+The three-argument transaction overload adds an existing closed Reason and uses
+the maximum of its severity and the completion level: UNKNOWN/NOT_OBSERVED are
+at least WARN and UNEXPECTED_FAILURE is ERROR. A reason does not change the
+observed completion. Null reason preserves the legacy two-field format;
+malformed null operation/completion is ignored without consuming a buffer slot.
+The Event and Reason catalogs are unchanged.
+Internal `ClassifiedFailure` exceptions supply a closed reason; other failure
+classification examines bounded exception types/causes without printing
+messages, SQL details or throwable chains. Existing domain rejection types and
+opaque authentication exceptions remain distinct; invalid configuration names
+the relevant field, never its supplied value. HTTP status, fixed JSON error and
+redirect contracts are unchanged; internal messages do not become API responses.
+
+Every request gets a new server-generated ID in the `requestId` MDC field;
+incoming correlation headers are not trusted or copied. The authentication
+virtual worker receives only that ID explicitly, not the principal or complete
+MDC. Request completion and worker scopes clean up their own context. Route and
+method fields are closed categories, not raw URLs or caller text. No log field
+accepts passwords, client secrets, tokens, cookies/session IDs, Authorization,
+CSRF values, OAuth code/state/nonce/PKCE, claims, issuer/subject, email or other
+personal data, request/query/body content, SQL parameters, connection strings
+or domain entity/operation IDs. The generated diagnostic request correlation is
+not a caller identity or credential.
+Application diagnostics never stringify principals, configuration or exceptions.
+
+Authentication markers only stage fixed codes while the security chain is
+running. The first specific marker wins over later generic handling, but a later
+more severe technical marker takes precedence and retains the prior codes.
+An escaping failure also takes precedence over an earlier selection/denial and
+retains its codes; neither handled nor escaping failures are hidden by success.
+Output is deferred until the chain unwinds and its session/publication locks are released.
+Legacy and reason-bearing transaction records share the same HTTP FIFO.
+An HTTP request stages at most 16 transaction records, then emits a limit warning
+instead of growing an unbounded queue. Domain observations outside that
+request-local context, including the identity-resolution worker, emit at their
+transaction-completion boundary, outside the authentication publication lock.
+Configured transaction/lock deadlines are unchanged. Synchronous output can
+delay completion/cleanup; no total completion-latency bound or lossless delivery
+is claimed.
+
+The original successful-return synchronization observer still coalesces repeated
+returns by operation code and preserves its existing ten callers: `USER_CREATE`, `USER_STATUS_CHANGE`, `ORGANIZATION_CREATE`,
+`USER_WORKSPACE_CREATE`, `ORGANIZATION_WORKSPACE_CREATE`, `PRODUCT_CREATE`,
+`PRODUCT_ARCHIVE`, `PRODUCT_ACTIVATE`, `DELTA_REGISTER`, and
+`DELTA_APPLY_OR_REPLAY`. Only `afterCompletion` observes completion.
+Spring can report ROLLED_BACK after commit acknowledgement loss even when the
+database committed. Once `beforeCommit` has run, any non-COMMITTED completion
+is conservatively UNKNOWN, including a real rollback late in that phase.
+Before that phase, ROLLED_BACK is retained; unavailable completion is UNKNOWN.
+Without an observable active physical transaction, the result is NOT_OBSERVED,
+never a fabricated commit. A Spring-observed
+savepoint rollback conservatively yields UNKNOWN even if the outer transaction
+later commits; direct JDBC savepoints bypass that observer and remain a coverage
+gap. These are transaction observations after successful operation returns, not
+a count of new records or changed rows: registration/application may return a
+retained manual-delta result, and replay is not a fresh quantity application.
+Failed methods and privileged raw SQL are not a complete mutation event stream.
+
+The expanded operation enum additionally contains PLATFORM_INTENT_REGISTER,
+PLATFORM_USER_SECURITY_READ, PLATFORM_SUPPORT_REVOKE,
+PLATFORM_OPERATION_RECEIPT and PLATFORM_ATTEMPT_AUDIT. The owned W boundary
+classifies its own attempted primary/fallback phase after resource cleanup,
+including denied/failed attempts; it does not call the legacy return-success
+observer or attach a synchronization to a foreign transaction. Acknowledged
+commit stays COMMITTED despite a later cleanup failure; lost commit acknowledgement
+stays UNKNOWN. Internal causes are retained/classified within actually attempted
+owned phases, using the highest-severity closed reason (first on a tie), not
+arbitrary Throwable/message/SQL output. This is not a promise that every
+pre-phase service failure emits a diagnostic. Fallback is a separate phase,
+not a duplicate primary record; sink failure cannot replace the committed result.
+These observations neither write nor prove durable security audit.
+
+The scoped classifier does not change generic authentication failure classification.
+Post-ACK cleanup uses WARN `POST_COMMIT_CLEANUP_FAILURE` when appropriate, without
+masking a higher-severity companion failure. Original failure/category stay
+internal and separate from diagnostic severity; no cause or sensitive fields
+are added to the outward disposition or log boundary.
+
+A selected OIDC success/redirect does not establish HTTP commit, cookie delivery
+or the browser's final account. Missing session state may follow idle expiry,
+logout or restart; only observed absolute expiry is labelled SESSION_EXPIRED.
+Commit-unknown identity resolution requires the unchanged reconciliation through
+a new full login. Diagnostics themselves provide no durable audit guarantee or
+stale-cookie protection; the S003 Q registry below is a separate admission mechanism.
+Cookie status is recorded in the [local cookie disposition and retained public gate](../docs/authentication-pilot.md#open-cookie-follow-up). The logout path emits
+`LOCAL_LOGOUT_COMPLETED` only for successful Q revocation (204), not cleanup-only
+409; callback success still observes local selection/publication, not delivery.
+
+## Organization creation admission
+
+Organization creation admits the represented creator from a current User read
+under `FOR NO KEY UPDATE` in the same READ COMMITTED service transaction, before
+either insert or FK reference. Committed inactive status-first denies creation;
+a rolled-back writer or legitimate reactivation can allow it. Admission-first
+holds off other status writers until its transaction ends. This weak lock is
+compatible with FK KEY SHARE, not a new global lock or deadlock-free guarantee.
+The mandatory User read never starts a separate transaction or authenticates
+the caller. Organization plus initial ACTIVE OWNER Membership remain atomic.
+
+Admission is not an ACTIVE-at-commit or permanent owner-User invariant. The same
+transaction can create then perform an authorized suspension/deactivation;
+the Organization and structural Membership may commit with an inactive User.
+Status change before creation denies it and rolls back that atomic batch.
+Other guards still apply: a composed Workspace/RMP creation can reject the batch
+at its existing deferred check. A returned inner object is not a commit.
+No retry, schema change, raw-SQL actor authorization, ownership rewrite,
+authenticated Organization HTTP API or general multi-resource lock policy is
+added. V1–V14, V9 isolation and stronger Workspace/RMP guards are unchanged.
+
+## Running tests
+
+```
+./mvnw clean test
+```
+
+The integration tests start a real PostgreSQL container. They verify the Spring
+context, execute a real `SELECT 1`, confirm the Flyway migrations were applied,
+check that the health infrastructure reports `UP`, prove the User schema
+invariants and status lifecycle against real PostgreSQL, and prove the
+Organization foundation: atomic Organization creation with its initial `ACTIVE`
+`OWNER` Membership, the structural last-owner invariant, the TRUNCATE
+safeguard, and a real concurrent two-owner deletion race that must leave
+exactly one `ACTIVE` `OWNER` Membership.
+
+They also prove the Workspace foundation: atomic User-owned and
+Organization-owned Workspace creation with the initial `ACTIVE` `ADMIN`
+Membership, owner immutability, the no-deletion and TRUNCATE safeguards, the
+structural ADMIN and Organization `OWNER`/Workspace `ADMIN` intersection
+invariants against raw SQL, and four real concurrency scenarios (last ACTIVE
+ADMIN, cross-table OWNER/ADMIN write skew, creation versus creator OWNER
+removal, and User-owned as well as Organization-owned creation versus a
+concurrent User `ACTIVE` → non-`ACTIVE` status change), each of which must
+leave the Workspace foundation intact.
+
+Current full-schema history assertions cover V1 → V15. The platform-access
+storage suite separately checks the populated V13 → V14 upgrade and a no-op
+second migration. Earlier-version tests retain their own pinned targets,
+including populated V12 → V13, V11 → V12 and V10 → V11. Dated CI results
+describe only the versions actually tested in those runs.
+The tests also prove the Ready-Made Product structural foundation: the exact current
+migration history, the exact schema (columns, types, nullability, absence of
+defaults, primary key, `RESTRICT` foreign keys, closed lifecycle check set, and
+absence of speculative indexes), the Spring wiring down to real PostgreSQL, a
+repository round trip, every positive and negative creation authorization case
+through the service and again through direct SQL, the identity, Workspace, and
+Created By immutability, the `DELETE` and `TRUNCATE` rejections, and the
+deterministic creation races described above (creator status change,
+`READY_MADE_PRODUCTS` grant revocation, and Membership suspension, role
+downgrade, and deletion) in both commit sequences, where a rejected race must
+fail with SQLSTATE `23514` and leave no product, never with `40P01`, `55P03`,
+or a timeout. Contention itself is proven from PostgreSQL lock metadata
+(`pg_blocking_pids`) with bounded polling instead of timing assumptions.
+The lifecycle coverage additionally proves both supported application
+directions, the authorization failures, raw SQL structural boundaries, and the
+five deterministic lifecycle races: User revocation and exact EDITOR-scope
+deletion in both commit orders, plus duplicate same-target Product mutation.
+The V8 coverage separately proves exact Product-scoped registration, composite
+namespace isolation, authorization before command disclosure, checked boundary
+arithmetic, immutable terminal replay, rollback atomicity, and structural
+PostgreSQL guards. Deterministic concurrency cases cover registration conflicts,
+rollback recovery, duplicate application, limited-stock commands, authorization
+revocation, and lifecycle interaction. Where a real wait is part of the claim,
+the tests identify both transaction backend PIDs and confirm the blocker through
+`pg_blocking_pids`, with bounded latches and no sleeps.
+
+Schema metadata assertions are anchored to the exact relation, constraint, and
+trigger-function OIDs of `public.ready_made_products`, and an adversarial test
+creates a decoy schema with same-named table, constraints, and functions to
+prove that name collisions in another schema neither replace nor disturb the
+inspected objects.
+
+The V9 tests separately preserve the V8 REPEATABLE READ OWNER/ADMIN write-skew
+counterexamples and READ COMMITTED controls, then exercise forbidden-isolation
+admission without partial effects and READ COMMITTED OWNER/ADMIN/cross-table
+preservation. They verify exact error provenance with negative controls, the
+four-table write-event matrix, actual versus default isolation, ambient service
+transactions, savepoint recovery, and public relation/function OID isolation
+against same-named decoys. Upgrade coverage includes fresh V1 → V9, populated
+V8 → V9 with nine domain tables preserved, invalid-preexisting data, non-RC
+migration rejection, and a real Flyway upgrade overlapping an old writer. The
+overlap proves actual PID-directed waiting on the partial barrier, fresh
+validation after the writer commits, and complete migration rollback. Core
+concurrency and overlap cases run three times sequentially with bounded waits;
+timeouts or unrelated errors are not accepted as invariant evidence.
+
+V10 upgrade coverage adds fresh V1 → V10, populated V9 → V10, and populated
+V8 → V9 → V10. It permits exactly the three creation-lock substitutions in one
+function while comparing its OID, trigger binding, all other functions,
+triggers, constraints, indexes, columns, domain rows, and command outcomes.
+The existing V9 atomicity, advisory-locking, admission, and upgrade cases retain
+their explicit V9 targets and assertions.
+
+### Identity and authentication boundary
+
+AUTH-FIRST-LOGIN-001 is integrated in main through
+[PR #28](https://github.com/creastrix-svg/creastrix-platform/pull/28), after completed
+author-side native IDE verification and independent R2 re-review. Its separate
+[post-merge Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/36115810224)
+passed 658/658, failures/errors/skipped 0/0/0, tests/package BUILD SUCCESS,
+PostgreSQL 18.4 and Flyway V1 → V11. This is the single-instance local nonpublic
+backend pilot, not a complete user-facing login or rollout.
+The [bounded authentication contract](../docs/authentication-pilot.md)
+separates backend B, completed finite local React/browser F and the later bounded
+2026-10-11 real Auth0 owner P and the separately authorized 2026-10-13 local
+Cognito owner transfer described below. Neither is public rollout.
+
+Historical AUTH-001-R1 author verification passed AuthenticationPolicyTest 91/91,
+UserAuthenticationIntegrationTest 20/20, AuthenticationHttpIntegrationTest
+113/113, and one complete 650-test suite with
+zero failures/errors/skipped; tests and package completed with BUILD SUCCESS.
+These runs used owned PostgreSQL 18.4 Testcontainers, Flyway V1 → V11 and a
+local signed test IdP, including full-login recovery while a prior transaction
+is in flight or after physical commit acknowledgement loss. They are not a real
+Auth0 run, browser/proxy proof, independent approval or integration into main.
+The earlier native IDE policy 91/91 and HTTP 113/113 results are also historical;
+neither they nor the 650-test run are fresh verification of R2.
+
+Historical AUTH-001-R2 author verification on 2026-09-14 passed three consecutive 27-case focused
+runs, then one complete 658-test `clean test` and package BUILD SUCCESS, all with
+exit code 0 and no test failures/errors/skipped. Its authentication counts
+are policy 97, PostgreSQL authentication 20 and HTTP/OIDC 115; all preceding 650
+testcase identities remain. The runs used PostgreSQL 18.4 (`postgres:18.4-alpine`),
+Flyway 12.4.0 with V1 → V11, Tomcat 11.0.25 and the synthetic local IdP.
+The [authentication contract](../docs/authentication-pilot.md#verification-gates)
+records the real late-failure RED/GREEN boundary, later native IDE and independent
+results, and exact PR/merge CI evidence. These author runs are not those later
+checks or browser/Auth0 proof. No tests were rerun for this documentation change;
+the current local closure and OPEN public-readiness gate are recorded separately.
+
+An atomic per-logical-session callback lease captures its saved flow before
+provider/DB work; only its owner can publish authorized-client/session state.
+Under the owner's 2026-09-14 pilot contract, the local publication section starts
+before Spring's first client save and covers normal session-ID/CSRF rotation,
+SecurityContext save and callback outcome selection, coordinated with cooperative
+logout. It does not include physical HTTP commit or delivery. One second bounds
+coordinator-lock acquisition, not Servlet operations or HTTP I/O. Logout remains
+available during provider/DB waits. Cancellation before publication prevents save;
+detected cancellation during publication requires the rejected uncommitted failure
+303 to carry no setting/deletion session cookie owned by that attempt. Cleanup
+identifies exact cookie name, Path/Domain and ownership in real pending container
+headers; it preserves unrelated cookies and newer login state without compensating
+deletion, whole-response reset or forced flush. No physically committed binding is
+erased, and committed headers/transport failures are not claimed to be repaired.
+Busy/already-authenticated callback conflicts use fixed failure 303 without
+damaging the current principal/client/cookie; authenticated entry retains 409.
+The historical R1 focused callback/cleanup regressions passed three consecutive 16-case
+runs. Earlier 611/638 results remain historical evidence in the contract, not
+fresh R2 results. This is single-instance coordination, not a distributed session
+protocol or a guarantee of network response delivery order. R2 alone did not fix
+stale-success-cookie selection; its temporary 2026-09-14 local-pilot acceptance
+did not automatically accept the later B-to-A consequence. Already-delivered
+responses cannot be recalled. The S003 addition in this checkout is described
+below; it does not extend the publication lock through HTTP commit/flush.
+
+### S003 cookie pairing, admission and recovery
+
+The exact independently reviewed S003 forward-port is integrated through
+[PR #34](https://github.com/creastrix-svg/creastrix-platform/pull/34).
+`CREASTRIX_Q` is a random host-only, HttpOnly, SameSite=Lax cookie with Path `/`
+and the existing Secure policy. It
+identifies a process-local context, not a durable browser/User identity. Initial
+anonymous bootstrap issues Q once; subsequent requests echo it. Callback success
+does not set Q. A session's `(Q, generation, logical session token)` stamp is
+immutable: no adoption of a tagged/authenticated session or reissue of its Q.
+
+Private access captures the stamp before real current-User lookup, then uses that
+same capture for a fresh final check after lookup. G1 rejects an old same-Q stamp
+after generation revocation or newer-generation acceptance. G2 denies an obsolete
+or mismatched current Q/SID pair with 401; explicit recovery is safe even if B is
+no longer continuously available. A fresh `/api/me` returning 200 A would not be
+an acceptable substitute for this admission check.
+
+L1 is separate: an earlier request under a different still-live Q_A can first
+pass final admission after B/Q_B and return A. It was not necessarily admitted
+before B. An already-admitted response can also finish after revocation. Future
+frontend state must discard stale account responses; no guarantee for future
+business writes, global logout or all-device revocation follows from L1.
+
+After standard Origin/CSRF checks, logout revokes the presented Q generation,
+not one inferred from a stale SID, and separately cleans up the caller session.
+204 means that known live Q was revoked. Unknown/expired Q can yield cleanup-only
+409 while expiring the caller SID; it is not proof of successful Q revocation.
+With no incoming/resolved SID, bootstrap can issue a new random Q for a proven
+unknown/expired Q. A still-unexpired registry record, including retired/pending
+ones, blocks replacement issuance. Actual restart discards process-local state;
+recovery is a new full OIDC login with unchanged durable identity, not code replay
+or account/binding deletion. See the [detailed contract](../docs/authentication-pilot.md#s003-cookie-pairing-contract).
+
+Bounds are 64 context records, 128 session references, eight members per Q and
+eight cleanup claims/workers, with no task queue. Retired records/references stay
+charged until exact cleanup acknowledgement and caller release; they are not
+evicted to admit another context. Q hard lifetime is eight hours; pairing/owner
+leases use the existing five-minute flow bound. Memory-lock acquisition and the
+cleanup caller's wait are each bounded at 100 ms, not a bound on all Servlet I/O.
+Registry locks contain no Servlet/provider/DB/response calls. Cleanup is requested
+explicitly, invalidates exact owned references outside coordination locks and
+keeps stalled/failed claims charged. Coordination refusal fails closed: opaque
+503 outside callbacks, fixed failure 303 for callbacks, no rewriting a committed
+response. This is single-instance memory, not shared/distributed session storage.
+
+The exact isolated candidate passed 1618 tests/32 suites with zero
+failures/errors/skipped and package BUILD SUCCESS on 2026-10-07, PostgreSQL 18.4
+and Flyway V1 → V12. Separate root dispositions accepted bounded browser/server
+evidence without replacing original incomplete/failed orchestration reports.
+These are dated external results, not a fresh test, native IDE or CI run;
+packaged-start smoke was not run. The [evidence boundary](../docs/authentication-pilot.md#s003-evidence-and-open-gates)
+records the later integration and finite local React/dev-proxy/browser F separately.
+The 2026-10-09
+[post-merge Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/37917170767)
+passed 1618 tests, zero failures/errors/skipped and tests/package BUILD SUCCESS
+with PostgreSQL 18.4 / Flyway V1 → V12. These are historical server checks, not
+the frontend/browser matrix or new execution for this documentation change.
+The [local cookie disposition and retained public gate](../docs/authentication-pilot.md#open-cookie-follow-up) distinguishes accepted
+local-only closure from OPEN public-access/invitation/rollout obligations.
+The local Cognito transfer alone does not close those obligations.
+
+Only `GET /api/me` exposes the current account, after session, current exact
+issuer/subject admission, ACTIVE and final captured-stamp checks. No existing
+Workspace/RMP service is exposed as an authenticated HTTP API. A creator or actor UUID supplied to
+those internal services still represents an identity; it is not itself proof
+of the external caller. Raw SQL remains outside actor authentication.
+
+The auth-disabled default serves only minimal ordinary `GET /actuator/health`, denying
+other ordinary routes without form/basic login or generated-password fallback. Both
+servlet modes allow only ERROR dispatch to exact default `/error` for terminal
+fixed opaque JSON/no-store rendering with the validated original 400–599 Integer
+status (otherwise 500). Other ERROR destinations and REQUEST/FORWARD `/error`
+remain denied. The renderer leaves committed responses untouched and resets only
+the uncommitted body buffer/stale content length, not unrelated headers/cookies;
+it does not use error details/views, mutate session/Q/principal or initiate provider
+work. This supports the actual default error path only, not custom-path configuration.
+OIDC
+properties, discovery and HTTP handlers are conditional on enabled servlet mode;
+non-web migration/domain contexts require no provider configuration or network.
+The local profile keeps the backend on `127.0.0.1:8080` and trusts only the fixed
+browser origin `http://localhost:3000`. The integrated frontend supplies the
+separate fixed loopback dev proxy; the backend does not create it.
+It requires external `CREASTRIX_AUTH_ISSUER`, `CREASTRIX_AUTH_CLIENT_ID`, and
+`CREASTRIX_AUTH_CLIENT_SECRET`; `CREASTRIX_AUTH_ALLOWED_SUBJECTS` is an exact
+issuer-scoped list, empty meaning no admitted users. Change admission only by
+controlled restart, which also discards in-memory sessions. No new real provider
+setup or application launch is authorized by this documentation; prior local
+actions are recorded separately below.
+
+ID/access tokens remain server-side in the session. Local cookies are host-only,
+HttpOnly, SameSite=Lax, Path `/`; Secure=false is confined to explicit loopback
+mode, while defaults remain Secure=true. Idle expiry uses the servlet container
+(30 minutes), absolute expiry uses an injected Clock (8 hours) at private-API
+validation. Until `/api/me` performs the existing 401/invalidation or explicit
+cleanup occurs, an idle-valid absolute-expired principal still gets 409 at a direct
+valid-CSRF login POST or OAuth entry, with no new intent/provider flow. No implicit
+entry expiry cleanup is added. Local logout
+is not global provider logout or immediate revocation after password reset.
+
+<a id="controlled-provider-migration-candidate-author-wip"></a>
+
+### Integrated controlled provider migration
+
+Auth0 source retirement is integrated through [PR #39](https://github.com/creastrix-svg/creastrix-platform/pull/39).
+The backend supports only
+`CREASTRIX_AUTH_PROVIDER=COGNITO`, also the default, with
+`CREASTRIX_AUTH_EXISTING_ONLY=true` as the required default admission mode.
+`AUTH0`, unknown provider values and existing-only=false fail closed.
+One confidential code-flow registration pins the original Frankfurt regional
+issuer `https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_<pool>` and
+client. Its signed ID token alone supplies the claims:
+raw Boolean verified email, nonblank email, numeric auth_time and `token_use=id`.
+UserInfo is not requested or accepted as another claim source. Entry/callback
+paths end in `cognito`; the old Auth0 paths are unsupported. Fixed destinations,
+PKCE, state/nonce, Q/SID, CSRF, freshness and deadline checks remain.
+
+V13 retains immutable V11 history and adds `user_identity_current` and
+`user_identity_migration_receipts`. Ordinary initial creation has four atomic
+rows: User, Profile, history and selector. Current exact-pair lookup never treats
+superseded history as an active alias. Existing-only mode denies missing/superseded
+owner bindings before creation. Exact pair ownership is global; one selector per
+User references that User's history. A switch requires an exact immutable receipt;
+history without an atomic selector/receipt and a receipt without its selector
+result fail at commit. V1–V12 and pinned earlier fixtures are unchanged.
+
+The parameterized [offline SQL](src/main/resources/db/operations/migrate_owner_identity.sql)
+uses a caller-owned READ COMMITTED transaction, 5-second lock, 10-second statement
+and 15-second transaction limits. Expected User/status/Profile/generation and
+old pair must match. User/Profile/generation/rights do not change. Exact replay
+returns the stored operation without another switch; conflicts and already-owned
+target pairs refuse. Unknown commit is reconciled by the same operation/payload,
+not an absent SELECT, a new operation or compensating history deletion.
+This is structural persistence and an offline operator procedure, not raw-SQL
+actor authorization, an HTTP linking API or a new core domain entity.
+Creastrix resolves exact issuer/subject, never merges accounts by email. The
+completed owner transfer was an authorized V13 operation, not linking. A planned
+unified email/password, Google and Apple experience still needs separately
+implemented and reviewed secure linking; it is not a prerequisite for using Cognito.
+
+The [runbook](../docs/authentication-provider-migration.md) retains explicit
+authorization, fresh identity-control proof, backup, review and stopped-single-app
+prerequisites for any future switch. The reviewed migration/recovery slice was
+integrated by [PR #37](https://github.com/creastrix-svg/creastrix-platform/pull/37) as `e5b58d43a9dc07c76efc905bc63d8269feaa40fe`;
+this is source integration, not public rollout. Separately, the authorized 2026-10-13 local
+operation applied V13 after backup/restore proof and acknowledged one switch
+with independent read-back. UUID/Profile/status/generation/rights/business rows
+and both history pairs were preserved. The private local runtime selects Cognito,
+existing-only and one exact owner subject; PR #37 still had AUTH0 source defaults.
+Owner login, local logout/private 401, repeat login and new-password login/private
+200 with the same ACTIVE User are recorded external results, not new runs here.
+
+Historical independent isolated backend verification passed 1690 tests/package;
+native compilation and 417 tests plus scoped file views are separate. Overall
+IDE schema/background completion is still UNKNOWN/INCOMPLETE. Real
+unverified/admitted backend refusal remains NOT RUN: a hosted-provider refusal
+before code/token does not exercise signed `email_verified=false` rejection.
+Synthetic false/missing/string claim tests and the verified-owner positive
+control do not reproduce that real signed-false scenario. The owner's explicit
+2026-10-13 limited EMAIL-gate disposition combines those controls with real owner
+success and UNCONFIRMED/unadmitted hosted refusal; it applies only to nonproduction
+owner-pilot source readiness, not public access or approval of new recovery code.
+See the [exact disposition](../docs/authentication-provider-migration.md#limited-email-gate-disposition).
+PR #37 final review, source publication and post-merge CI are complete; public-operation gates remain separate.
+The 2026-10-13 operation retained Auth0 tenant/client/account/private configuration,
+not a current alias. Source retirement changes no User, Profile, rights, selector,
+historical binding or migration receipt, and requires no second owner transfer.
+Future provider support needs a separately reviewed adapter and explicitly
+authorized verified exact-identity operation using the preserved V13 mechanism.
+Changing an issuer or matching an email is not sufficient; bulk migration and
+password export are not implemented. The separately confirmed external deletion
+of Creastrix Local Pilot and retained Auth0 resources are recorded in the
+[operator evidence](../docs/authentication-provider-migration.md#2026-10-14-auth0-retirement-boundary),
+not attributed to this source patch. Local logout does not
+revoke provider/all-device sessions. Own SES,
+social/TOTP and OPEN public-readiness obligations remain separate. Historical candidate
+tests used isolated copies, synthetic OIDC and owned databases; this alignment
+does not rebuild the running owner's `backend/target` or touch the live database.
+
+PR #39 merged on 2026-10-14 as `6d9653c338702cb0530ec31b8d0c04a1ef796ed0`,
+with the reviewed tree unchanged. Its fresh push/main [Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38562911789)
+passed 1832/1832, zero failures/errors/skipped and tests/package BUILD SUCCESS
+on PostgreSQL 18.4 / Flyway V1 → V13. Those integration checks did not rebuild or
+restart the live Cognito-configured older backend; no new-source owner/browser
+verification is claimed. Historical author, native and browser results above
+retain their original scopes.
+
+<a id="cognito-email-confirmation-recovery-author-wip"></a>
+
+### Integrated Cognito email-confirmation recovery
+
+Only anonymous requests in selected COGNITO mode can POST JSON to
+`/auth/confirm-email` (`email`, `code`) or `/auth/resend-confirmation-code` (`email`).
+The existing early security boundary checks exact Host/Origin and rejects an
+already authenticated principal before provider work or session mutation; standard
+session CSRF remains mandatory. Provider-only recovery does not require Q, echo or
+`canStart` and never logs out, resets Q, records LOGIN_INTENT or relaxes OIDC/private
+API admission. The ordinary `/auth/csrf` contract is unchanged.
+
+The server uses its existing client ID/secret at the fixed Frankfurt Cognito API
+endpoint, only ConfirmSignUp/ResendConfirmationCode with HMAC-SHA256 SecretHash.
+ConfirmSignUp explicitly sends `ForceAliasCreation=false`; no Session, metadata,
+signup, authentication/admin action, caller endpoint or automatic login is accepted.
+The entered identifier's case is preserved. Alias/username attributes and pool
+case-sensitivity are not inferred from matching emails. Provider results never
+create or mutate User/Profile, bindings/selectors/receipts, principal/client,
+Workspace or grants. Integrated source retirement removed the Auth0 adapter
+without broadening this Cognito-only recovery boundary.
+
+The request/response byte cap is 16 KiB; identifiers are 1–128 code points and
+confirmation codes 1–2048, without whitespace/control characters. A 5-second
+whole provider deadline (including response reads), at most 2-second connect,
+disabled redirects and one submitted body bound the call. No-queue admission
+allows at most four charged workers, 20 total and three per hashed target per
+60-second window; at most 256 target records retire after five minutes when
+not in flight. These are process-local limits, not cluster-wide rate limiting.
+A caller timeout does not free an unfinished worker's slot before its actual
+cleanup. Process-local global/target quotas use ephemeral hashed targets with
+finite retention/capacity, independent of Q or cookie reset; provider work and log
+output do not occur under quota locks. Fixed-length streaming prevents automatic
+body replay after a submitted request; pre-body connection establishment is not
+claimed to be a single TCP attempt. No global JDK network policy is changed.
+An installed global CookieHandler is refused, and an instance rejecting Authenticator
+is used. Arbitrary concurrent changes to JVM-global handlers are outside this
+single-application contract, not silently overwritten by this code.
+
+Known confirmation success selects 200 `{"result":"confirmed"}`; resend selects
+conditional generic 202 `{"result":"code_request_accepted"}`, not delivery proof.
+Unknown/confirmed/disabled targets, code mismatch/expiry, alias conflicts and
+recipient-dependent provider quota errors share opaque refusal/conditional resend
+acknowledgement. A local limiter alone selects 429; a provider quota is not an
+email-existence/state disclosure. Technical failure/timeout is an unknown provider outcome, never a
+claim of rollback or nonapplication. Diagnostics accept only closed event/reason/
+route codes, not email/code/secret/provider bodies or exception text. Returning
+to `/login` requires a fresh ordinary OIDC flow. Author mock-API/HTTP tests are
+not an actual AWS email-delivery or browser-recovery walkthrough.
+
+Fresh isolated author verification passed focused 528/528, the separately
+authorized diagnostic-catalog check 163/163 and final full 1826/1826 in 33 suites,
+with zero failures/errors/skipped and package BUILD SUCCESS. All 1690 preceding
+testcase identities remain. Actual logs establish PostgreSQL 18.4 / Flyway V1 → V13;
+pinned earlier-version upgrade fixtures remain. Initial lint/focused/full failures
+and external-parser corrections are retained in author evidence, not rewritten
+as PASS. Disposable copies, synthetic providers and new owned loopback
+Testcontainers did not rebuild the live owner's target or use the live database.
+Separate 2026-10-14 native recovery 91/91 and HTTP 195/195, focused independent source/JAR
+review and real owner recovery/fresh OIDC results are recorded in the
+[dated recovery evidence](../docs/authentication-provider-migration.md#2026-10-14-scoped-recovery-evidence).
+Overall IDE background/schema remains UNKNOWN/INCOMPLETE. Separate post-merge
+[Backend CI](https://github.com/creastrix-svg/creastrix-platform/actions/runs/38534930693)
+for PR #37 passed 1826/1826, zero failures/errors/skipped and tests/package
+BUILD SUCCESS; this is not a browser/native rerun. The package contains no external
+test SPI. Public-operation gates remain OPEN; local cookie closure is separately scoped.
+
+For startup and the optional owner pilot, see [Running the application](README.md#running-the-application)
+and [Connected local authentication pilot](README.md#connected-local-authentication-pilot).
