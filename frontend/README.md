@@ -27,9 +27,12 @@ Open [the built storefront](http://localhost:4173/). The preview serves `dist/`,
 | Change | Start here |
 | --- | --- |
 | Homepage campaigns and product discovery | [Home](src/product/home/) |
-| Catalog cards, filters, sorting and design-concept collection | [Browse](src/product/browse/) |
+| Catalog cards, filters, sorting, search results and design concepts | [Browse](src/product/browse/) |
 | Cart lines, totals and undo | [Cart](src/product/cart/) |
 | Local checkout preview and its transient details | [Checkout](src/product/checkout/) |
+| Saved products | [Favorites](src/product/favorites/) |
+| Help and information screens | [Info](src/product/info/) |
+| Product reviews and review form | [Reviews](src/product/reviews/) |
 | Product photos, 3D viewing and media fallbacks | [Media](src/product/media/) |
 | Personalisation tools, design documents, preview and local saves | [Studio](src/product/studio/) |
 | Local example products and the catalog adapter | [Product fixtures](src/product/fixtures/) and [catalog mapping](src/product/browse/catalogFixtures.ts) |

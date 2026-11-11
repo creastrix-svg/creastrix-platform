@@ -8,7 +8,7 @@ import { money } from './productDisplay';
 import { productCopy } from './copy';
 import { productLocaleSelected } from './demoStore';
 import { SearchControl } from './HeaderControls';
-import { SearchResultsView } from './PreviewViews';
+import { SearchResultsView } from './browse/SearchResultsView';
 
 it.each([
   ['de', 'Suche'], ['en', 'Search'], ['es', 'Buscar'], ['fr', 'Rechercher'],

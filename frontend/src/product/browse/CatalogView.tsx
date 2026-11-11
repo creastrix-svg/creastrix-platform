@@ -7,7 +7,7 @@ import type { CatalogOffer, FacetKey } from './catalogBrowse';
 import { catalogCopy } from './catalogCopy';
 import { productCopy } from '../copy';
 import { Icon } from '../Icon';
-import { StorefrontBack } from '../PreviewViews';
+import { StorefrontBack } from '../StorefrontBack';
 import { isCatalogPath } from '../routes';
 import { StorefrontOrigin } from '../storefrontOrigin';
 import { useProductLocale } from '../useProductLocale';
