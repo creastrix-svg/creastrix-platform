@@ -3,7 +3,7 @@ import { useLocation } from 'react-router';
 import type { ProductCopy } from './copy';
 import { concepts } from './fixtures/loop';
 import type { StorefrontLocale } from './locale';
-import { checkoutCopy } from './checkoutCopy';
+import { checkoutCopy } from './checkout/checkoutCopy';
 import { personalizationCopy } from './studio/personalizationCopy';
 import { studioZoneCopy } from './studio/studioZoneCopy';
 import { catalogCopy } from './browse/catalogCopy';

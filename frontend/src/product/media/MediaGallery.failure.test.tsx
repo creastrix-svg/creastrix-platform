@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
 import MediaGallery from './MediaGallery';
-import { productCopy } from './copy';
+import { productCopy } from '../copy';
 
 // Reject the real lazy import, before a renderer/GLB/WebGL instance can exist.
 vi.mock('./ModelPreview', () => { throw new Error('TEST_REJECTED_LAZY_3D_IMPORT'); });

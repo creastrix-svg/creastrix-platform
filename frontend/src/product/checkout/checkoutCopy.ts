@@ -1,4 +1,4 @@
-import type { StorefrontLocale } from './locale';
+import type { StorefrontLocale } from '../locale';
 
 const en = {
   proceed: 'Checkout', title: 'Checkout', backToCart: 'Back to cart',

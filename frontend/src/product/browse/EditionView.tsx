@@ -1,12 +1,13 @@
 import { useContext, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { editionCollectionPath, editionCopy, editionItems } from './fixtures/editionCatalog';
-import type { EditionItem } from './fixtures/editionCatalog';
-import { Icon } from './Icon';
-import { NotFoundView, StorefrontBack } from './PreviewViews';
-import { productCopy } from './copy';
-import { StorefrontOrigin } from './storefrontOrigin';
-import { useProductLocale } from './useProductLocale';
+import { editionCollectionPath, editionCopy, editionItems } from '../fixtures/editionCatalog';
+import type { EditionItem } from '../fixtures/editionCatalog';
+import { Icon } from '../Icon';
+import { NotFoundView } from '../NotFoundView';
+import { StorefrontBack } from '../StorefrontBack';
+import { productCopy } from '../copy';
+import { StorefrontOrigin } from '../storefrontOrigin';
+import { useProductLocale } from '../useProductLocale';
 import './edition.css';
 
 function EditionPhoto({ item, large = false }: { item: EditionItem; large?: boolean }) {

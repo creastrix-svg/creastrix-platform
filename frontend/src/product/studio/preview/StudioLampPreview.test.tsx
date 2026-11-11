@@ -7,7 +7,7 @@ import { studioZoneCopy } from '../studioZoneCopy';
 
 const observe = vi.hoisted(() => vi.fn());
 vi.mock('../../useProductLocale', () => ({ useProductLocale: () => 'en' }));
-vi.mock('../../ModelPreview', async () => {
+vi.mock('../../media/ModelPreview', async () => {
   const { createPortal } = await import('react-dom');
   return { default: (props: { target: HTMLElement | null; expanded: boolean; source: string }) => {
     observe(props);

@@ -7,7 +7,7 @@ import { cartOfferView } from './cartOfferView';
 import { tideOffer } from '../fixtures/tideOffer';
 import { cartCount, cartDisplayLines, cartLinePrice, cartLineRemoved, cartLineRestored, cartQuantityChanged, cartRemovedLineDismissed, cartTotal } from '../demoStore';
 import { productCopy } from '../copy';
-import { checkoutCopy } from '../checkoutCopy';
+import { checkoutCopy } from '../checkout/checkoutCopy';
 import { Icon } from '../Icon';
 import ProductPrice from '../ProductPrice';
 import QuantityInput from '../QuantityInput';

@@ -1,9 +1,9 @@
 import { Link } from 'react-router';
-import { money } from './productDisplay';
-import { productCopy } from './copy';
-import { Icon } from './Icon';
-import type { StorefrontLocale } from './locale';
-import QuantityInput from './QuantityInput';
+import { money } from '../productDisplay';
+import { productCopy } from '../copy';
+import { Icon } from '../Icon';
+import type { StorefrontLocale } from '../locale';
+import QuantityInput from '../QuantityInput';
 
 type Props = {
   locale: StorefrontLocale; stock: number; remaining: number; unitCents: number;

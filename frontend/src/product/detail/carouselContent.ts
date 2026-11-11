@@ -1,5 +1,5 @@
-import { concepts } from './fixtures/loop';
-import type { ProductCopy } from './copy';
+import { concepts } from '../fixtures/loop';
+import type { ProductCopy } from '../copy';
 
 export type CarouselItem = { name: string; note: string; href: string; photo: string };
 export type CarouselContent = { items: readonly CarouselItem[]; href: string };

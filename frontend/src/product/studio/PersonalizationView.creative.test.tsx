@@ -21,7 +21,7 @@ import type { BuiltinStudioFont, LoadedStudioFont } from './design/studioFonts';
 // Decoder validation and native bitmap cleanup have separate unit tests. These
 // tests exercise the UI's ownership, cancellation and applied-snapshot boundary.
 vi.mock('./design/studioImage', async importOriginal => ({ ...await importOriginal<typeof import('./design/studioImage')>(), loadStudioImage: vi.fn() }));
-vi.mock('../ModelPreview', async () => {
+vi.mock('../media/ModelPreview', async () => {
   const { createPortal } = await import('react-dom');
   return { default: function ModelFixture({ target, decoration, lampDecoration, source }: { target: HTMLElement | null; decoration?: ModelDecoration; lampDecoration?: LampDecoration; source?: string }) {
     return target ? createPortal(<div data-testid="creative-model" data-source={source} data-image={lampDecoration?.artwork?.image?.id ?? decoration?.artwork?.image?.id ?? ''}>{lampDecoration?.value.text ?? decoration?.text}</div>, target) : null;

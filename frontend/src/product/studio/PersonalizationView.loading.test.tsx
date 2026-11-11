@@ -11,7 +11,7 @@ function ImportedPreview({ target, source }: { target: HTMLElement | null; sourc
 }
 
 afterEach(() => {
-  vi.doUnmock('../ModelPreview'); vi.doUnmock('@google/model-viewer');
+  vi.doUnmock('../media/ModelPreview'); vi.doUnmock('@google/model-viewer');
   vi.restoreAllMocks(); vi.useRealTimers();
 });
 
@@ -37,7 +37,7 @@ it.each(['fast', 'stalled', 'rejected'] as const)('bounds a %s studio chunk with
   let finish!: (module: { default: typeof ImportedPreview }) => void;
   let reject!: (error: Error) => void;
   const module = new Promise<{ default: typeof ImportedPreview }>((resolve, fail) => { finish = resolve; reject = fail; });
-  vi.doMock('../ModelPreview', () => module);
+  vi.doMock('../media/ModelPreview', () => module);
   const view = await mountFreshStudio();
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-19T00:00:00Z'));
   const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -113,7 +113,7 @@ class PublicStudioViewer extends HTMLElement {
 if (!customElements.get('model-viewer')) customElements.define('model-viewer', PublicStudioViewer);
 
 it('preserves the real viewer owner and actual inline pose through the first expand/close host transition', async () => {
-  vi.resetModules(); vi.doUnmock('../ModelPreview'); vi.doMock('@google/model-viewer', () => ({}));
+  vi.resetModules(); vi.doUnmock('../media/ModelPreview'); vi.doMock('@google/model-viewer', () => ({}));
   const view = await mountFreshStudio();
   vi.useFakeTimers();
   fireEvent.click(screen.getByRole('button', { name: p.model }));

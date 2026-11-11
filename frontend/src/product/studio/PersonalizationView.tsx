@@ -11,7 +11,7 @@ import { productCopy } from '../copy';
 import { StorefrontOrigin } from '../storefrontOrigin';
 import { Icon, Spinner } from '../Icon';
 import LetteringSketch from './preview/LetteringSketch';
-import MediaErrorBoundary from '../MediaErrorBoundary';
+import MediaErrorBoundary from '../media/MediaErrorBoundary';
 import Modal from '../Modal';
 import { characters, cleanLetteringText, defaultLettering, letteringColors, sameLettering } from './design/personalization';
 import type { Lettering, LetteringTarget } from './design/personalization';
@@ -47,11 +47,11 @@ import { studioZoneCopy } from './studioZoneCopy';
 import { inspectZoneLettering } from './design/studioLettering';
 import type { LetteringIssue, StencilStatus } from './design/studioLettering';
 
-const ModelPreview = lazy(() => new Promise<typeof import('../ModelPreview')>((resolve, reject) => {
+const ModelPreview = lazy(() => new Promise<typeof import('../media/ModelPreview')>((resolve, reject) => {
   // Bound a stalled chunk, without delaying successful loads or claiming to
   // cancel the browser's module request. Late completion cannot revive failure.
   const deadline = setTimeout(() => reject(new Error('MODEL_PREVIEW_IMPORT_TIMEOUT')), 30_000);
-  void import('../ModelPreview').then(module => { clearTimeout(deadline); resolve(module); }, error => { clearTimeout(deadline); reject(error); });
+  void import('../media/ModelPreview').then(module => { clearTimeout(deadline); resolve(module); }, error => { clearTimeout(deadline); reject(error); });
 }));
 function loopPreviewContent(value: Lettering, objects: StudioObject[], artwork: ImagePlacement, original: boolean) {
   return original ? { value: { ...value, text: '' }, objects: [], artwork: undefined } : { value, objects, artwork };

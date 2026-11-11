@@ -1,17 +1,17 @@
 import { lazy, Suspense, useCallback, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { mediaForVariant, variantById } from './fixtures/loop';
-import type { VariantId } from './fixtures/loop';
-import type { ProductCopy } from './copy';
-import { Icon, Spinner } from './Icon';
-import Modal from './Modal';
+import { mediaForVariant, variantById } from '../fixtures/loop';
+import type { VariantId } from '../fixtures/loop';
+import type { ProductCopy } from '../copy';
+import { Icon, Spinner } from '../Icon';
+import Modal from '../Modal';
 import MediaErrorBoundary from './MediaErrorBoundary';
 import MediaImage from './MediaImage';
-import LetteringSketch from './studio/preview/LetteringSketch';
-import { studioModelSource } from './studio/preview/personalizationModel';
-import type { ModelDecoration } from './studio/preview/personalizationModel';
-import { personalizationCopy } from './studio/personalizationCopy';
-import type { StorefrontLocale } from './locale';
+import LetteringSketch from '../studio/preview/LetteringSketch';
+import { studioModelSource } from '../studio/preview/personalizationModel';
+import type { ModelDecoration } from '../studio/preview/personalizationModel';
+import { personalizationCopy } from '../studio/personalizationCopy';
+import type { StorefrontLocale } from '../locale';
 
 const ModelPreview = lazy(() => new Promise<typeof import('./ModelPreview')>((resolve, reject) => {
   // Bound failure, not minimum latency; this cannot cancel the module fetch.

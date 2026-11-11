@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { CarouselItem, CarouselContent } from './carouselContent';
-import type { ProductCopy } from './copy';
-import { Icon } from './Icon';
+import type { ProductCopy } from '../copy';
+import { Icon } from '../Icon';
 
 function RailCard({ item }: { item: CarouselItem }) {
   return <Link className="product-concept-card" to={item.href}>

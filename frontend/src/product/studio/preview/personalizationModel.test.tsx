@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ModelViewerElement } from '@google/model-viewer';
 import { afterEach, expect, it, vi } from 'vitest';
-import ModelPreview from '../../ModelPreview';
+import ModelPreview from '../../media/ModelPreview';
 import { productCopy } from '../../copy';
 import { createPersonalizationModel, loopModelPoint, studioModelSource } from './personalizationModel';
 import type { ModelDecoration } from './personalizationModel';

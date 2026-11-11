@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import LampZoneSketch from './LampZoneSketch';
-import MediaErrorBoundary from '../../MediaErrorBoundary';
+import MediaErrorBoundary from '../../media/MediaErrorBoundary';
 import Modal from '../../Modal';
 import { Icon, Spinner } from '../../Icon';
 import { studioExtensionCopy } from '../studioExtensionCopy';
@@ -15,9 +15,9 @@ import { studioZoneCopy } from '../studioZoneCopy';
 import type { StudioObject } from '../design/studioComposition';
 import type { StudioObjectInteraction } from './StudioObjectsSketch';
 
-const ModelPreview = lazy(() => new Promise<typeof import('../../ModelPreview')>((resolve, reject) => {
+const ModelPreview = lazy(() => new Promise<typeof import('../../media/ModelPreview')>((resolve, reject) => {
   const deadline = setTimeout(() => reject(new Error('LAMP_PREVIEW_IMPORT_TIMEOUT')), 30_000);
-  void import('../../ModelPreview').then(module => { clearTimeout(deadline); resolve(module); }, error => { clearTimeout(deadline); reject(error); });
+  void import('../../media/ModelPreview').then(module => { clearTimeout(deadline); resolve(module); }, error => { clearTimeout(deadline); reject(error); });
 }));
 
 export default function StudioLampPreview({ value, panelText, draft, zone, onSelectZone, expanded, onExpand, onClose, onMove, onMoveEnd, highlightTextBand = false, baseObjects, panelObjects, selectedId, onSelectObject, onMoveObject }: StudioObjectInteraction & { baseObjects?: readonly StudioObject[]; panelObjects?: readonly StudioObject[]; value: Lettering; panelText?: Lettering; draft: CreativeDraft; zone: 'panel' | 'base'; onSelectZone: (zone: 'panel' | 'base') => void; expanded: boolean; onExpand: () => void; onClose: () => void; onMove?: (x: number, y: number) => void; onMoveEnd?: () => void; highlightTextBand?: boolean }) {

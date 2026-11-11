@@ -12,7 +12,7 @@ import { variantById } from '../fixtures/loop';
 import { productCopy } from '../copy';
 import * as studio from '../studio/studioProducts';
 
-vi.mock('../ModelPreview', async () => {
+vi.mock('../media/ModelPreview', async () => {
   const { createPortal } = await import('react-dom');
   return { default: ({ target, decoration }: { target: HTMLElement | null; decoration?: { objects?: unknown } }) => target ? createPortal(<output data-testid="cart-model">{JSON.stringify(decoration?.objects)}</output>, target) : null };
 });

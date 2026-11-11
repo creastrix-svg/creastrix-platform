@@ -1,12 +1,12 @@
 import { useContext, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
-import type { SwatchColors } from './productDisplay';
-import { catalogCopy } from './browse/catalogCopy';
-import { productCopy } from './copy';
-import { Icon } from './Icon';
-import type { StorefrontLocale } from './locale';
-import { isCatalogPath } from './routes';
-import { StorefrontOrigin } from './storefrontOrigin';
+import type { SwatchColors } from '../productDisplay';
+import { catalogCopy } from '../browse/catalogCopy';
+import { productCopy } from '../copy';
+import { Icon } from '../Icon';
+import type { StorefrontLocale } from '../locale';
+import { isCatalogPath } from '../routes';
+import { StorefrontOrigin } from '../storefrontOrigin';
 import Carousel from './Carousel';
 import type { CarouselContent } from './carouselContent';
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Icon, Spinner } from './Icon';
+import { Icon, Spinner } from '../Icon';
 
 type Props = {
   src: string; alt: string; width: number; height: number; loadingLabel: string; errorLabel: string;
