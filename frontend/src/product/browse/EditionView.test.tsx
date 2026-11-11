@@ -3,17 +3,17 @@ import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router';
 import { expect, it } from 'vitest';
-import { createAppStore } from '../store';
-import { productCopy } from './copy';
-import { concepts } from './fixtures/loop';
-import { catalogCopy } from './browse/catalogCopy';
-import { productLocaleSelected } from './demoStore';
-import { editionCollectionPath, editionCopy, editionItems } from './fixtures/editionCatalog';
-import { storefrontLocales } from './locale';
-import type { StorefrontLocale } from './locale';
-import ProductExperience from './ProductExperience';
-import { isStorefrontPath } from './routes';
-import { searchCatalog, searchResultSummary } from './search';
+import { createAppStore } from '../../store';
+import { productCopy } from '../copy';
+import { concepts } from '../fixtures/loop';
+import { catalogCopy } from './catalogCopy';
+import { productLocaleSelected } from '../demoStore';
+import { editionCollectionPath, editionCopy, editionItems } from '../fixtures/editionCatalog';
+import { storefrontLocales } from '../locale';
+import type { StorefrontLocale } from '../locale';
+import ProductExperience from '../ProductExperience';
+import { isStorefrontPath } from '../routes';
+import { searchCatalog, searchResultSummary } from '../search';
 
 function open(path: string, locale: StorefrontLocale = 'en') {
   const store = createAppStore('en');

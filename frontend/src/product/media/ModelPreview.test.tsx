@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import ModelPreview from './ModelPreview';
-import { productCopy } from './copy';
+import { productCopy } from '../copy';
 
 vi.mock('@google/model-viewer', () => ({}));
 // Public APIs only: this fixture proves lifecycle/commands, not actual WebGL rendering.

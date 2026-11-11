@@ -3,10 +3,10 @@ import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router';
 import { expect, it } from 'vitest';
-import { createAppStore } from '../store';
-import ProductExperience from './ProductExperience';
-import { productCopy } from './copy';
-import { tideOffer } from './fixtures/tideOffer';
+import { createAppStore } from '../../store';
+import ProductExperience from '../ProductExperience';
+import { productCopy } from '../copy';
+import { tideOffer } from '../fixtures/tideOffer';
 
 it.each([
   ['Loop', '/products/loop', true],

@@ -8,7 +8,7 @@ import { createAppStore } from '../../store';
 import ProductExperience from '../ProductExperience';
 import { cartAdded, cartLineRestored, cartRemovedLineDismissed, productDescriptionChanged, productMediaModeSelected, productVariantSelected, purchaseQuantityChanged } from '../demoStore';
 import { productCopy } from '../copy';
-import { checkoutCopy } from '../checkoutCopy';
+import { checkoutCopy } from '../checkout/checkoutCopy';
 import type { CartSku } from '../cartSku';
 import { variantById } from '../fixtures/loop';
 import { money } from '../productDisplay';

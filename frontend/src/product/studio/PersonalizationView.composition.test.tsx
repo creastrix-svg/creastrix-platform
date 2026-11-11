@@ -19,7 +19,7 @@ import * as fonts from './design/studioFonts';
 vi.mock('./design/studioImage', async original => ({ ...await original<typeof import('./design/studioImage')>(), loadStudioImage: vi.fn() }));
 vi.mock('./preview/StudioLampPreview', () => ({ default: ({ baseObjects, panelObjects }: { baseObjects: readonly StudioObject[]; panelObjects: readonly StudioObject[] }) =>
   <div><output data-testid="base-objects">{JSON.stringify(baseObjects)}</output><output data-testid="panel-objects">{JSON.stringify(panelObjects)}</output></div> }));
-vi.mock('../ModelPreview', async () => {
+vi.mock('../media/ModelPreview', async () => {
   const { createPortal } = await import('react-dom');
   return { default: ({ target, decoration }: { target: HTMLElement | null; decoration?: ModelDecoration }) => target ? createPortal(<output data-testid="composition-model">{JSON.stringify(decoration?.objects)}</output>, target) : null };
 });

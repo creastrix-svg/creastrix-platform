@@ -27,11 +27,13 @@ Open [the built storefront](http://localhost:4173/). The preview serves `dist/`,
 | Change | Start here |
 | --- | --- |
 | Homepage campaigns and product discovery | [Home](src/product/home/) |
-| Catalog cards, filters and sorting | [Browse](src/product/browse/) |
+| Catalog cards, filters, sorting and design-concept collection | [Browse](src/product/browse/) |
 | Cart lines, totals and undo | [Cart](src/product/cart/) |
+| Local checkout preview and its transient details | [Checkout](src/product/checkout/) |
+| Product photos, 3D viewing and media fallbacks | [Media](src/product/media/) |
 | Personalisation tools, design documents, preview and local saves | [Studio](src/product/studio/) |
 | Local example products and the catalog adapter | [Product fixtures](src/product/fixtures/) and [catalog mapping](src/product/browse/catalogFixtures.ts) |
-| Shared product layout | [ProductCardLayout.tsx](src/product/ProductCardLayout.tsx) |
+| Shared product layout | [ProductCardLayout.tsx](src/product/detail/ProductCardLayout.tsx) |
 | Storefront shell and URL wiring | [ProductExperience.tsx](src/product/ProductExperience.tsx) |
 | Sign-in and account screens | [App.tsx](src/App.tsx) and the [client contract](docs/account-pilot.md) |
 

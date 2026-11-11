@@ -2,7 +2,7 @@ import { useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { productCopy } from './copy';
+import { productCopy } from '../copy';
 
 type PreviewProps = { target: HTMLElement | null; source?: string; onPhase?: (phase: 'ready') => void };
 function ImportedPreview({ target, source, onPhase }: PreviewProps) {

@@ -1,17 +1,17 @@
 import { useState } from 'react';
-import { useAppDispatch, useAppSelector } from '../hooks';
-import { variantById } from './fixtures/loop';
-import { productCopy } from './copy';
-import { cartAdded, favoriteToggled, variantCartQuantity } from './demoStore';
-import { editionItems } from './fixtures/editionCatalog';
-import { shelfCopy } from './home/homeShelfCopy';
-import { OfferMediaGallery } from './MediaGallery';
+import { useAppDispatch, useAppSelector } from '../../hooks';
+import { variantById } from '../fixtures/loop';
+import { productCopy } from '../copy';
+import { cartAdded, favoriteToggled, variantCartQuantity } from '../demoStore';
+import { editionItems } from '../fixtures/editionCatalog';
+import { shelfCopy } from '../home/homeShelfCopy';
+import { OfferMediaGallery } from '../media/MediaGallery';
 import ProductCardLayout from './ProductCardLayout';
-import ProductPrice from './ProductPrice';
+import ProductPrice from '../ProductPrice';
 import ProductPurchasePanel from './ProductPurchasePanel';
-import { tideOffer } from './fixtures/tideOffer';
-import { tideDetails } from './fixtures/tideDetails';
-import { useProductLocale } from './useProductLocale';
+import { tideOffer } from '../fixtures/tideOffer';
+import { tideDetails } from '../fixtures/tideDetails';
+import { useProductLocale } from '../useProductLocale';
 
 // An unsubmitted quantity is a local preference, never evidence of stock or a
 // cart line. Keep it separate from Loop's existing preference record.

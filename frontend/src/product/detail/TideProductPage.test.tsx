@@ -3,16 +3,16 @@ import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router';
 import { afterEach, expect, it } from 'vitest';
-import { createAppStore } from '../store';
-import { variantById } from './fixtures/loop';
-import { money } from './productDisplay';
-import { productCopy } from './copy';
-import { cartAdded, productLocaleSelected } from './demoStore';
-import { editionItems } from './fixtures/editionCatalog';
-import { storefrontLocales } from './locale';
-import type { StorefrontLocale } from './locale';
+import { createAppStore } from '../../store';
+import { variantById } from '../fixtures/loop';
+import { money } from '../productDisplay';
+import { productCopy } from '../copy';
+import { cartAdded, productLocaleSelected } from '../demoStore';
+import { editionItems } from '../fixtures/editionCatalog';
+import { storefrontLocales } from '../locale';
+import type { StorefrontLocale } from '../locale';
 import TideProductPage from './TideProductPage';
-import { tideOffer } from './fixtures/tideOffer';
+import { tideOffer } from '../fixtures/tideOffer';
 
 function mount(locale: StorefrontLocale = 'en', store = createAppStore('en')) {
   store.dispatch(productLocaleSelected(locale));

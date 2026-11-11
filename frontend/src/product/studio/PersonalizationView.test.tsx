@@ -21,7 +21,7 @@ import { lampBaseLetteringArea, loopLetteringArea, LETTERING_INSET } from './des
 
 // The adapter and real viewer have separate lifecycle/geometry tests. Here we
 // verify only the UI's variant/value/visibility contract at that boundary.
-vi.mock('../ModelPreview', async () => {
+vi.mock('../media/ModelPreview', async () => {
   const { createPortal } = await import('react-dom');
   const { useId } = await import('react');
   return { default: function ModelFixture({ target, decoration }: { target: HTMLElement | null; decoration: ModelDecoration }) {
