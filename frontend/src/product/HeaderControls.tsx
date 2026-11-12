@@ -1,10 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../hooks';
-import { isVariantId } from './fixtures/loop';
+import { isAppliedLoopVariant, isVariantId } from './fixtures/loop';
 import { money } from './productDisplay';
 import { cartOfferView, cartReturnOfferPath } from './cart/cartOfferView';
 import { isTideOfferPath } from './routes';
+import { catalogReady } from './catalog/localCatalog';
 import { tideOffer } from './fixtures/tideOffer';
 import { productCopy } from './copy';
 import { cartCount, cartLinePrice, cartLineRemoved, cartQuantityChanged, cartTotal } from './demoStore';
@@ -27,7 +28,7 @@ export function SearchControl() {
   const form = useRef<HTMLFormElement>(null), input = useRef<HTMLInputElement>(null);
   const id = useId(), navigate = useNavigate();
   const term = query.trim().toLocaleLowerCase();
-  const showing = open && draft?.key === location.key && term.length > 0 && !composing;
+  const showing = open && draft?.key === location.key && term.length > 0 && !composing && catalogReady();
   const items = showing ? searchCatalog(query, language, 5) : [];
   const active = selected?.key === location.key && selected.term === term ? items.find(item => item.id === selected.id) : undefined;
   const activeId = active?.id;
@@ -122,9 +123,9 @@ export function HeaderCart({ ready = true }: { ready?: boolean }) {
         const offer = cartOfferView(line.variant, language), id = cartLineId(line), designLabel = cartDesignLabel(line, language), context = offer.detail + (designLabel ? ' · ' + designLabel : '');
         const { baseCents, feeCents, unitCents } = cartLinePrice(line);
         return <div className="product-peek-line" key={id} data-cart-line-id={id}>
-        {line.design && isVariantId(line.variant) ? <DesignThumbnail design={line.design} variant={line.variant} label={designLabel} /> : offer.photo ? <img src={offer.photo} alt={offer.alt} width="58" height="58" /> : <span className="product-peek-swatch" style={{ background: offer.swatch }} aria-label={t.noPhoto} />}
+        {line.design && isAppliedLoopVariant(line.variant,line.templateRevision) ? <DesignThumbnail design={line.design} variant={line.variant} label={designLabel} /> : offer.photo ? <img src={offer.photo} alt={offer.alt} width="58" height="58" /> : <span className="product-peek-swatch" style={{ background: offer.swatch }} aria-label={t.noPhoto} />}
         <div><strong>{offer.name} · {offer.detail}</strong><span>{feeCents > 0 && line.quantity > 1 && <>{line.quantity} × {money(unitCents, language)} = </>}{money(unitCents * line.quantity, language)}</span>
-          {line.design && <div className="product-cart-design-meta"><span>{designLabel}</span><CartDesignPriceDetails baseCents={baseCents} feeCents={feeCents} language={language} /><Link aria-label={`${c.edit} · ${context}`} to={`/products/loop/personalize?variant=${line.variant}&edit=${encodeURIComponent(id)}`} onClick={() => setOpenKey(null)}>{c.edit}</Link></div>}
+          {line.design && <div className="product-cart-design-meta"><span>{designLabel}</span><CartDesignPriceDetails baseCents={baseCents} feeCents={feeCents} language={language} />{isVariantId(line.variant) && <Link aria-label={`${c.edit} · ${context}`} to={`/products/loop/personalize?variant=${line.variant}&edit=${encodeURIComponent(id)}`} onClick={() => setOpenKey(null)}>{c.edit}</Link>}</div>}
           <QuantityInput value={line.quantity} max={lineCapacity(demo, line)} onChange={quantity => dispatch(cartQuantityChanged({ variant: line.variant, id: line.id, quantity }))} t={t} context={context} /></div>
         <button type="button" className="product-icon-button" aria-label={`${t.remove} · ${context}`} onClick={() => { opener.current?.focus({ preventScroll: true }); dispatch(cartLineRemoved(id)); }}><Icon name="close" /></button>
       </div>; })}</div>

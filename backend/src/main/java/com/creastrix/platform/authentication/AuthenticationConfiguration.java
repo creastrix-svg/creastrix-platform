@@ -22,6 +22,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -205,7 +206,9 @@ public class AuthenticationConfiguration {
         @Bean
         SecurityFilterChain authenticationEnabled(HttpSecurity http, AuthenticationProperties properties,
                 ClientRegistrationRepository clients, CreastrixOidcUserService users,
-                AuthenticatedUserService internalUsers, Clock clock, BrowserSessionContextRegistry contexts) throws Exception {
+                AuthenticatedUserService internalUsers, Clock clock, BrowserSessionContextRegistry contexts,
+                ObjectProvider<LocalAccountCartController> localCartProvider) throws Exception {
+            var localCart = localCartProvider.getIfAvailable();
             defaults(http);
             var requests = new TimedAuthorizationRequests(clock);
             var authorizedClients = new OwnedAuthorizedClients(properties.registrationId());
@@ -216,7 +219,11 @@ public class AuthenticationConfiguration {
                         .additionalParameters(parameters -> {
                             parameters.put("prompt", "login");
                             parameters.put("max_age", "0");
-                        }).attributes(attributes -> attributes.put(FLOW_STARTED, clock.instant()));
+                        }).attributes(attributes -> {
+                            attributes.put(FLOW_STARTED, clock.instant());
+                            // Persist with the original OIDC state, not with whichever account completes last.
+                            if(localCart!=null) attributes.put(LocalCartSessionBinding.EPOCH,localCart.binding.commands.loginEpoch());
+                        });
             });
             var csrf = new HttpSessionCsrfTokenRepository();
             http.csrf(configurer -> configurer.csrfTokenRepository(csrf))
@@ -231,8 +238,12 @@ public class AuthenticationConfiguration {
                             .requestMatchers(HttpMethod.POST, CognitoEmailConfirmationController.CONFIRM_PATH,
                                     CognitoEmailConfirmationController.RESEND_PATH).access((authentication, context) ->
                                         new org.springframework.security.authorization.AuthorizationDecision(
-                                            properties.provider() == AuthenticationProperties.Provider.COGNITO
+                                            localCart == null && properties.provider() == AuthenticationProperties.Provider.COGNITO
                                                 && authentication.get() instanceof AnonymousAuthenticationToken))
+                            .requestMatchers(req -> localCart != null && LocalAccountCartController.PUBLIC_CATALOG.matches(req)).permitAll()
+                            .requestMatchers(req -> localCart != null && LocalAccountCartController.CART.matches(req)).authenticated()
+                            .requestMatchers(req -> localCart != null && LocalAccountCartController.artworkLine(req).isPresent()).authenticated()
+                            .requestMatchers(req -> localCart != null && LocalCartProtocol.route(req)!=null).authenticated()
                             .requestMatchers(HttpMethod.GET, "/api/me").authenticated()
                             .anyRequest().denyAll())
                     .oauth2Login(oauth -> oauth
@@ -241,12 +252,24 @@ public class AuthenticationConfiguration {
                             .authorizedClientRepository(authorizedClients)
                             .authorizationEndpoint(endpoint -> endpoint
                                     .authorizationRequestResolver(resolver).authorizationRequestRepository(requests))
-                            .userInfoEndpoint(endpoint -> endpoint.oidcUserService(users))
+                            .userInfoEndpoint(endpoint -> endpoint.oidcUserService(input -> {
+                                var principal=users.loadUser(input);
+                                if(localCart==null) return principal;
+                                var p=(CreastrixPrincipal)principal;
+                                try {
+                                    return new CreastrixPrincipal(p.userId(),p.identity(),p.authenticatedAt(),p.providerUser(),
+                                            localCart.binding.commands.eligibilityGeneration(p.userId()));
+                                } catch(RuntimeException unavailable) { throw CreastrixOidcUserService.rejected(); }
+                            }))
                             .successHandler((request, response, authentication) -> {
                                 request.getSession().setMaxInactiveInterval((int) AuthenticationProperties.IDLE_LIFETIME.toSeconds());
                                 var attempt = AuthenticationAttemptCoordinator.attempt(request);
                                 if (attempt == null) throw CreastrixOidcUserService.rejected();
                                 attempt.publish();
+                                if(localCart!=null) {
+                                    localCart.binding.select(request,authentication,contexts);
+                                    return; // RequestBoundary completes the durable lane after releasing the publication mutex.
+                                }
                                 redirect(response, properties.successUri());
                                 // Staging only: the publication lock is still held, and delivery is not proven.
                                 Diagnostics.mark(Diagnostics.Event.LOGIN_RESULT, Diagnostics.Reason.LOCAL_SUCCESS_SELECTED);
@@ -267,9 +290,10 @@ public class AuthenticationConfiguration {
                     .logout(logout -> logout
                             .logoutRequestMatcher(PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, LOGOUT_PATH))
                             .addLogoutHandler((request, response, authentication) -> {
+                                boolean laneRevoked=localCart==null || localCart.binding.logout(request,authentication,contexts);
                                 // CSRF has passed. Revoke the presented Q, not a Q inferred from stale SID.
                                 boolean revoked = contexts.revoke(BrowserSessionContextRegistry.cookie(request));
-                                request.setAttribute("prototype.context.logout", revoked);
+                                request.setAttribute("prototype.context.logout", revoked && laneRevoked);
                                 contexts.cleanup();
                                 AuthenticationAttemptCoordinator.revoke(request.getSession(false));
                                 expireCookie(response, properties);
@@ -284,8 +308,8 @@ public class AuthenticationConfiguration {
                                 }
                             }))
                     // Load the current principal first, but gate before CSRF, logout and OAuth processing.
-                    .addFilterAfter(new RequestBoundary(properties, clock, requests, contexts), SecurityContextHolderFilter.class)
-                    .addFilterBefore(new CurrentUserAccessFilter(internalUsers, properties, clock, contexts), AuthorizationFilter.class);
+                    .addFilterAfter(new RequestBoundary(properties, clock, requests, contexts,localCart), SecurityContextHolderFilter.class)
+                    .addFilterBefore(new CurrentUserAccessFilter(internalUsers, properties, clock, contexts, localCart), AuthorizationFilter.class);
             return http.build();
         }
     }
@@ -352,7 +376,13 @@ public class AuthenticationConfiguration {
         public void saveAuthorizationRequest(OAuth2AuthorizationRequest authorization, HttpServletRequest request,
                                              HttpServletResponse response) {
             locked(request, authorization != null, pinned -> {
-                delegate.saveAuthorizationRequest(authorization, pinned, response);
+                var saved=authorization;
+                if(saved!=null && pinned.getAttribute(LocalCartSessionBinding.GUEST_INTENT) instanceof java.util.UUID intent) {
+                    // Local server-side metadata only. It is not an OAuth parameter sent to the provider.
+                    saved=OAuth2AuthorizationRequest.from(saved)
+                            .attributes(attributes->attributes.put(LocalCartSessionBinding.GUEST_INTENT,intent)).build();
+                }
+                delegate.saveAuthorizationRequest(saved, pinned, response);
                 return null;
             });
         }
@@ -375,6 +405,10 @@ public class AuthenticationConfiguration {
                     throw CreastrixOidcUserService.rejected();
                 }
                 request.setAttribute(FLOW_STARTED, started);
+                if(saved.getAttributes().get(LocalCartSessionBinding.EPOCH) instanceof Long epoch)
+                    request.setAttribute(LocalCartSessionBinding.EPOCH,epoch);
+                if(saved.getAttributes().get(LocalCartSessionBinding.GUEST_INTENT) instanceof java.util.UUID intent)
+                    request.setAttribute(LocalCartSessionBinding.GUEST_INTENT,intent);
             }
             return saved;
         }
@@ -465,6 +499,7 @@ public class AuthenticationConfiguration {
     }
 
     static final class RequestBoundary extends OncePerRequestFilter {
+        private final LocalAccountCartController localCart;
         private final AuthenticationProperties properties;
         private final Clock clock;
         private final TimedAuthorizationRequests requests;
@@ -473,6 +508,11 @@ public class AuthenticationConfiguration {
         private final PathPatternRequestMatcher callbackMatcher;
         RequestBoundary(AuthenticationProperties properties, Clock clock, TimedAuthorizationRequests requests,
                         BrowserSessionContextRegistry contexts) {
+            this(properties,clock,requests,contexts,null);
+        }
+        RequestBoundary(AuthenticationProperties properties,Clock clock,TimedAuthorizationRequests requests,
+                        BrowserSessionContextRegistry contexts,LocalAccountCartController localCart) {
+            this.localCart=localCart;
             this.properties = properties;
             this.clock = clock;
             this.requests = requests;
@@ -525,12 +565,13 @@ public class AuthenticationConfiguration {
                 return;
             }
             AuthenticationAttemptCoordinator.Attempt attempt = null;
+            boolean chainCompleted=false;
             try {
                 if (entry) {
                     var session = request.getSession(false);
                     var coordinator = AuthenticationAttemptCoordinator.existing(session);
                     var intent = coordinator == null ? AuthenticationAttemptCoordinator.LoginIntent.REQUIRED
-                            : coordinator.consumeLoginIntent(session, clock);
+                            : coordinator.consumeLoginIntent(session, clock,localCart==null ? null : request);
                     if (intent != AuthenticationAttemptCoordinator.LoginIntent.ACCEPTED) {
                         boolean authenticated = intent == AuthenticationAttemptCoordinator.LoginIntent.ALREADY_AUTHENTICATED;
                         Diagnostics.mark(Diagnostics.Event.ACCESS_DENIED, authenticated
@@ -558,6 +599,7 @@ public class AuthenticationConfiguration {
                     request = attempt.pin(request);
                 }
                 chain.doFilter(request, response);
+                chainCompleted=true;
             }
             catch (AuthenticationAttemptCoordinator.Unavailable | BrowserSessionContextRegistry.Capacity contention) {
                 Diagnostics.mark(Diagnostics.Event.REQUEST_FAILURE, Diagnostics.Reason.SESSION_COORDINATION_UNAVAILABLE);
@@ -574,6 +616,14 @@ public class AuthenticationConfiguration {
                 else {
                     jsonError(response, 503);
                 }
+            }
+            catch(LocalCartSessionBinding.Refusal | com.creastrix.platform.accountcart.LocalCartCommands.Conflict stale) {
+                if(localCart==null || response.isCommitted()) throw stale;
+                jsonError(response,409);
+            }
+            catch(LocalCartSessionBinding.Establishing | com.creastrix.platform.accountcart.LocalCartCommands.Unavailable unavailable) {
+                if(localCart==null || response.isCommitted()) throw unavailable;
+                jsonError(response,503);
             }
             catch (ServletException failure) {
                 // MVC wraps the controller's expected coordination refusal once. Do not
@@ -616,6 +666,7 @@ public class AuthenticationConfiguration {
                     }
                 }
             }
+            if(callback && localCart!=null) localCart.binding.complete(request,response,properties,contexts,chainCompleted);
         }
     }
 

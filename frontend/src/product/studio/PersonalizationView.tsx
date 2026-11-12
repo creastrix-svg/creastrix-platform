@@ -28,6 +28,13 @@ import type { CartLine } from '../demoStore';
 import { designKey, saveDesign, sessionWithDocument } from './session/designSnapshot';
 import { useDesignDocument } from './session/useDesignDocument';
 import { studioCartCopy } from '../cart/studioCartCopy';
+import { GuestCartActionsEnabled } from '../cart/guestCartActions';
+import { ReadOnlyCartNotice } from '../detail/ProductPurchasePanel';
+import { permanentCatalogMode } from '../catalog/permanentCatalog';
+import { designFontHint, designLabels } from '../cart/accountProductLabels';
+import { isLoopV2Font, loopV2Fonts } from './design/loopV2Fonts';
+import { transferableLoopFont } from './design/studioFonts';
+import { NotFoundView } from '../NotFoundView';
 import { useProductLocale } from '../useProductLocale';
 import './personalization.css';
 import { useStudioCreative, creativeDraft, sameArtwork } from './session/studioCreativeContext';
@@ -76,13 +83,17 @@ function measureText(text: string, font: string) {
 }
 
 export default function PersonalizationView() {
+  const guestActions = useContext(GuestCartActionsEnabled);
   const [params] = useSearchParams(), remembered = useAppSelector(state => state.productDemo.selectedVariant);
   const values = params.getAll('variant');
   const variant = values.length === 0 ? remembered : values.length === 1 && isVariantId(values[0]) ? values[0] : 'cobalt';
   const products = params.getAll('product');
+  if(permanentCatalogMode && ((products.length>0 && (products.length!==1 || products[0]!=='loop'))
+      || (values.length>0 && (values.length!==1 || !isVariantId(values[0]))))) return <NotFoundView/>;
   const initialProduct = products.length === 1 && products[0] === 'lamp' ? 'lamp' : 'loop';
   const editing = params.getAll('edit');
   if (editing.length) {
+    if (!guestActions) return <ReadOnlyCartNotice />;
     const validTarget = editing.length === 1 && (values.length === 0 || (values.length === 1 && isVariantId(values[0])))
       && (products.length === 0 || (products.length === 1 && products[0] === 'loop'));
     return <CartEditor key={editing[0]} id={validTarget ? editing[0] : ''} expectedVariant={values[0]} />;
@@ -153,6 +164,18 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
   useEffect(() => () => dispatch({ type: 'endGroup', variant: target }), [dispatch, target]);
   const [stencilStatus, setStencilStatus] = useState<StencilStatus>('pending');
   const fontLibrary = creative.fonts(), needsStencil = example === 'lamp' && profile.zones.some(item => item.fonts.includes('stencil'));
+  const requiredFaces=permanentCatalogMode ? loopV2Fonts.filter(id=>baseDocument.objects.some(o=>o.kind==='text' && o.value.font===id)).join(',') : '';
+  const [fontCheck,setFontCheck]=useState<{key:string;failed:boolean}|null>(null);
+  const [fontAttempt,retryFontCheck]=useReducer((n:number)=>n+1,0);
+  useEffect(()=>{
+    if(!requiredFaces) return;
+    const controller=new AbortController(), key=requiredFaces;
+    const faces=key.split(',').filter(isLoopV2Font);
+    void Promise.all(faces.map(id=>fontLibrary.loadBuiltin(id,{signal:controller.signal}))).then(
+      ()=>{if(!controller.signal.aborted) setFontCheck({key,failed:false});},
+      ()=>{if(!controller.signal.aborted) setFontCheck({key,failed:true});});
+    return ()=>controller.abort();
+  },[fontLibrary,requiredFaces,fontAttempt]);
   useEffect(() => {
     if (!needsStencil) return;
     const controller = new AbortController();
@@ -178,6 +201,11 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
         return object;
       }
       const result = inspectZoneLettering(profile, zoneId, object.value, measureText, stencilStatus);
+      if(permanentCatalogMode && example==='loop' && owner===variant) {
+        const font=object.value.font;
+        if(!transferableLoopFont(font)) issue??='font';
+        else if(isLoopV2Font(font) && (fontCheck?.key!==requiredFaces || fontCheck.failed)) issue??=fontCheck?.key===requiredFaces ? 'font' : 'loading';
+      }
       issue ??= result.issue;
       return { ...object, value: { ...result.shown, text: result.valid ? result.shown.text : '' } };
     });
@@ -191,7 +219,8 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
     const bounds = getStudioZone(profile, owner)?.textLimits ?? limits;
     return p.textLimited.replace('{characters}', String(bounds.maxCharacters)).replace('{lines}', String(bounds.maxLines));
   };
-  const issueText = (issue?: LetteringIssue, owner = selectedZone) => issue === 'unsupported' ? z.cutUnsupported : issue === 'loading' ? z.cutFontLoading : issue === 'font' ? z.cutFontFailed : issue === 'limits' ? limitMessage(owner) : issue === 'fit' ? p.textTooWide : '';
+  const issueText = (issue?: LetteringIssue, owner = selectedZone) => permanentCatalogMode && issue==='font' ? designFontHint[language]
+    : permanentCatalogMode && issue==='loading' ? cartCopy.loading : issue === 'unsupported' ? z.cutUnsupported : issue === 'loading' ? z.cutFontLoading : issue === 'font' ? z.cutFontFailed : issue === 'limits' ? limitMessage(owner) : issue === 'fit' ? p.textTooWide : '';
   const invalidZone = example === 'lamp' ? !panelInspected.valid ? 'panel' : !baseInspected.valid ? 'base' : undefined : undefined;
   const wholeIssue = invalidZone ? `${z.zoneNames[invalidZone]}: ${issueText(invalidZone === 'panel' ? panelInspected.issue : baseInspected.issue, invalidZone)}` : issueText(baseInspected.issue);
   // Changing font/size keeps the artwork inside the visual working area. The
@@ -215,8 +244,10 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
     // FontTools calls back only after successful loading. This also allows a
     // deliberate retry to recover a failed initial stencil request.
     if (patch.font === 'stencil') setStencilStatus('ready');
+    if (permanentCatalogMode && isLoopV2Font(patch.font)) retryFontCheck();
     setAppliedMessage(false); setTextLimited(false);
     dispatch({ type: 'update', variant: target, id: selected.id, object: { ...selected, value: { ...shown, ...patch,
+      ...(permanentCatalogMode ? {font:patch.font??value.font} : {}),
       text: cleanLetteringText(patch.text ?? shown.text, limits),
       size: clamp(patch.size ?? shown.size, limits.minSize, limits.maxSize),
       ...(!zone.allowPosition ? { x: 240, y: 278 } : {}),
@@ -326,7 +357,7 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
         <StudioObjectTools objects={document.objects} selectedId={document.selectedId} onSelect={selectObject} canAddText={zone.tools.includes('text')} canAddImage={zone.tools.includes('image')} imagePending={pendingImage} imageHintId={id + '-image-hint'} onAdd={kind => { if (kind === 'image') { pickImage('add'); return; } leaveZone(); setSelectedTool('text'); dispatch({ type: 'add', variant: target, kind: 'text' }); }} onDelete={() => { if (selected) { leaveZone(); dispatch({ type: 'delete', variant: target, id: selected.id }); } }} onReorder={direction => { if (selected) { endGroup(); dispatch({ type: 'reorder', variant: target, id: selected.id, direction }); setAppliedMessage(false); } }} />
         {canUseStudioTool(profile, zone.id, 'image') && <div className="studio-image-feedback">
           <input hidden type="file" ref={imageInput} accept="image/png,image/jpeg,image/webp" aria-label={e.uploadImage} disabled={pendingImage} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void acceptImageFile(file); }} />
-          <p id={id + '-image-hint'}>{e.imageFormats}. {e.imageLocalOnly}</p>
+          <p id={id + '-image-hint'}>{e.imageFormats}. {permanentCatalogMode ? designLabels[language][1] : e.imageLocalOnly}</p>
           <div className="studio-upload-message" role={imageError ? 'alert' : 'status'}>{imageError || (pendingImage ? c.loadingImage : imageStatus === 'added' ? e.imageLoaded : imageStatus === 'replaced' ? e.imageReplaced : '')}</div>
         </div>}
         {zone.tools.length > 1 && <div className="studio-tool-tabs" role="group" aria-label={p.eyebrow}>{zone.tools.filter(tab => !onSave || tab !== 'ai').map(tab => <button type="button" key={tab} disabled={tab === 'image' && !document.objects.some(object => object.kind === 'image')} aria-pressed={tool === tab} onClick={() => chooseTool(tab)}><Icon name={toolIcon(tab)} />{toolLabel(tab)}</button>)}</div>}
@@ -362,7 +393,7 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
         </div>
       </section>
     </div>}
-    <details className="studio-disclosure"><summary><Icon name="help" />{p.disclosureTitle}<Icon name="chevron" /></summary><p>{p.disclosureBody}</p><p>{example === 'loop' ? cartCopy.localNote : p.savedNote}</p></details>
+    <details className="studio-disclosure"><summary><Icon name="help" />{p.disclosureTitle}<Icon name="chevron" /></summary><p>{p.disclosureBody}</p><p>{permanentCatalogMode ? designLabels[language][1] : example === 'loop' ? cartCopy.localNote : p.savedNote}</p></details>
     {resetOpen && <Modal title={e.resetTextTitle} closeLabel={t.close} onClose={() => setResetOpen(false)}><div className="studio-reset"><p>{e.resetTextBody}</p><div><button type="button" className="product-secondary" onClick={() => setResetOpen(false)}>{p.cancel}</button><button type="button" className="product-primary" onClick={() => { supersedeFont(); dispatch({ type: 'reset', variant: target }); setResetOpen(false); setAppliedMessage(false); setTextLimited(false); }}>{p.confirmReset}</button></div></div></Modal>}
   </div>;
 }

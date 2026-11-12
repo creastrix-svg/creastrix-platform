@@ -12,8 +12,13 @@ import { defaultLettering } from '../design/personalization';
 import { serializeStudio, studioStorage } from './studioStorage';
 import { createStudioFontLibrary, studioFontFamily, studioFontResource } from '../design/studioFonts';
 import { decodedDesign, saveDesign } from './designSnapshot';
+import * as guestBatch from '../../cart/guestCartBatch';
 
 const disk = vi.hoisted(() => ({ raw: null as string | null, writes: [] as string[] }));
+const lane=vi.hoisted(()=>({synthetic:false}));
+vi.mock('../../catalog/permanentCatalog',async original=>({
+  ...await original<typeof import('../../catalog/permanentCatalog')>(),get permanentCatalogMode(){return lane.synthetic;},
+}));
 vi.mock('./studioStorage', async original => ({
   ...await original<typeof import('./studioStorage')>(),
   // Only the IDB transport is controlled. Production serialization, hydration,
@@ -34,6 +39,7 @@ beforeEach(() => {
   Object.defineProperty(document, 'fonts', { configurable: true, value: { add: vi.fn(), delete: vi.fn() } });
   vi.stubGlobal('FontFace', class { async load() { return this; } });
   disk.raw = null; disk.writes = [];
+  lane.synthetic=false;
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -47,6 +53,34 @@ function show(store = createAppStore('en')) {
   return render(<Provider store={store}><MemoryRouter initialEntries={['/preview/cart']}><PersistentStudio><DraftProbe /></PersistentStudio></MemoryRouter></Provider>);
 }
 const ready = () => screen.findByText('READY');
+
+it('adopts the new guest partition even when Redux survives and never re-saves captured units on handback', async () => {
+  let changed: (() => void) | undefined;
+  // The real-IDB suite owns partition broadcasts and CAS. Here the synthetic
+  // transport injects their delivery into a real retained Redux/React tree.
+  vi.spyOn(guestBatch, 'subscribeGuestPartition').mockImplementation(listener => {
+    changed=listener; return () => { changed=undefined; };
+  });
+  vi.spyOn(guestBatch, 'guestPartition').mockImplementation(raw => raw===null ? undefined : JSON.parse(raw).guestPartition);
+  vi.spyOn(guestBatch, 'versionGuestSave').mockImplementation((value, expected) => {
+    const data=JSON.parse(value), partition=expected && JSON.parse(expected).guestPartition;
+    if(partition) data.guestPartition=partition;
+    return JSON.stringify(data);
+  });
+  const store=createAppStore('en');
+  let view=show(store); await ready();
+  act(()=>{store.dispatch(cartAdded({variant:'coral',quantity:2}));});
+  await waitFor(()=>expect(JSON.parse(disk.raw!).lines[0].quantity).toBe(2));
+  disk.raw=JSON.stringify({...JSON.parse(disk.raw!),lines:[],guestPartition:'a new durable partition'});
+  act(()=>changed!());
+  await waitFor(()=>expect(store.getState().productDemo.cart).toEqual([]));
+  expect(JSON.parse(disk.raw!).lines).toEqual([]);
+  act(()=>{store.dispatch(cartAdded({variant:'coral',quantity:1}));});
+  await waitFor(()=>expect(JSON.parse(disk.raw!).lines).toEqual([{variant:'coral',quantity:1}]));
+  view.unmount();view=show(store);await ready();
+  expect(store.getState().productDemo.cart).toEqual([{variant:'coral',quantity:1}]);
+  view.unmount();
+});
 const saved = () => waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Saved in this browser'));
 const failed = () => waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Not saved locally'));
 
@@ -62,6 +96,61 @@ function holdNextWrite() {
   });
   return (success: boolean) => act(async () => { release(success); });
 }
+
+it('archives a delayed unsaved +1 on partition change and never republishes it on route handback or reload',async()=>{
+  let changed:(()=>void)|undefined;
+  vi.spyOn(guestBatch,'subscribeGuestPartition').mockImplementation(fn=>{changed=fn;return ()=>{changed=undefined;};});
+  vi.spyOn(guestBatch,'guestPartition').mockImplementation(raw=>raw===null ? undefined : JSON.parse(raw).guestPartition);
+  const held=vi.spyOn(guestBatch,'quarantineGuestEdit').mockResolvedValue(true);
+  const store=createAppStore('en');
+  let view=show(store);await ready();
+  act(()=>{store.dispatch(cartAdded({variant:'coral',quantity:2}));});
+  await saved();
+  const base=disk.raw!,release=holdNextWrite();
+  act(()=>{store.dispatch(cartAdded({variant:'coral',quantity:1}));});
+  const local=vi.mocked(studioStorage).mock.lastCall![1]!;
+  expect(JSON.parse(local).lines).toEqual([{variant:'coral',quantity:3}]);
+  const after=JSON.stringify({...JSON.parse(base),lines:[],guestPartition:crypto.randomUUID()});
+  disk.raw=after; // real adapter serializes the peer's seal ahead of the delayed save
+  act(()=>changed!());
+  await waitFor(()=>expect(document.querySelector('[data-guest-edit-quarantined]')).not.toBeNull());
+  expect(held).toHaveBeenCalledWith(expect.any(String),base,local);
+  await release(true); // stale original CAS fails; it cannot revive 2 or the disputed +1
+  expect(disk.raw).toBe(after);
+  const writes=disk.writes.length;
+  view.unmount();view=show(store);
+  await waitFor(()=>expect(document.querySelector('[data-guest-edit-quarantined]')).not.toBeNull());
+  expect(screen.queryByText('READY')).not.toBeInTheDocument();expect(disk.writes).toHaveLength(writes);
+  expect(disk.raw).toBe(after);
+  view.unmount();
+  const fresh=createAppStore('en');view=show(fresh);await ready();
+  expect(fresh.getState().productDemo.cart).toEqual([]);
+  act(()=>{fresh.dispatch(cartAdded({variant:'coral',quantity:1}));});
+  await waitFor(()=>expect(JSON.parse(disk.raw!).lines).toEqual([{variant:'coral',quantity:1}]));
+  view.unmount();
+});
+
+it('never offers synthetic memory-only shopping without IndexedDB and holds unproven retained Redux apart after storage returns',async()=>{
+  lane.synthetic=true;vi.stubGlobal('indexedDB',undefined);
+  const store=createAppStore('en');
+  let view=show(store);
+  expect(await screen.findByRole('alert')).toHaveTextContent('could not be restored');
+  expect(screen.queryByRole('button',{name:'Continue without local saving'})).not.toBeInTheDocument();
+  expect(screen.queryByText('READY')).not.toBeInTheDocument();
+  view.unmount();vi.stubGlobal('indexedDB',{});
+  const hold=vi.spyOn(guestBatch,'quarantineGuestEdit').mockResolvedValue(false);
+  // Orphan from an older, memory-only document: no guest CAS checkpoint.
+  lane.synthetic=false;
+  act(()=>store.dispatch(cartAdded({variant:'coral',quantity:3})));
+  expect(store.getState().productDemo.cart).toEqual([{variant:'coral',quantity:3}]);
+  lane.synthetic=true;
+  view=show(store);
+  await waitFor(()=>expect(document.querySelector('[data-guest-edit-quarantined]')).not.toBeNull());
+  expect(hold).toHaveBeenCalledWith(expect.any(String),null,expect.any(String));
+  expect(JSON.parse(hold.mock.calls[0][2]).lines).toEqual([{variant:'coral',quantity:3}]);
+  expect(disk.raw).toBeNull();expect(disk.writes).toEqual([]);
+  view.unmount();
+});
 
 it.each([true, false])('waits for the latest byte-identical A intent (commit succeeds: %s)', async success => {
   const store = createAppStore('en');

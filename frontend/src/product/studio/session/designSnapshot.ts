@@ -6,6 +6,8 @@ import { cleanLetteringText } from '../design/personalization';
 import type { StudioImage } from '../design/studioImage';
 import { isStudioFontId, studioFontResource } from '../design/studioFonts';
 import type { StudioFontId } from '../design/studioFonts';
+import { permanentCatalogMode } from '../../catalog/permanentCatalog';
+import { transferableLoopFont } from '../design/studioFonts';
 
 type SavedPicture = { src: string; aspect: number };
 export type SavedObject = { id: string; kind: 'text'; value: Lettering }
@@ -44,6 +46,7 @@ export function saveDesign(document: CompositionDocument | undefined): SavedDesi
 }
 export const designKey = (design?: SavedDesign) => design ? JSON.stringify(design.objects.map(object => ({ kind: object.kind, value: object.value, ...(object.kind === 'image' ? { fit: object.fit } : {}) }))) : '';
 export const visibleDesign = (design?: SavedDesign) => !!design?.objects.some(object => object.kind === 'image' || object.value.text.trim());
+export const supportsAppliedFonts = (design:SavedDesign) => design.objects.every(o=>o.kind!=='text' || transferableLoopFont(o.value.font));
 export function copyDesign(design: SavedDesign): SavedDesign {
   const copy = JSON.parse(JSON.stringify(design)) as SavedDesign, document = decoded.get(design);
   if (document) decoded.set(copy, document);
@@ -95,7 +98,10 @@ export async function loadDesign(design: SavedDesign, cache = new Map<string, St
     const saved = object.value.image;
     let image = cache.get(saved.src);
     if (!image) {
-      image = await loadNormalizedStudioImage(new File([base64Bytes(saved.src.split(',')[1])], 'preview.png', { type: 'image/png' }), signal);
+      const pixels = await loadNormalizedStudioImage(new File([base64Bytes(saved.src.split(',')[1])], 'preview.png', { type: 'image/png' }), signal);
+      // Canvas encoding is not stable across reloads. Keep the guest's original
+      // normalized file as the transfer identity; the decoded pixels are for preview.
+      image = permanentCatalogMode ? {...pixels,src:saved.src} : pixels;
       cache.set(saved.src, image);
     }
     if (Math.abs(image.aspect - saved.aspect) > .01) throw new Error('STUDIO_STORAGE_ASPECT');

@@ -7,8 +7,11 @@ import { useAppDispatch, useAppSelector } from './hooks';
 import { copy } from './i18n';
 import { languageSelected } from './store';
 import { isStorefrontPath } from './product/routes';
+import type { LocalCartSession } from './product/cart/localCartSession';
+import GuestCartTransferNotice from './product/cart/GuestCartTransferNotice';
 
 const ProductExperience = lazy(() => import('./product/ProductExperience'));
+const LocalAccountStorefront = lazy(() => import('./product/cart/LocalAccountStorefront'));
 
 function useCopy() { return copy[useAppSelector(state => state.ui.language)]; }
 
@@ -32,25 +35,37 @@ function AccountActions() {
   </div>;
 }
 
-function Login() {
+function Login({cartSession}:{cartSession?:LocalCartSession}) {
   const t = useCopy();
   const runtime = useContext(AuthenticationContext);
   const { phase, notice } = useAppSelector(state => state.authentication);
   const tokenInput = useRef<HTMLInputElement>(null);
+  const intentInput = useRef<HTMLInputElement>(null);
   const { search } = useLocation();
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     if (!runtime || phase !== 'ANONYMOUS') return;
+    let sealed:string|null=null;
     void runtime.login(token => {
       const input = tokenInput.current;
       if (!input || !form.isConnected) throw new Error('AUTH_FORM_UNAVAILABLE');
       input.name = token.parameterName;
       input.value = token.token;
+      if(cartSession) {
+        const field=intentInput.current;
+        if(!field) throw new Error('AUTH_FORM_UNAVAILABLE');
+        field.disabled=sealed===null;
+        field.value=sealed??'';
+      }
       // Bypass this handler only after the controller's final synchronous ownership check.
       // Native navigation keeps OIDC outside fetch and may display an early opaque backend 4xx.
       HTMLFormElement.prototype.submit.call(form);
-    });
+    }, cartSession ? async current=>{
+      const live=()=>form.isConnected && current();
+      sealed=await cartSession.sealBeforeLogin(live);
+      if (!live()) throw new Error('AUTH_FORM_UNAVAILABLE');
+    } : undefined);
   }
   return <div className="two-column">
     <section className="page-intro"><p className="eyebrow">{t.loginEyebrow}</p><h1>{t.loginTitle}</h1><p className="lead">{t.loginLead}</p></section>
@@ -61,6 +76,7 @@ function Login() {
         {phase === 'AUTHENTICATED' ? <Link className="button primary" to="/account">{t.openAccount}</Link>
           : <form method="post" action="/auth/login" target="_self" onSubmit={submit}>
             <input type="hidden" name="_csrf" defaultValue="" ref={tokenInput} data-auth-csrf />
+            {cartSession && <input type="hidden" name="cart_intent" disabled ref={intentInput} />}
             <button className="button primary" type="submit" disabled={!runtime || phase !== 'ANONYMOUS' || notice === 'DEV_ONLY'}>{t.continueLogin}</button>
           </form>}
         <AccountActions /><p className="small boundary-note">{t.nativeErrorNote}</p>
@@ -96,7 +112,7 @@ function NotFound() {
   return <section className="not-found page-intro"><p className="eyebrow">{t.notFoundEyebrow}</p><h1>{t.notFoundTitle}</h1><p className="lead">{t.notFoundBody}</p><Link className="button primary" to="/">{t.backHome}<span aria-hidden="true">→</span></Link></section>;
 }
 
-export default function App() {
+export default function App({ cartSession }: { cartSession?: LocalCartSession } = {}) {
   const language = useAppSelector(state => state.ui.language);
   const auth = useAppSelector(state => state.authentication);
   const runtime = useContext(AuthenticationContext);
@@ -122,7 +138,7 @@ export default function App() {
     if (auth.phase === 'AUTHENTICATED' && auth.owner && auth.user) runtime?.reveal(auth.owner);
   }, [auth, runtime]);
 
-  if (storefront) return <Suspense fallback={<p role="status">Creastrix…</p>}><ProductExperience /></Suspense>;
+  if (storefront) return <Suspense fallback={<p role="status">Creastrix…</p>}>{cartSession ? <><GuestCartTransferNotice session={cartSession} /><LocalAccountStorefront session={cartSession} /></> : <ProductExperience />}</Suspense>;
 
   return <div className="shell">
     <a className="skip-link" href="#main">{t.skip}</a>
@@ -135,7 +151,7 @@ export default function App() {
       </div>
     </header>
     <div className="demo-strip"><span className="badge">{t.pilotLabel}</span><span>{t.pilotBoundary}</span></div>
-    <main id="main" ref={main} tabIndex={-1}><Routes><Route path="/login" element={<Login />} /><Route path="/confirm-email" element={<ConfirmEmail />} /><Route path="/account" element={<Account />} /><Route path="*" element={<NotFound />} /></Routes></main>
+    <main id="main" ref={main} tabIndex={-1}><Routes><Route path="/login" element={<Login cartSession={cartSession} />} /><Route path="/confirm-email" element={<ConfirmEmail />} /><Route path="/account" element={<><Account />{cartSession && <GuestCartTransferNotice session={cartSession} />}</>} /><Route path="*" element={<NotFound />} /></Routes></main>
     <footer><span>{t.footer}</span><span>{t.footerNote}</span></footer>
   </div>;
 }

@@ -18,8 +18,9 @@ const localCatalogProxy = { [catalogProxyPattern]: { target: 'http://127.0.0.1:8
 export const frontendConfig = (mode: string) => ({
   plugins: [react()],
   build: { outDir: mode === 'local-catalog' ? 'dist-local-catalog' : 'dist' },
-  server: { host: '127.0.0.1', port: mode === 'local-catalog' ? 4174 : 3000, strictPort: true,
-    proxy: mode === 'local-catalog' ? localCatalogProxy : { [AUTH_PROXY_PATTERN]: authProxy } },
+  server: { host: '127.0.0.1', port: mode === 'local-catalog' ? 4174 : mode === 'account-cart-local' ? 4317 : 3000, strictPort: true,
+    proxy: mode === 'local-catalog' ? localCatalogProxy : { [AUTH_PROXY_PATTERN]: mode === 'account-cart-local'
+      ? { ...authProxy, target: 'http://127.0.0.1:8191' } : authProxy } },
   preview: { host: '127.0.0.1', port: mode === 'local-catalog' ? 4174 : 3000, strictPort: true,
     proxy: mode === 'local-catalog' ? localCatalogProxy : {} },
   test: {

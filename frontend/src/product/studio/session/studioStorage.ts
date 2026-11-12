@@ -6,13 +6,15 @@ import { cartLineId } from '../../demoStore';
 import type { CartLine, ProductDemoState } from '../../demoStore';
 import { cartSkuStock, isCartSku } from '../../cartSku';
 import { catalogReady, connectedMode, isCatalogKey, isReservedCartLineId } from '../../catalog/localCatalog';
-import { isVariantId } from '../../fixtures/loop';
+import { isAppliedLoopVariant } from '../../fixtures/loop';
 import type { CreativeSession, CreativeDraft } from './studioCreativeContext';
 import { emptyCreativeDraft } from './studioCreativeContext';
 import type { LoadedStudioFont, createStudioFontLibrary, StudioFontId, BuiltinStudioFont } from '../design/studioFonts';
 import { builtinStudioFonts } from '../design/studioFonts';
 import { rasterDimensions, STUDIO_NORMALIZED_IMAGE_BYTES } from '../design/studioImage';
 import type { StudioImage } from '../design/studioImage';
+import { isolateLegacyCart } from '../../cart/guestCartHandoff';
+import { permanentCatalogMode } from '../../catalog/permanentCatalog';
 
 export const MAX_LOCAL_DESIGN_CHARS = 24 * 1024 * 1024;
 const MAX_RASTER_CHARS = 22 + 4 * Math.ceil(STUDIO_NORMALIZED_IMAGE_BYTES / 3);
@@ -88,8 +90,9 @@ export async function restoreStudio(raw: string, fonts: ReturnType<typeof create
       const object = record(raw), v = record(object.value);
       if (object.kind === 'text') {
         const font = remap.get(String(v.font)) ?? v.font;
-        if (builtinStudioFonts.includes(font as BuiltinStudioFont)) builtin.add(font as BuiltinStudioFont);
-        else if (!customFonts.some(item => item.id === font)) throw new Error('STUDIO_STORAGE_FONT_REFERENCE');
+        if (builtinStudioFonts.includes(font as BuiltinStudioFont)) {
+          if (!permanentCatalogMode || typeof v.text!=='string' || v.text.trim()) builtin.add(font as BuiltinStudioFont);
+        } else if (!customFonts.some(item => item.id === font)) throw new Error('STUDIO_STORAGE_FONT_REFERENCE');
         return { ...object, value: { ...v, font } };
       }
       const image = record(v.image);
@@ -127,11 +130,13 @@ export async function restoreStudio(raw: string, fonts: ReturnType<typeof create
       ids.add(line.variant); unavailableLines.push({ variant: line.variant, quantity: line.quantity });
       continue;
     }
-    if (!isVariantId(line.variant) && line.design !== undefined) throw new Error('STUDIO_STORAGE_CART');
+    if (line.design !== undefined && !isAppliedLoopVariant(line.variant,line.templateRevision)) throw new Error('STUDIO_STORAGE_CART');
     const saved = line.design ? design(line.design) : undefined;
     if (saved && (typeof line.id !== 'string' || !/^design-[1-9][0-9]{0,11}$/.test(line.id))) throw new Error('STUDIO_STORAGE_LINE_ID');
     if (!saved && line.id !== undefined) throw new Error('STUDIO_STORAGE_LINE_ID');
-    const next: CartLine = { variant: line.variant, quantity: line.quantity, ...(saved ? { id: line.id as string, design: saved } : {}) };
+    if(permanentCatalogMode && (saved ? line.templateRevision!=='2' : line.templateRevision!==undefined)) throw new Error('STUDIO_STORAGE_TEMPLATE');
+    const next: CartLine = { variant: line.variant, quantity: line.quantity, ...(saved ? { id: line.id as string, design: saved,
+      ...(permanentCatalogMode ? {templateRevision:line.templateRevision as string} : {}) } : {}) };
     const id = cartLineId(next);
     if (ids.has(id)) throw new Error('STUDIO_STORAGE_DUPLICATE');
     ids.add(id); lines.push(next);
@@ -162,10 +167,13 @@ export async function restoreStudio(raw: string, fonts: ReturnType<typeof create
 /** No cookies, network or account identifier. Completion means transaction
  * completion, not merely a successful request; a timeout aborts an owned write. */
 let storageQueue: Promise<unknown> = Promise.resolve();
-export function studioStorage(operation: 'read' | 'write', value?: string, expected?: string | null): Promise<string | null> {
-  const next = storageQueue.then(() => storageOperation(operation, value, expected));
+export function queueStudioStorage<T>(operation: () => Promise<T>): Promise<T> {
+  const next = storageQueue.then(operation);
   storageQueue = next.catch(() => undefined);
   return next;
+}
+export function studioStorage(operation: 'read' | 'write', value?: string, expected?: string | null): Promise<string | null> {
+  return queueStudioStorage(() => storageOperation(operation, value, expected));
 }
 function storageOperation(operation: 'read' | 'write', value?: string, expected?: string | null): Promise<string | null> {
   return new Promise((resolve, reject) => {
@@ -184,11 +192,16 @@ function storageOperation(operation: 'read' | 'write', value?: string, expected?
         db = open.result; if (settled) { db.close(); return; }
         db.onversionchange = () => db?.close();
         try {
-          transaction = db.transaction('snapshot', operation === 'write' ? 'readwrite' : 'readonly');
-          const request = transaction.objectStore('snapshot').get('current');
+          transaction = db.transaction('snapshot', operation === 'write' || permanentCatalogMode ? 'readwrite' : 'readonly');
+          const store=transaction.objectStore('snapshot'), request = store.get('current');
           request.onsuccess = () => {
             if (request.result !== undefined && typeof request.result !== 'string') { transaction?.abort(); return; }
             result = request.result ?? null;
+            if (operation === 'read' && result !== null && permanentCatalogMode) {
+              try { result=isolateLegacyCart(result,store,MAX_LOCAL_DESIGN_CHARS); }
+              catch { transaction?.abort(); }
+              return;
+            }
             if (operation === 'write') {
               // A concurrent tab is not silently overwritten. The current tab
               // keeps its live work and reports that local saving failed.

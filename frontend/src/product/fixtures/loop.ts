@@ -1,6 +1,7 @@
 import type { StorefrontLocale } from '../locale';
 import type { SwatchColors } from '../productDisplay';
-import { connectedProduct, type LoopFinish } from '../catalog/localCatalog';
+import { connectedProduct, connectedSku, type LoopFinish } from '../catalog/localCatalog';
+import { permanentCatalogMode } from '../catalog/permanentCatalog';
 
 // These IDs are the Loop fixture's finishes, not an exhaustive list of storefront variants.
 export type VariantId = LoopFinish;
@@ -13,7 +14,21 @@ export const variants: { id: VariantId; colors: SwatchColors; checkTone: 'light'
 export const loopVariants = () => connectedProduct('loop')?.variants ?? variants;
 export const loopName = () => connectedProduct('loop')?.name ?? 'Loop';
 export const variantById = (id: VariantId) => loopVariants().find(variant => variant.id === id)!;
-export const isVariantId = (value: unknown): value is VariantId => typeof value === 'string' && variants.some(variant => variant.id === value);
+export const isVariantId = (value: unknown): value is VariantId => {
+  if(typeof value!=='string' || !variants.some(v=>v.id===value)) return false;
+  if(!permanentCatalogMode) return true;
+  const match=connectedSku(value);
+  return match?.product.id==='loop' && match.product.personalizable && match.product.templateRevision==='2' && match.variant.id===value;
+};
+/** A retained applied line can use the historical reader without enabling the
+ * current editor. Its SKU, variant, offer and pinned template must still resolve. */
+export function isAppliedLoopVariant(value: unknown, revision:unknown):value is VariantId {
+  if(!permanentCatalogMode) return isVariantId(value);
+  if(revision!=='2' || typeof value!=='string' || !variants.some(v=>v.id===value)) return false;
+  const match=connectedSku(value);
+  return match?.product.id==='loop' && match.variant.id===value && match.variant.sku===value
+    && (match.variant.retainedLoopV2FeeCents!==undefined || isVariantId(value));
+}
 export const photos = ['01', '03', '04'].map(id => `/product/reference-asset-${id}.webp`);
 type ProductMedia = { photos: readonly string[]; model: string | null };
 const media: Record<VariantId, ProductMedia> = {

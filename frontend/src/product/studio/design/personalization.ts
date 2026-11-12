@@ -1,4 +1,5 @@
 import type { VariantId } from '../../fixtures/loop';
+import { permanentCatalogMode } from '../../catalog/permanentCatalog';
 import { isStudioFontId, studioFontFamily } from './studioFonts';
 import type { StudioFontId } from './studioFonts';
 import { lampBaseLetteringArea, lampCutTextArea, LETTERING_INSET, loopLetteringArea } from './studioGeometry';
@@ -28,7 +29,7 @@ export function cleanLetteringText(text: string, limits = { maxCharacters: LETTE
 }
 export function defaultLettering(variant: LetteringTarget): Lettering {
   if (variant === 'lamp-panel') return { text: '', font: 'stencil', color: '#20251f', size: 24, x: 240, y: 278 };
-  return { text: '', font: 'sans', color: variant === 'lamp' || variant === 'chalk' || variant === 'cobalt-chalk' ? '#20251f' : '#ffffff', size: 24, x: 240, y: 278 };
+  return { text: '', font: permanentCatalogMode && variant!=='lamp' ? 'rounded' : 'sans', color: variant === 'lamp' || variant === 'chalk' || variant === 'cobalt-chalk' ? '#20251f' : '#ffffff', size: 24, x: 240, y: 278 };
 }
 export const sameLettering = (a: Lettering, b: Lettering) => a.text === b.text && a.font === b.font && a.color === b.color && a.size === b.size && a.x === b.x && a.y === b.y;
 export function normalizeLettering(value: Lettering, target: LetteringTarget = 'cobalt'): Lettering {

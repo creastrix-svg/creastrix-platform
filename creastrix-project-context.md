@@ -21,6 +21,10 @@ Read the [domain decision notes](docs/engineering/domain-decision-notes.md) for 
 
 ## Product direction
 
+- The owner selected a [persistent catalog and private buyer design store](docs/engineering/account-cart-activation.md#accepted-storage-decision) for the product card and account cart. The decision sets file lifetimes, not an account-cart launch or a change to the authentication pilot.
+- Import and same-session recovery may be implemented and tested under a [separate local synthetic sign-in](docs/engineering/account-cart-activation.md#accepted-local-test-sign-in-write-scope). This is not authorisation to enable writes for live Cognito accounts or the public storefront.
+- A [two-buyer local check](docs/engineering/account-cart-activation.md#two-local-buyers-never-guess-the-owner) is authorised for the ambiguous-ownership case. A later buyer must never inherit an unproven guest contribution.
+
 - Work locally on buyer scenarios through the database, backend and existing
   frontend together. Loop and Tide are the first two catalog records, not
   separate page designs. The [local catalog contract](docs/local-catalog.md)

@@ -19,6 +19,7 @@ public final class CurrentUserAccessFilter extends OncePerRequestFilter {
     private final AuthenticationProperties properties;
     private final Clock clock;
     private final BrowserSessionContextRegistry contexts;
+    private final LocalAccountCartController localCart;
 
     // Test observation only: hooks never supply/replace an admission decision.
     interface GateObserver {
@@ -29,15 +30,22 @@ public final class CurrentUserAccessFilter extends OncePerRequestFilter {
 
     public CurrentUserAccessFilter(AuthenticatedUserService users, AuthenticationProperties properties, Clock clock,
                                   BrowserSessionContextRegistry contexts) {
+        this(users, properties, clock, contexts, null);
+    }
+
+    CurrentUserAccessFilter(AuthenticatedUserService users, AuthenticationProperties properties, Clock clock,
+                            BrowserSessionContextRegistry contexts, LocalAccountCartController localCart) {
         this.users = users;
         this.properties = properties;
         this.clock = clock;
         this.contexts = contexts;
+        this.localCart = localCart;
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !AuthenticationConfiguration.PRIVATE_API.matches(request);
+        return !AuthenticationConfiguration.PRIVATE_API.matches(request)
+                || localCart != null && LocalAccountCartController.PUBLIC_CATALOG.matches(request);
     }
 
     @Override
@@ -78,6 +86,20 @@ public final class CurrentUserAccessFilter extends OncePerRequestFilter {
                 AuthenticationConfiguration.jsonError(response, 403);
                 return;
             }
+            // Keep the original pre-lookup stamp through the private cart SELECT.
+            // MVC never sees staged rows if revocation wins at the final gate below.
+            if (localCart != null) {
+                if (LocalAccountCartController.CART.matches(request)) localCart.stage(request, principal.userId());
+                else {
+                    var command=LocalCartProtocol.route(request);
+                    if(command!=null) LocalCartProtocol.stage(localCart.binding,command,request,principal.userId());
+                    else LocalAccountCartController.artworkLine(request)
+                            .ifPresent(line -> localCart.stageArtwork(request, principal.userId(), line));
+                }
+            }
+        } catch(LocalCartSessionBinding.Refusal | com.creastrix.platform.accountcart.LocalCartCommands.Conflict stale) {
+            AuthenticationConfiguration.jsonError(response,409);
+            return;
         } catch (AuthenticatedUserService.AdmissionDeniedException denied) {
             Diagnostics.mark(Diagnostics.Event.ACCESS_DENIED, Diagnostics.Reason.ADMISSION_DENIED);
             AuthenticationConfiguration.invalidate(request, response, properties);

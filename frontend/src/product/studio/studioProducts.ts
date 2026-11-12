@@ -1,7 +1,9 @@
 import type { LetteringColor } from './design/personalization';
 import { connectedProduct } from '../catalog/localCatalog';
+import { permanentCatalogMode } from '../catalog/permanentCatalog';
 import { loopName } from '../fixtures/loop';
-import { builtinStudioFonts, isStudioFontId, standardStudioFonts } from './design/studioFonts';
+import { builtinStudioFonts, isStudioFontId, standardStudioFonts, transferableLoopFont } from './design/studioFonts';
+import { loopV2Fonts } from './design/loopV2Fonts';
 import type { BuiltinStudioFont } from './design/studioFonts';
 
 export type StudioProductId = 'loop' | 'lamp';
@@ -38,10 +40,10 @@ export type StudioProduct = Readonly<{
 export const studioProducts: Readonly<Record<StudioProductId, StudioProduct>> = {
   loop: {
     id: 'loop', get name() { return loopName(); }, readyMade: true,
-    get enabled() { return connectedProduct('loop')?.personalizable ?? true; },
+    get enabled() { return connectedProduct('loop')?.personalizable ?? !permanentCatalogMode; },
     zones: [{
-      id: 'surface', operation: 'print', tools: ['text', 'image', 'ai'],
-      fonts: standardStudioFonts, allowCustomFonts: true,
+      id: 'surface', operation: 'print', tools: permanentCatalogMode ? ['text','image'] : ['text', 'image', 'ai'],
+      fonts: permanentCatalogMode ? loopV2Fonts : standardStudioFonts, allowCustomFonts: true,
       inkColors: ['#ffffff', '#20251f', '#b68a45'], allowPosition: true,
       textLimits: { maxCharacters: 32, maxLines: 2, minSize: 18, maxSize: 32 },
     }],
@@ -121,5 +123,6 @@ export function canUseStudioTool(product: StudioProduct | undefined, zoneId: str
 export function canUseStudioFont(product: StudioProduct | undefined, zoneId: string, font: string): boolean {
   const zone = getStudioZone(product, zoneId);
   return !!zone?.tools.includes('text') && isStudioFontId(font)
+    && (!permanentCatalogMode || product?.id!=='loop' || transferableLoopFont(font))
     && (font.startsWith('custom-') ? zone.allowCustomFonts : zone.fonts.some(allowed => allowed === font));
 }

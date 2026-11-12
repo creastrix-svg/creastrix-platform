@@ -1,6 +1,7 @@
 import { concepts as loopConcepts, loopVariants } from '../fixtures/loop';
 import { conceptItems } from '../fixtures/conceptItems';
 import { connectedEntries, connectedOffer } from '../catalog/localCatalog';
+import { permanentCatalogMode } from '../catalog/permanentCatalog';
 import { readCartSku, type CartSku } from '../fixtures/cartSkus';
 import { discountPercent, swatchBackground } from '../productDisplay';
 import { productCopy } from '../copy';
@@ -25,8 +26,8 @@ function catalogFixtures(locale: StorefrontLocale): CatalogData {
       const product = connectedOffer(e.id)!;
       return {href:e.href, reviewsHref:e.href + '/reviews', name:product.name,
         collectionId:e.collectionId, collectionName:e.collectionName,
-        details:[e.title[locale], e.id === 'loop' ? catalogCopy[locale].productDetails : e.material[locale]].filter(Boolean).join(' · '),
-        categories:e.categories, format:'ready', personalizable:product.personalizable, technique:e.id === 'loop' ? '3d-print' : undefined,
+        details:[e.title[locale], !permanentCatalogMode && e.id === 'loop' ? catalogCopy[locale].productDetails : e.material[locale]].filter(Boolean).join(' · '),
+        categories:e.categories, format:'ready', personalizable:product.personalizable, technique:!permanentCatalogMode && e.id === 'loop' ? '3d-print' : undefined,
         finishes:product.variants.map(v => ({color:{id:v.id,label:v.name[locale],swatch:swatchBackground(v.colors)},
           cents:v.cents, previousCents:v.previousCents, discount:discountPercent(v.cents,v.previousCents), stock:v.stock,
           photo:v.photos[0] ?? '', search:product.variants.length > 1 ? '?variant=' + v.id : ''}))};

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../../hooks';
-import { isVariantId } from '../fixtures/loop';
+import { isAppliedLoopVariant, isVariantId } from '../fixtures/loop';
 import { money } from '../productDisplay';
 import { cartOfferView, cartReturnOfferPath } from './cartOfferView';
 import { tideOffer } from '../fixtures/tideOffer';
@@ -16,6 +16,7 @@ import { cartLineId, cartStockShortages, lineCapacity, variantCartQuantity } fro
 import DesignThumbnail from '../studio/preview/DesignThumbnail';
 import { cartDesignLabel, stockShortageNote, studioCartCopy } from './studioCartCopy';
 import CartDesignPriceDetails from './CartDesignPriceDetails';
+import { permanentCatalogMode } from '../catalog/permanentCatalog';
 
 export default function CartView() {
   const language = useProductLocale(), t = productCopy[language], checkout = checkoutCopy[language];
@@ -40,7 +41,7 @@ export default function CartView() {
   const sameSku = !state?.cartReturnTo && lines.length > 0 && lines.every(line => line.variant === lines[0].variant);
   const source = state?.cartReturnTo === tideOffer.href ? tideOffer.href : cartReturnOfferPath(state?.cartReturnTo)
     ?? (sameSku && !isVariantId(lines[0].variant) ? cartOfferView(lines[0].variant, language).href : undefined);
-  const product = source && source !== '/products/loop' ? source : '/products/loop?variant=' + demo.selectedVariant;
+  const product = permanentCatalogMode ? source ?? '/catalog' : source && source !== '/products/loop' ? source : '/products/loop?variant=' + demo.selectedVariant;
   return <div className="product-preview-page cart-view">
     <Link ref={continueLink} to={product} state={{ productReturn: true }} className="product-back"><span className="product-flip"><Icon name="arrow" /></span>{t.continue}</Link>
     <h1>{t.cart}</h1>
@@ -58,18 +59,19 @@ export default function CartView() {
         const itemHref = !removed && isVariantId(line.variant)
           ? '/products/loop?' + new URLSearchParams({ variant: line.variant, cartLine: id })
           : offer.href;
-        const image = line.design && isVariantId(line.variant)
+        const image = line.design && isAppliedLoopVariant(line.variant,line.templateRevision)
           ? <DesignThumbnail design={line.design} variant={line.variant} label={designLabel} />
           : offer.photo ? <img src={offer.photo} alt={offer.alt} width="160" height="160" />
           : <span className="product-cart-swatch" style={{ background: offer.swatch }} aria-label={t.noPhoto} />;
-        const inactiveDesign = removed && !!line.design;
+        // A generic card for the replacement template cannot preview this purchased design.
+        const inactiveDesign = !!line.design && (removed || !isVariantId(line.variant));
         return <article className={'product-cart-line' + (removed ? ' product-cart-line-removed' : '')} key={id} data-cart-line-id={id} aria-label={offer.name + ' · ' + context}>
           {inactiveDesign ? <div className="product-cart-photo">{image}</div>
             : <Link className="product-cart-photo" to={itemHref} aria-label={offer.name + ' · ' + context}>{image}</Link>}
           <div className="product-cart-line-copy"><h2>{inactiveDesign ? offer.name : <Link to={itemHref}>{offer.name}</Link>}</h2><span>{offer.detail}</span>
             <p className="product-cart-stock">{t.stock}: <strong>{offer.stock}</strong></p>
             {!removed && shortages.includes(line.variant) && <p role="status">{stockShortageNote[language]}</p>}
-            {line.design && <div className="product-cart-design-meta"><span>{designLabel}</span><CartDesignPriceDetails baseCents={baseCents} feeCents={feeCents} language={language} />{!removed && <Link className="product-text-button" aria-label={`${c.edit} · ${context}`} to={`/products/loop/personalize?variant=${line.variant}&edit=${encodeURIComponent(id)}`}>{c.edit}</Link>}</div>}
+            {line.design && <div className="product-cart-design-meta"><span>{designLabel}</span><CartDesignPriceDetails baseCents={baseCents} feeCents={feeCents} language={language} />{!removed && isVariantId(line.variant) && <Link className="product-text-button" aria-label={`${c.edit} · ${context}`} to={`/products/loop/personalize?variant=${line.variant}&edit=${encodeURIComponent(id)}`}>{c.edit}</Link>}</div>}
             {restoreUnavailable && <p role="status">{t.restoreLimited}</p>}
           </div>
           <div className="product-cart-controls">

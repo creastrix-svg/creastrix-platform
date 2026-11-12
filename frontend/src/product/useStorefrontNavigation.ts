@@ -5,7 +5,7 @@ import { isVariantId } from './fixtures/loop';
 import { isCartSku, type CartSku } from './cartSku';
 import { connectedOffer, entryForPath } from './catalog/localCatalog';
 import { tideOffer } from './fixtures/tideOffer';
-import { isCatalogPath, isTideOfferPath } from './routes';
+import { isCatalogOfferHref, isCatalogPath, isTideOfferPath } from './routes';
 import { catalogQueryKeys } from './browse/catalogBrowse';
 
 // Bounded, document-memory scroll history; not account data or persistent browser identity.
@@ -24,7 +24,8 @@ export function useStorefrontNavigation(main: RefObject<HTMLElement | null>) {
     const oldPoint = old ? positions.get(old.key) : undefined;
     const route = location.pathname.replace(/\/+$/, ''), oldRoute = old?.pathname.replace(/\/+$/, '');
     const loopPage = route.toLowerCase() === '/products/loop', tidePage = isTideOfferPath(location.pathname);
-    const entry = entryForPath(route), offer = entry?.kind === 'offer' ? connectedOffer(entry.id) : undefined;
+    const entry = isCatalogOfferHref(route) ? entryForPath(route) : undefined;
+    const offer = entry?.kind === 'offer' ? connectedOffer(entry.id) : undefined;
     const productPage = loopPage || tidePage || !!offer;
     const currentSku = (): CartSku | undefined => {
       if (tidePage) return tideOffer.sku;

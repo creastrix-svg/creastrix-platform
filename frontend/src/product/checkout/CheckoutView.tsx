@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useAppSelector } from '../../hooks';
-import { isVariantId } from '../fixtures/loop';
+import { isAppliedLoopVariant, isVariantId } from '../fixtures/loop';
 import { money } from '../productDisplay';
 import { cartOfferView } from '../cart/cartOfferView';
 import { checkoutCopy } from './checkoutCopy';
@@ -66,9 +66,9 @@ export default function CheckoutView() {
           const { baseCents, feeCents, unitCents } = cartLinePrice(line);
           const designLabel = cartDesignLabel(line, language), context = offer.detail + (designLabel ? ' · ' + designLabel : '');
           return <article className="checkout-line" key={cartLineId(line)} data-cart-line-id={cartLineId(line)} aria-label={offer.name + ' · ' + context}>
-            <div className="checkout-photo">{line.design && isVariantId(line.variant) ? <DesignThumbnail design={line.design} variant={line.variant} label={designLabel} /> : offer.photo ? <img src={offer.photo} alt={offer.alt} width="88" height="88" /> : <span role="img" aria-label={product.noPhoto} style={{ background: offer.swatch }} />}</div>
+            <div className="checkout-photo">{line.design && isAppliedLoopVariant(line.variant,line.templateRevision) ? <DesignThumbnail design={line.design} variant={line.variant} label={designLabel} /> : offer.photo ? <img src={offer.photo} alt={offer.alt} width="88" height="88" /> : <span role="img" aria-label={product.noPhoto} style={{ background: offer.swatch }} />}</div>
             <div className="checkout-line-copy"><h3>{offer.name}</h3><p>{offer.detail}</p>
-              {line.design && <div className="product-cart-design-meta"><span>{designLabel}</span><CartDesignPriceDetails baseCents={baseCents} feeCents={feeCents} language={language} /><Link aria-label={`${studioCartCopy[language].edit} · ${context}`} to={`/products/loop/personalize?variant=${line.variant}&edit=${encodeURIComponent(cartLineId(line))}`}>{studioCartCopy[language].edit}</Link></div>}
+              {line.design && <div className="product-cart-design-meta"><span>{designLabel}</span><CartDesignPriceDetails baseCents={baseCents} feeCents={feeCents} language={language} />{isVariantId(line.variant) && <Link aria-label={`${studioCartCopy[language].edit} · ${context}`} to={`/products/loop/personalize?variant=${line.variant}&edit=${encodeURIComponent(cartLineId(line))}`}>{studioCartCopy[language].edit}</Link>}</div>}
               <dl className="checkout-line-amount"><div><dt>{product.price}</dt><dd>{money(unitCents, language)}</dd></div><div><dt>{product.quantity}</dt><dd>{line.quantity}</dd></div><div><dt>{product.cartLineSubtotal}</dt><dd>{money(unitCents * line.quantity, language)}</dd></div></dl>
             </div>
           </article>;

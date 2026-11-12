@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useStore } from 'react-redux';
 import { useAppDispatch, useAppSelector } from '../../hooks';
@@ -11,7 +11,8 @@ import { productCopy } from '../copy';
 import { cartAdded, cartLineDesignCleared, cartLineId, cartLinePrice, configurationCartQuantity, favoriteToggled, productDescriptionChanged, productMediaModeSelected, productVariantSelected, purchaseQuantityChanged, variantCartQuantity, type CartLine } from '../demoStore';
 import { loopPrice } from '../loopPricing';
 import MediaGallery from '../media/MediaGallery';
-import ProductPurchasePanel from './ProductPurchasePanel';
+import ProductPurchasePanel, { ReadOnlyCartNotice } from './ProductPurchasePanel';
+import { GuestCartActionsEnabled } from '../cart/guestCartActions';
 import { loopCarouselContent } from './carouselContent';
 import { connectedMode, entryForId } from '../catalog/localCatalog';
 import ProductPrice from '../ProductPrice';
@@ -19,7 +20,9 @@ import PersonalizationEntry from '../studio/PersonalizationEntry';
 import { getStudioProduct } from '../studio/studioProducts';
 import { useProductLocale } from '../useProductLocale';
 import { usePersonalizationSession } from '../studio/session/personalizationSession';
-import { designKey, saveDesign, visibleDesign } from '../studio/session/designSnapshot';
+import { designKey, saveDesign, visibleDesign, supportsAppliedFonts } from '../studio/session/designSnapshot';
+import { designFontHint } from '../cart/accountProductLabels';
+import { permanentCatalogMode } from '../catalog/permanentCatalog';
 import type { SavedDesign } from '../studio/session/designSnapshot';
 import { firstLettering, type CompositionDocument } from '../studio/design/studioComposition';
 import { useDesignDocument } from '../studio/session/useDesignDocument';
@@ -30,6 +33,7 @@ import ProductCardLayout from './ProductCardLayout';
 import { catalogCopy } from '../browse/catalogCopy';
 
 export default function ProductPage() {
+  const guestActions = useContext(GuestCartActionsEnabled);
   const [params] = useSearchParams(), location = useLocation(), navigate = useNavigate();
   const remembered = useAppSelector(state => state.productDemo.selectedVariant), dispatch = useAppDispatch();
   const requested = params.getAll('variant');
@@ -45,6 +49,7 @@ export default function ProductPage() {
     navigate({ search: '?' + next.toString(), hash: location.hash }, { replace: true, preventScrollReset: true });
   }
   if (bound) {
+    if (!guestActions) return <ReadOnlyCartNotice />;
     if (refs.length !== 1 || requested.length !== 1 || !isVariantId(requested[0])) return <CartItemUnavailable/>;
     return <CartLineCard key={variantId} id={refs[0]} variantId={variantId} selectVariant={selectVariant}/>;
   }
@@ -161,6 +166,7 @@ function PurchaseControls({ variantId, unitCents, design }: { variantId: Variant
   const demo = useAppSelector(state => state.productDemo), dispatch = useAppDispatch();
   const alreadyInCart = useMemo(() => configurationCartQuantity(demo.cart, variantId, design), [demo.cart, variantId, design]);
   const remaining = variant.stock - variantCartQuantity(demo, variantId);
+  if(permanentCatalogMode && design && !supportsAppliedFonts(design)) return <p role="status">{designFontHint[language]}</p>;
   return <ProductPurchasePanel locale={language} stock={variant.stock} remaining={remaining} unitCents={unitCents}
     inCart={alreadyInCart} requested={demo.purchaseQuantities[variantId]} exhaustedLabel={t.allInCart}
     onQuantity={quantity => dispatch(purchaseQuantityChanged({ variant: variantId, quantity }))}

@@ -16,6 +16,7 @@ import ProductPrice from '../ProductPrice';
 import { railItems, sellerDestination } from './carouselContent';
 import ProductCardLayout from './ProductCardLayout';
 import ProductPurchasePanel from './ProductPurchasePanel';
+import { accountProductLabels } from '../cart/accountProductLabels';
 
 /** Both historical URL families resolve through catalog identity; neither the
  * layout nor the purchase action needs a new component for the next item. */
@@ -53,7 +54,8 @@ function OfferCard({entry, offer, variant, sku, select}: {
   const categorySlug = entry.categories[0], department = departmentForSlug(categorySlug);
   const category = department ? {label: shelfCopy[locale][department], href: '/catalog?category=' + categorySlug}
     : {label: c.title, href: '/catalog'};
-  const facts = [...(material ? [[t.material, material] as const] : []), [t.color, finish] as const];
+  const facts = [...(material ? [[t.material, material] as const] : []), [t.color, finish] as const,
+    ...(offer.templateRevision ? [[accountProductLabels[locale][0], offer.templateRevision] as const] : [])];
   const returnTo = entry.href + (offer.variants.length > 1 ? '?variant=' + variant.id : '');
   const list = entry.href + '/reviews', query = offer.variants.length > 1 ? 'variant=' + variant.id : '';
   const rail = (section: Rail) => ({items: railItems(entry.id, section, locale) ?? [],

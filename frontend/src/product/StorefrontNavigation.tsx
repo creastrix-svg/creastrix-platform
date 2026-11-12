@@ -10,7 +10,7 @@ import { productLocaleSelected } from './demoStore';
 import type { Appearance } from './appearance';
 import { Icon } from './Icon';
 import Modal from './Modal';
-import { hasDesignConcepts } from './catalog/localCatalog';
+import { catalogReady, hasDesignConcepts } from './catalog/localCatalog';
 import { editionCollectionPath, editionCopy } from './fixtures/editionCatalog';
 
 const drawerLabels = {
@@ -79,10 +79,13 @@ export default function StorefrontNavigation({ appearance, onAppearance }: { app
   const here = (isCatalogPath(pathname) ? '/catalog' : pathname) + search;
   const id = useId();
   const copy = catalogCopy[locale], [interests, shortcuts] = drawerLabels[locale];
+  const concepts = catalogReady() ? hasDesignConcepts() : undefined;
+  const catalogShortcuts = [[copy.ready, '/catalog?format=ready'], [t.personalizable, '/catalog?custom=yes'], [copy.sale, '/catalog?sale=1']];
+  if (concepts !== undefined) catalogShortcuts.push(concepts
+    ? [copy.conceptsTitle, '/catalog?format=concept'] : [editionCopy[locale].title, editionCollectionPath]);
   const groups = [
     { name: interests, links: [[t.living, '/catalog?category=living'], [t.gifts, '/catalog?category=gifts']] },
-    { name: shortcuts, links: [[copy.ready, '/catalog?format=ready'], [t.personalizable, '/catalog?custom=yes'], [copy.sale, '/catalog?sale=1'],
-      hasDesignConcepts() ? [copy.conceptsTitle, '/catalog?format=concept'] : [editionCopy[locale].title, editionCollectionPath]] },
+    { name: shortcuts, links: catalogShortcuts },
   ];
   const menuLink = (label: string, to: string, className?: string) =>
     <Link key={to} className={className} to={to} aria-current={here === to ? 'page' : undefined} onClick={() => setDrawer(false)}>
@@ -104,7 +107,7 @@ export default function StorefrontNavigation({ appearance, onAppearance }: { app
     </div></div></div>
     {drawer && <Modal title={t.categories} closeLabel={t.close} className="product-category-drawer" motion="drawer" onClose={() => setDrawer(false)}>
       <nav className="product-category-links" aria-label={t.categories}>
-        {menuLink(hasDesignConcepts() ? copy.allItems : productListLabels[locale][1], '/catalog', 'category-all')}
+        {menuLink(concepts === undefined ? copy.title : concepts ? copy.allItems : productListLabels[locale][1], '/catalog', 'category-all')}
         {groups.map(group => <div className="category-group" key={group.name}>
           <h3>{group.name}</h3>
           {group.links.map(([label, to]) => menuLink(label, to))}
