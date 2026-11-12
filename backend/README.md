@@ -1,9 +1,10 @@
 # Creastrix Backend
 
 The Java backend stores users, organizations, workspaces and ready-made stock in
-PostgreSQL. It also supports a local, owner-only Cognito sign-in. The React
-storefront runs separately: its catalog, personalisation studio and shopping
-cart do not call a commerce API.
+PostgreSQL. It also supports a local, owner-only Cognito sign-in. A separate,
+opt-in [local catalog profile](../docs/local-catalog.md) reads Loop and Tide for
+the storefront. It uses its own database and does not handle accounts, cart
+writes or checkout.
 
 ## Running tests
 

@@ -1,6 +1,9 @@
 import type { StorefrontLocale } from '../locale';
+import { tideOffer } from './tideOffer';
 import { editionAdditions } from './editionAdditions';
 import { editionCollectionPath } from '../routes';
+import { connectedEntries, connectedMode, entryForId } from '../catalog/localCatalog';
+import type { CatalogEntry } from '../catalog/catalogEntries';
 export { editionCollectionPath };
 
 const namedObjects = [
@@ -16,7 +19,7 @@ const namedObjects = [
 ] as const;
 export type EditionId = typeof namedObjects[number]['id'];
 export type EditionItem = Readonly<{
-  id: EditionId; name: string; title: string; material: string; description: string;
+  id: string; name: string; title: string; material: string; description: string;
   href: string; photo: string; thumb: string;
 }>;
 
@@ -110,9 +113,24 @@ export const editionCopy: Record<StorefrontLocale, EditionCopy> = {
 
 // These are editorial previews. The absence of price, stock, cart and seller
 // fields is deliberate: a design photograph is not an offer to sell.
+export function localizedEntry(item: CatalogEntry, locale: StorefrontLocale): EditionItem {
+  return { id: item.id, name: item.name, title: item.title[locale], material: item.material[locale],
+    description: item.description[locale], href: item.href, photo: item.photo ?? '', thumb: item.thumb ?? '' };
+}
+/** Detail identity does not depend on inclusion in a curated collection. */
+export function editionItem(id: string, locale: StorefrontLocale): EditionItem | undefined {
+  if (!connectedMode) return editionItems(locale).find(item => item.id === id);
+  const item = entryForId(id);
+  return item && localizedEntry(item, locale);
+}
 export function editionItems(locale: StorefrontLocale): EditionItem[] {
+  const entries = connectedEntries();
+  if (entries) return entries.filter(item => item.editionOrder !== null)
+    .sort((a, b) => a.editionOrder! - b.editionOrder!).map(item => localizedEntry(item, locale));
   return namedObjects.map(({ id, name }) => {
     const [title, material, description] = objects[id][locale];
+    if (id === tideOffer.id) return { id, name: tideOffer.name, title, material, description,
+      href: tideOffer.href, photo: tideOffer.photo, thumb: tideOffer.thumb };
     return { id, name, title, material, description, href: editionCollectionPath + '/' + id,
       photo: '/shop-edition/' + id + '.webp', thumb: '/shop-edition/' + id + '-small.webp' };
   });

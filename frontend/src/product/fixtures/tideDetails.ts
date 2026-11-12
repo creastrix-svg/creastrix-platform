@@ -1,4 +1,6 @@
 import type { EditionItem } from './editionCatalog';
+import { loopName, mediaForVariant } from './loop';
+import { railItems, sellerDestination } from '../detail/carouselContent';
 import { productCopy } from '../copy';
 import type { StorefrontLocale } from '../locale';
 
@@ -60,8 +62,7 @@ const copy: Record<StorefrontLocale, CupCopy> = {
   },
 };
 
-const studioEdit = ['halo', 'flute', 'reed', 'prism', 'drift', 'bend'] as const;
-const tableEdit = ['moss', 'hex', 'stripe', 'rook', 'wave'] as const;
+const studioEdit = ['halo', 'flute', 'reed', 'prism'] as const;
 
 export function tideDetails(locale: StorefrontLocale, item: EditionItem, edition: readonly EditionItem[], finish: string) {
   const t = productCopy[locale], x = copy[locale];
@@ -80,8 +81,12 @@ export function tideDetails(locale: StorefrontLocale, item: EditionItem, edition
       facts: [[t.specsModel, item.name], ...technicalFacts, [t.specsColors, finish], [t.specsPersonal, t.without]],
     },
     recommendations: {
-      studio: { items: tiles(studioEdit), href: '/collections/objects' },
-      related: { items: tiles(tableEdit), href: '/catalog?category=kitchen' },
+      studio: { items: railItems('tide', 'studio', locale) ?? [
+        ...tiles(studioEdit), {name:loopName(), note:t.subtitle, href:'/products/loop', photo:mediaForVariant('cobalt').photos[0] ?? ''},
+      ], ...sellerDestination('tide') },
+      // The offline assortment has no alternative espresso cup.
+      related: { items: railItems('tide', 'related', locale) ?? [], href: '/catalog' },
+      section: { items: railItems('tide', 'section', locale) ?? [], href: '/catalog' },
     },
   } as const;
 }

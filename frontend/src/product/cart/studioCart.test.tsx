@@ -195,6 +195,26 @@ it('fails closed when an edited line is removed while its isolated editor is ope
   expect(screen.getByRole('alert')).toHaveTextContent('no longer available');
   expect(screen.queryByRole('button', { name: 'Save this cart design' })).toBeNull();
 });
+it('quotes an empty cart draft at the base price and commits it only on explicit removal', async () => {
+  const store = createAppStore('en');
+  store.dispatch(cartAdded({variant:'cobalt', quantity:2, design:design('ALPHA')}));
+  const { user } = show('/products/loop/personalize?variant=cobalt&edit=design-1', store);
+  fireEvent.change(await screen.findByRole('textbox', {name:'Your text'}), {target:{value:''}});
+  expect(document.querySelector('.studio-price-summary')).toHaveTextContent('€24.00');
+  expect(cartTotal(store.getState().productDemo)).toBe(5800);
+  await user.click(screen.getByRole('button', {name:'Remove personalisation'}));
+  expect(store.getState().productDemo.cart).toEqual([{variant:'cobalt', quantity:2}]);
+  expect(cartTotal(store.getState().productDemo)).toBe(4800);
+});
+it.each(['variant=coral', 'variant=cobalt&variant=coral', 'product=lamp'])(
+  'does not edit a cart design through a contradictory item URL (%s)', async query => {
+    const store = createAppStore('en');
+    store.dispatch(cartAdded({variant:'cobalt', quantity:1, design:design('ALPHA')}));
+    show('/products/loop/personalize?edit=design-1&' + query, store);
+    expect(await screen.findByRole('alert')).toHaveTextContent('no longer available');
+    expect(screen.queryByRole('textbox', {name:'Your text'})).toBeNull();
+    expect(cartTotal(store.getState().productDemo)).toBe(2900);
+  });
 it.each(['cancel', 'save'])('keeps the product draft and AI brief unchanged after cart %s', async outcome => {
   const store = createAppStore('en'); store.dispatch(cartAdded({ variant: 'cobalt', quantity: 1, design: design('CART') }));
   const { user } = show('/products/loop/personalize?variant=cobalt', store);

@@ -4,7 +4,7 @@ const offerFormats = ['ready', 'made-to-order', 'file'] as const;
 export const facetKeys = ['format', 'custom', 'technique', 'color'] as const;
 export type FacetKey = typeof facetKeys[number];
 type FacetOptions = Record<FacetKey, readonly string[]>;
-export const catalogQueryKeys: readonly string[] = [...facetKeys, 'category', 'group', 'sale', 'sort'];
+export const catalogQueryKeys: readonly string[] = [...facetKeys, 'category', 'collection', 'group', 'sale', 'sort'];
 export const customOrMadeGroup = 'custom-or-made';
 export const browseSorts = ['featured', 'price-asc', 'price-desc', 'stock-desc', 'name-asc'] as const;
 export type BrowseSort = typeof browseSorts[number];
@@ -13,13 +13,14 @@ type Color = { id: string; label: string; swatch: string };
 type Finish = {
   color: Color; cents: number; previousCents?: number; discount: number | null; stock: number; photo: string; search: string;
 };
-type Offer = {
+type CollectionMember = { collectionId?: string | null; collectionName?: string | null };
+type Offer = CollectionMember & {
   href: string; reviewsHref?: string; name: string; details: string;
   format: typeof offerFormats[number]; personalizable: boolean; technique?: string;
   categories: readonly string[]; finishes: readonly Finish[];
 };
 export type CatalogOffer = Offer & { minCents: number; maxCents: number; stock: number };
-type Concept = { href: string; name: string; caption: string; photo: string; categories: readonly string[] };
+type Concept = CollectionMember & { href: string; name: string; caption: string; photo: string; categories: readonly string[] };
 export type CatalogData = {
   offers: readonly Offer[]; concepts: readonly Concept[];
   categories: readonly { id: string; label: string }[]; techniques: readonly { id: string; label: string }[];
@@ -73,12 +74,19 @@ export function matchCatalog(params: URLSearchParams, locale: string, catalog: C
   const group = params.get('group') === customOrMadeGroup ? customOrMadeGroup : null;
   const requestedCategory = params.get('category'), department = catalog.categories.find(c => c.id === requestedCategory);
   const category = department?.id ?? (requestedCategory === 'personal' ? 'personal' : null);
+  // An unknown, empty or ambiguous collection URL must not become the full catalog.
+  const collectionValues = params.getAll('collection'), hasCollection = collectionValues.length > 0;
+  const inCollection = (item: CollectionMember) => !hasCollection ||
+    (collectionValues.length === 1 && item.collectionId === collectionValues[0]);
+  const collectionName = hasCollection
+    ? catalog.offers.find(inCollection)?.collectionName ?? catalog.concepts.find(inCollection)?.collectionName
+    : undefined;
   const items: BrowseItem[] = [
-    ...catalog.offers.flatMap(offer => offer.finishes.map((data): BrowseItem => ({
+    ...catalog.offers.filter(inCollection).flatMap(offer => offer.finishes.map((data): BrowseItem => ({
       kind: 'finish', offer, data, categories: offer.categories, sale: data.discount !== null,
       facets: { format: offer.format, custom: offer.personalizable ? 'yes' : 'no', technique: offer.technique, color: data.color.id },
     }))),
-    ...catalog.concepts.map((data): BrowseItem => ({
+    ...catalog.concepts.filter(inCollection).map((data): BrowseItem => ({
       kind: 'concept', data, categories: data.categories, sale: false,
       // There is no buyer editor for these concepts. No manufacturing technique is attested.
       facets: { format: 'concept', custom: 'no' },
@@ -123,9 +131,9 @@ export function matchCatalog(params: URLSearchParams, locale: string, catalog: C
     offers.sort((a, b) => collator.compare(a.name, b.name));
     visibleConcepts.sort((a, b) => collator.compare(a.name, b.name));
   }
-  const filterCount = Number(sale) + Number(category !== null) + Number(group !== null)
+  const filterCount = Number(sale) + Number(category !== null) + Number(group !== null) + Number(hasCollection)
     + facetKeys.reduce((count, key) => count + selected[key].length, 0);
-  return { offers, concepts: visibleConcepts, sale, sort, category, categoryLabel: department?.label, group, selected, counts, options,
+  return { offers, concepts: visibleConcepts, sale, sort, category, categoryLabel: department?.label, group, hasCollection, collectionName, selected, counts, options,
     colorLabels: Object.fromEntries(colors), techniqueLabels: Object.fromEntries(catalog.techniques.map(t => [t.id, t.label])),
     filterCount, total: offers.length + visibleConcepts.length };
 }

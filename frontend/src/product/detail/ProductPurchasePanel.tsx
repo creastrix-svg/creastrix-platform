@@ -14,6 +14,7 @@ type Props = {
 /** The item page owns its SKU, draft and availability policy; both product types
  * present the same quantity controls, subtotal and confirmation of the exact line. */
 export default function ProductPurchasePanel({ locale, stock, remaining, requested, inCart, unitCents, onQuantity, onAdd, exhaustedLabel, returnTo }: Props) {
+  remaining = Math.max(0, remaining);
   const t = productCopy[locale], amount = Math.min(requested, remaining);
   return <>
     <section className="product-purchase" aria-label={t.add}>

@@ -4,6 +4,7 @@ coverage/
 .vite/
 .idea/
 .env
+dist-local-catalog/
 .env.*
 *.local
 *.tsbuildinfo

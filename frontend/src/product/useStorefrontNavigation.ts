@@ -2,7 +2,8 @@ import { useLayoutEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 import { useLocation, useNavigationType } from 'react-router';
 import { isVariantId } from './fixtures/loop';
-import type { CartSku } from './cartSku';
+import { isCartSku, type CartSku } from './cartSku';
+import { connectedOffer, entryForPath } from './catalog/localCatalog';
 import { tideOffer } from './fixtures/tideOffer';
 import { isCatalogPath, isTideOfferPath } from './routes';
 import { catalogQueryKeys } from './browse/catalogBrowse';
@@ -23,9 +24,15 @@ export function useStorefrontNavigation(main: RefObject<HTMLElement | null>) {
     const oldPoint = old ? positions.get(old.key) : undefined;
     const route = location.pathname.replace(/\/+$/, ''), oldRoute = old?.pathname.replace(/\/+$/, '');
     const loopPage = route.toLowerCase() === '/products/loop', tidePage = isTideOfferPath(location.pathname);
-    const productPage = loopPage || tidePage;
+    const entry = entryForPath(route), offer = entry?.kind === 'offer' ? connectedOffer(entry.id) : undefined;
+    const productPage = loopPage || tidePage || !!offer;
     const currentSku = (): CartSku | undefined => {
       if (tidePage) return tideOffer.sku;
+      if (!loopPage && offer) {
+        const requested = new URLSearchParams(location.search).get('variant');
+        const sku = (offer.variants.find(v => v.id === requested) ?? offer.variants[0]).sku;
+        return isCartSku(sku) ? sku : undefined;
+      }
       const variant = loopPage ? main.current?.querySelector<HTMLElement>('[data-product-variant]')?.dataset.productVariant : undefined;
       return isVariantId(variant) ? variant : undefined;
     };
@@ -43,7 +50,7 @@ export function useStorefrontNavigation(main: RefObject<HTMLElement | null>) {
     };
     // In-page picks update a shareable URL without moving focus or jumping to the top.
     const selectionOnly = action === 'REPLACE' && old !== null && location.pathname === old.pathname && location.hash === old.hash
-      && ((loopPage && sameQueryExcept(['variant'])) || (isCatalogPath(route) && sameQueryExcept(catalogQueryKeys)));
+      && ((productPage && sameQueryExcept(loopPage ? ['variant', 'cartLine'] : ['variant'])) || (isCatalogPath(route) && sameQueryExcept(catalogQueryKeys)));
     previous.current = { key: location.key, pathname: location.pathname, search: location.search, hash: location.hash };
     if (!selectionOnly) {
       // A client-side link from the account shell mounts a fresh storefront.

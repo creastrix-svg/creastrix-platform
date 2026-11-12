@@ -1,0 +1,13 @@
+# A separate, local read model. Do not point this profile at the account pilot's database.
+server:
+  address: 127.0.0.1
+  port: 8081
+spring:
+  datasource:
+    url: ${CREASTRIX_CATALOG_DB_URL}
+    username: ${CREASTRIX_CATALOG_DB_USERNAME}
+    password: ${CREASTRIX_CATALOG_DB_PASSWORD}
+  flyway:
+    locations: classpath:db/local-catalog
+    default-schema: local_catalog
+    schemas: local_catalog

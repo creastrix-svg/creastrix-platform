@@ -8,7 +8,7 @@ import Modal from '../Modal';
 import MediaErrorBoundary from './MediaErrorBoundary';
 import MediaImage from './MediaImage';
 import LetteringSketch from '../studio/preview/LetteringSketch';
-import { studioModelSource } from '../studio/preview/personalizationModel';
+import { appliedModelSource } from '../studio/preview/personalizationModel';
 import type { ModelDecoration } from '../studio/preview/personalizationModel';
 import { personalizationCopy } from '../studio/personalizationCopy';
 import type { StorefrontLocale } from '../locale';
@@ -38,7 +38,7 @@ export default function MediaGallery({ variant, decoration, ...props }: GalleryP
   const locale = props.locale ?? 'en', p = personalizationCopy[locale];
   const media = mediaForVariant(variant);
   return <OfferMediaGallery {...props} sku={variant} finishName={variantById(variant).name[locale]}
-    media={decoration ? { ...media, model: studioModelSource(variant) } : media} decoration={decoration}
+    media={decoration ? { ...media, model: appliedModelSource(variant, media.model) } : media} decoration={decoration}
     sketch={decoration && <LetteringSketch variant={variant} value={decoration} objects={decoration.objects} label={p.applied} />} />;
 }
 

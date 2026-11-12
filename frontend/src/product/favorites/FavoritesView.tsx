@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import { cartOfferView } from '../cart/cartOfferView';
 import { catalogCopy } from '../browse/catalogCopy';
-import { tideOffer } from '../fixtures/tideOffer';
+import { isVariantId } from '../fixtures/loop';
 import type { CartSku } from '../cartSku';
 import { productCopy } from '../copy';
 import { cartLinePrice, favoriteRemoved } from '../demoStore';
@@ -28,7 +28,7 @@ export function FavoritesView() {
           <span className="product-saved-swatch" role="img" aria-label={detail + ' · ' + t.noPhoto} style={{ background: offer.swatch }} />}
         <h2 id={titleId}>{label}</h2></Link>
         {offer.finish !== detail && <small>{offer.finish}</small>}
-        <ProductPrice cents={cartLinePrice({variant:id}).baseCents} previousCents={offer.previousCents} language={language} t={t} baseNote={id === tideOffer.sku ? catalogCopy[language].ready : undefined} />
+        <ProductPrice cents={cartLinePrice({variant:id}).baseCents} previousCents={offer.previousCents} language={language} t={t} baseNote={isVariantId(id) ? undefined : catalogCopy[language].ready} />
         <button type="button" className="product-text-button" aria-label={t.unfavorite + ' · ' + label} onClick={() => {
           (links.current.get(ids[index + 1] ?? ids[index - 1]) ?? heading.current)?.focus();
           dispatch(favoriteRemoved(id));

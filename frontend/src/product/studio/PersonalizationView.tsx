@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import { isVariantId, variantById } from '../fixtures/loop';
 import { money } from '../productDisplay';
-import { loopPrice, LOOP_DESIGN_FEE_CENTS } from '../loopPricing';
+import { loopPrice, loopDesignFee } from '../loopPricing';
 import { loopPricingCopy } from '../loopPricingCopy';
 import type { VariantId } from '../fixtures/loop';
 import { productCopy } from '../copy';
@@ -23,7 +23,7 @@ import { personalizationCopy } from './personalizationCopy';
 import { PersonalizationSession, usePersonalizationSession } from './session/personalizationSession';
 import { compositionReducer } from './design/studioComposition';
 import type { CompositionDocument } from './design/studioComposition';
-import { cartDesignChanged, cartLineId } from '../demoStore';
+import { cartDesignChanged, cartLineDesignCleared, cartLineId } from '../demoStore';
 import type { CartLine } from '../demoStore';
 import { designKey, saveDesign, sessionWithDocument } from './session/designSnapshot';
 import { useDesignDocument } from './session/useDesignDocument';
@@ -82,14 +82,20 @@ export default function PersonalizationView() {
   const products = params.getAll('product');
   const initialProduct = products.length === 1 && products[0] === 'lamp' ? 'lamp' : 'loop';
   const editing = params.getAll('edit');
-  if (editing.length) return <CartEditor key={editing.join(',')} id={editing.length === 1 ? editing[0] : ''} />;
+  if (editing.length) {
+    const validTarget = editing.length === 1 && (values.length === 0 || (values.length === 1 && isVariantId(values[0])))
+      && (products.length === 0 || (products.length === 1 && products[0] === 'loop'));
+    return <CartEditor key={editing[0]} id={validTarget ? editing[0] : ''} expectedVariant={values[0]} />;
+  }
   return <Studio key={variant + initialProduct} variant={variant} initialProduct={initialProduct} />;
 }
 
-function CartEditor({ id }: { id: string }) {
+function CartEditor({ id, expectedVariant }: { id: string; expectedVariant?: string }) {
   const line = useAppSelector(state => state.productDemo.cart.find(line => cartLineId(line) === id));
   const [original] = useState(line), c = studioCartCopy[useProductLocale()];
-  if (!original?.design || !isVariantId(original.variant) || !line || designKey(line.design) !== designKey(original.design)) return <section><p role="alert">{c.missing}</p><Link to="/preview/cart">{c.cancel}</Link></section>;
+  if (!original?.design || !isVariantId(original.variant) || !line || line.variant !== original.variant ||
+    (expectedVariant !== undefined && line.variant !== expectedVariant) || designKey(line.design) !== designKey(original.design))
+    return <section><p role="alert">{c.missing}</p><Link to="/preview/cart">{c.cancel}</Link></section>;
   return <LoadCartEditor line={{ ...original, variant: original.variant }} />;
 }
 function LoadCartEditor({ line }: { line: CartLine<VariantId> }) {
@@ -100,7 +106,9 @@ function CartEditorSession({ line, document }: { line: CartLine<VariantId>; docu
   const [state, dispatch] = useReducer(compositionReducer, document, value => sessionWithDocument(line.variant, value));
   const storeDispatch = useAppDispatch(), navigate = useNavigate();
   return <PersonalizationSession.Provider value={{ state, dispatch }}><Studio variant={line.variant} initialProduct="loop" onSave={objects => {
-    storeDispatch(cartDesignChanged({ id: cartLineId(line), expected: designKey(line.design), design: saveDesign({ objects, selectedId: null })! }));
+    const target = { id: cartLineId(line), variant: line.variant, expected: designKey(line.design) };
+    if (objects.length === 0) storeDispatch(cartLineDesignCleared(target));
+    else storeDispatch(cartDesignChanged({ ...target, design: saveDesign({ objects, selectedId: null })! }));
     navigate('/preview/cart');
   }} /></PersonalizationSession.Provider>;
 }
@@ -191,9 +199,10 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
   const hasContent = baseDocument.objects.some(object => object.kind === 'text' ? !!object.value.text.trim() : !!object.value.image);
   const valid = available && (hasContent || example === 'lamp') && !wholeIssue;
   const priceCopy = loopPricingCopy[language];
-  // A non-applicable design has no unit quote. An untouched Loop, unlike an
-  // existing cart design being edited, can still be bought unpersonalised.
-  const quote = example === 'loop' && (valid || (!onSave && !hasContent)) ? loopPrice(variant, valid) : undefined;
+  // Only an intentionally empty cart draft may convert the line to a plain SKU;
+  // a failed validation or an image still being loaded must never remove a design.
+  const clearingLine = !!onSave && available && !hasContent && !wholeIssue && imageStatus !== 'pending';
+  const quote = example === 'loop' && (valid || clearingLine || (!onSave && !hasContent)) ? loopPrice(variant, valid) : undefined;
   const applied = state.applied[target];
   const baseApplied = state.applied[baseTarget], panelApplied = state.applied['lamp-panel'];
   const dirty = !baseApplied || compositionKey(baseInspected.objects) !== compositionKey(baseApplied) || !sameArtwork(baseDraft, creative.applied[baseTarget])
@@ -287,6 +296,7 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
     setAppliedMessage(false);
   }
   function apply() {
+    if (clearingLine && onSave) { onSave([]); return; }
     if (!valid) { input.current?.focus(); return; }
     if (onSave) { onSave(baseInspected.objects); return; }
     dispatch({ type: 'apply', variant: baseTarget, objects: baseInspected.objects });
@@ -344,10 +354,10 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
         <div className="studio-apply">
           {example === 'loop' && <div className="studio-price-summary" aria-live="polite" aria-atomic="true">
             {quote && <div><span>{priceCopy.unitTotal}</span><strong>{money(quote.unitCents, language)}</strong></div>}
-            <small>{quote?.feeCents ? <>{priceCopy.base}: {money(quote.baseCents, language)} · {priceCopy.fee(money(quote.feeCents, language))}</> : priceCopy.from(money(LOOP_DESIGN_FEE_CENTS, language))}</small>
+            <small>{quote?.feeCents ? <>{priceCopy.base}: {money(quote.baseCents, language)} · {priceCopy.fee(money(quote.feeCents, language))}</> : clearingLine ? e.withoutDesign : priceCopy.from(money(loopDesignFee(), language))}</small>
           </div>}
-          <button type="button" className="product-primary" disabled={!valid || !dirty} onClick={apply}><Icon name={applied && !dirty ? 'check' : 'spark'} />{onSave ? cartCopy.save : applied && !dirty ? p.applied : p.apply}<Icon name="arrow" /></button>
-          <div className="studio-apply-status" role="status">{appliedMessage ? <><Icon name="check" />{example === 'lamp' ? e.artworkApplied : p.completed}</> : !valid ? wholeIssue || (zone.tools.includes('image') ? p.textRequired : p.textOnlyRequired) : applied && !dirty ? p.applied : p.changes}</div>
+          <button type="button" className="product-primary" disabled={(!valid && !clearingLine) || !dirty} onClick={apply}><Icon name={applied && !dirty ? 'check' : 'spark'} />{clearingLine ? e.removeDesign : onSave ? cartCopy.save : applied && !dirty ? p.applied : p.apply}<Icon name="arrow" /></button>
+          <div className="studio-apply-status" role="status">{appliedMessage ? <><Icon name="check" />{example === 'lamp' ? e.artworkApplied : p.completed}</> : clearingLine ? p.changes : !valid ? wholeIssue || (zone.tools.includes('image') ? p.textRequired : p.textOnlyRequired) : applied && !dirty ? p.applied : p.changes}</div>
           {tool === 'text' && <div className="studio-panel-bottom"><button type="button" className="product-text-button" disabled={sameLettering(value, defaultLettering(target))} onClick={() => setResetOpen(true)}>{p.reset}</button></div>}
         </div>
       </section>
@@ -385,15 +395,24 @@ function StudioPreview({ compare, onCompare, variant, value, artwork, objects, s
 }
 
 export function AppliedPersonalization({ variant }: { variant: VariantId }) {
-  const locale = useProductLocale(), p = personalizationCopy[locale], productNote = productCopy[locale].personalBody;
+  const locale = useProductLocale();
   const { state, dispatch } = usePersonalizationSession(), applied = state.applied[variant];
-  const creative = useStudioCreative(), e = studioExtensionCopy[locale], artwork = firstArtwork(applied), value = firstLettering(applied, variant);
+  const creative = useStudioCreative();
   if (!applied) return null;
+  return <AppliedDesignSummary variant={variant} applied={applied} note={productCopy[locale].personalBody} onRemove={() => {
+    dispatch({ type: 'remove', variant }); creative.remove(variant);
+  }} />;
+}
+
+export function AppliedDesignSummary({ variant, applied, note, onRemove }: {
+  variant: VariantId; applied: CompositionDocument; note: string; onRemove: () => void;
+}) {
+  const locale = useProductLocale(), p = personalizationCopy[locale], e = studioExtensionCopy[locale];
+  const artwork = firstArtwork(applied), value = firstLettering(applied, variant);
   const lettering = applied.objects.find(object => object.kind === 'text' && object.value.text.trim());
   const summary = lettering?.kind === 'text' ? lettering.value.text.trim() : artwork.image ? e.imageTab : '';
-  return <div className="product-applied-lettering"><LetteringSketch variant={variant} value={value} objects={applied.objects} artwork={artwork} label={summary ? p.applied + ' · ' + summary : p.applied} /><div><strong>{summary || p.applied}</strong><span>{p.applied}</span><small>{productNote}</small></div><button type="button" className="product-text-button" onClick={event => {
+  return <div className="product-applied-lettering"><LetteringSketch variant={variant} value={value} objects={applied.objects} artwork={artwork} label={summary ? p.applied + ' · ' + summary : p.applied} /><div><strong>{summary || p.applied}</strong><span>{p.applied}</span><small>{note}</small></div><button type="button" className="product-text-button" onClick={event => {
     event.currentTarget.closest('.product-personalisation')?.querySelector<HTMLAnchorElement>('a')?.focus({ preventScroll: true });
-    dispatch({ type: 'remove', variant });
-    creative.remove(variant);
+    onRemove();
   }}>{e.removeDesign}</button></div>;
 }

@@ -1,7 +1,7 @@
 import type { StorefrontLocale } from '../locale';
 
 interface CatalogCopy {
-  customOrMade: string;
+  customOrMade: string; unknownCollection: string;
   title: string; intro: string; finishes: string;
   sale: string; sort: string; featured: string; priceAsc: string; priceDesc: string;
   reset: string; conceptsTitle: string; conceptsIntro: string;
@@ -14,7 +14,7 @@ interface CatalogCopy {
 
 export const catalogCopy: Record<StorefrontLocale, CatalogCopy> = {
   en: {
-    customOrMade: 'To personalise or make',
+    customOrMade: 'To personalise or make', unknownCollection: 'Collection not found',
     showResults: 'Show results',
     activeFilters: 'Active filters',
     pageHeading: 'Products & designs', allItems: 'All products & designs', filters: 'Filters', results: 'Results',
@@ -28,7 +28,7 @@ export const catalogCopy: Record<StorefrontLocale, CatalogCopy> = {
     reset: 'Clear filters', conceptsTitle: 'Design concepts', conceptsIntro: 'Explore the materials and shapes. These designs are not available to order.',
   },
   de: {
-    customOrMade: 'Zum Personalisieren oder Fertigen',
+    customOrMade: 'Zum Personalisieren oder Fertigen', unknownCollection: 'Kollektion nicht gefunden',
     showResults: 'Ergebnisse anzeigen',
     activeFilters: 'Aktive Filter',
     pageHeading: 'Produkte & Entwürfe', allItems: 'Alle Produkte & Entwürfe', filters: 'Filter', results: 'Ergebnisse',
@@ -42,7 +42,7 @@ export const catalogCopy: Record<StorefrontLocale, CatalogCopy> = {
     reset: 'Filter zurücksetzen', conceptsTitle: 'Designkonzepte', conceptsIntro: 'Entdecke Formen und Materialien. Diese Entwürfe stehen nicht zum Verkauf.',
   },
   ru: {
-    customOrMade: 'Для персонализации или изготовления',
+    customOrMade: 'Для персонализации или изготовления', unknownCollection: 'Коллекция не найдена',
     showResults: 'Показать результаты',
     activeFilters: 'Выбрано фильтров',
     pageHeading: 'Товары и идеи', allItems: 'Все товары и идеи', filters: 'Фильтры', results: 'Найдено',
@@ -56,7 +56,7 @@ export const catalogCopy: Record<StorefrontLocale, CatalogCopy> = {
     reset: 'Сбросить фильтры', conceptsTitle: 'Дизайн-концепты', conceptsIntro: 'Рассмотрите формы и материалы. Эти концепты пока нельзя заказать.',
   },
   pl: {
-    customOrMade: 'Do personalizacji lub wykonania',
+    customOrMade: 'Do personalizacji lub wykonania', unknownCollection: 'Nie znaleziono kolekcji',
     showResults: 'Pokaż wyniki',
     activeFilters: 'Aktywne filtry',
     pageHeading: 'Produkty i projekty', allItems: 'Wszystkie produkty i projekty', filters: 'Filtry', results: 'Wyniki',
@@ -70,7 +70,7 @@ export const catalogCopy: Record<StorefrontLocale, CatalogCopy> = {
     reset: 'Wyczyść filtry', conceptsTitle: 'Projekty koncepcyjne', conceptsIntro: 'Poznaj formy i materiały. Te projekty nie są dostępne w sprzedaży.',
   },
   es: {
-    customOrMade: 'Para personalizar o fabricar',
+    customOrMade: 'Para personalizar o fabricar', unknownCollection: 'Colección no encontrada',
     showResults: 'Ver resultados',
     activeFilters: 'Filtros activos',
     pageHeading: 'Productos y diseños', allItems: 'Todos los productos y diseños', filters: 'Filtros', results: 'Resultados',
@@ -84,7 +84,7 @@ export const catalogCopy: Record<StorefrontLocale, CatalogCopy> = {
     reset: 'Borrar filtros', conceptsTitle: 'Conceptos de diseño', conceptsIntro: 'Descubre formas y materiales. Estos diseños no están a la venta.',
   },
   fr: {
-    customOrMade: 'À personnaliser ou à fabriquer',
+    customOrMade: 'À personnaliser ou à fabriquer', unknownCollection: 'Collection introuvable',
     showResults: 'Voir les résultats',
     activeFilters: 'Filtres actifs',
     pageHeading: 'Produits et créations', allItems: 'Tous les produits et créations', filters: 'Filtres', results: 'Résultats',
@@ -98,7 +98,7 @@ export const catalogCopy: Record<StorefrontLocale, CatalogCopy> = {
     reset: 'Effacer les filtres', conceptsTitle: 'Concepts de design', conceptsIntro: 'Découvrez les formes et les matières. Ces créations ne sont pas en vente.',
   },
   it: {
-    customOrMade: 'Da personalizzare o realizzare',
+    customOrMade: 'Da personalizzare o realizzare', unknownCollection: 'Collezione non trovata',
     showResults: 'Mostra risultati',
     activeFilters: 'Filtri attivi',
     pageHeading: 'Prodotti e progetti', allItems: 'Tutti i prodotti e i progetti', filters: 'Filtri', results: 'Risultati',
@@ -112,3 +112,10 @@ export const catalogCopy: Record<StorefrontLocale, CatalogCopy> = {
     reset: 'Cancella filtri', conceptsTitle: 'Concept di design', conceptsIntro: 'Esplora forme e materiali. Questi progetti non sono in vendita.',
   },
 };
+// When all current catalog records are offers, the buyer is browsing products,
+// not a mixture of things for sale and design previews.
+export const productListLabels = {
+  en: ['Products', 'All products'], de: ['Produkte', 'Alle Produkte'], ru: ['Товары', 'Все товары'],
+  pl: ['Produkty', 'Wszystkie produkty'], es: ['Productos', 'Todos los productos'],
+  fr: ['Produits', 'Tous les produits'], it: ['Prodotti', 'Tutti i prodotti'],
+} as const;

@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router';
-import { catalogCopy } from './browse/catalogCopy';
+import { catalogCopy, productListLabels } from './browse/catalogCopy';
 import { isCatalogPath } from './routes';
 import { useAppDispatch } from '../hooks';
 import { productCopy } from './copy';
@@ -10,6 +10,8 @@ import { productLocaleSelected } from './demoStore';
 import type { Appearance } from './appearance';
 import { Icon } from './Icon';
 import Modal from './Modal';
+import { hasDesignConcepts } from './catalog/localCatalog';
+import { editionCollectionPath, editionCopy } from './fixtures/editionCatalog';
 
 const drawerLabels = {
   de: ['Nach Thema', 'Schnellauswahl'], en: ['Browse by interest', 'Quick picks'],
@@ -79,7 +81,8 @@ export default function StorefrontNavigation({ appearance, onAppearance }: { app
   const copy = catalogCopy[locale], [interests, shortcuts] = drawerLabels[locale];
   const groups = [
     { name: interests, links: [[t.living, '/catalog?category=living'], [t.gifts, '/catalog?category=gifts']] },
-    { name: shortcuts, links: [[copy.ready, '/catalog?format=ready'], [t.personalizable, '/catalog?custom=yes'], [copy.sale, '/catalog?sale=1'], [copy.conceptsTitle, '/catalog?format=concept']] },
+    { name: shortcuts, links: [[copy.ready, '/catalog?format=ready'], [t.personalizable, '/catalog?custom=yes'], [copy.sale, '/catalog?sale=1'],
+      hasDesignConcepts() ? [copy.conceptsTitle, '/catalog?format=concept'] : [editionCopy[locale].title, editionCollectionPath]] },
   ];
   const menuLink = (label: string, to: string, className?: string) =>
     <Link key={to} className={className} to={to} aria-current={here === to ? 'page' : undefined} onClick={() => setDrawer(false)}>
@@ -101,7 +104,7 @@ export default function StorefrontNavigation({ appearance, onAppearance }: { app
     </div></div></div>
     {drawer && <Modal title={t.categories} closeLabel={t.close} className="product-category-drawer" motion="drawer" onClose={() => setDrawer(false)}>
       <nav className="product-category-links" aria-label={t.categories}>
-        {menuLink(copy.allItems, '/catalog', 'category-all')}
+        {menuLink(hasDesignConcepts() ? copy.allItems : productListLabels[locale][1], '/catalog', 'category-all')}
         {groups.map(group => <div className="category-group" key={group.name}>
           <h3>{group.name}</h3>
           {group.links.map(([label, to]) => menuLink(label, to))}

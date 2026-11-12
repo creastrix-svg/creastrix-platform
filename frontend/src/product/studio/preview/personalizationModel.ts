@@ -20,6 +20,10 @@ export type ModelDecoration = {
   showArea?: boolean;
 };
 export const studioModelSource = (variant: VariantId) => `/product/studio-loop-${variant}.glb`;
+/** Only the original pot geometry has a verified matching UV-mapped studio asset.
+ * A replacement model keeps its own geometry; absent models remain unavailable. */
+export const appliedModelSource = (variant: VariantId, source: string | null) =>
+  source === `/product/loop-shaped-${variant}.glb` ? studioModelSource(variant) : source;
 
 type Surface = { material: Material; originalFactor: RGBA; originalTexture: Texture | null; texture: Texture; canvas: HTMLCanvasElement; context: CanvasRenderingContext2D };
 const exteriorNames = ['Studio exterior lower', 'Studio exterior upper'];

@@ -1,6 +1,11 @@
 # Buyer storefront
 
-The following describes the local React storefront, including fixture-specific visual behaviour. For setup and the code map, see the [frontend guide](../README.md).
+The following describes the default offline React storefront, including its
+sample prices and stock. The [connected local catalog](../../docs/local-catalog.md)
+reads merchandise, prices, rating summaries and recommendation links from
+PostgreSQL on page load. Its 39 local products, including the photographed
+objects labelled as concepts in the offline mode, open ordinary product cards.
+For setup and the code map, see the [frontend guide](../README.md).
 
 ## Buyer homepage and catalog (local preview)
 
@@ -37,7 +42,7 @@ The shelf, catalog, search, product and cart use the same demo price (€18); th
 stock limit is 18 cups. **Loop and Tide use the same product card.** A single
 finish still has a selected swatch. If the product has no model, the 3D control
 remains visible but disabled; it never opens another product's model. The card
-always includes the seller, both recommendation rails, three feature tiles,
+always includes the seller, three feature tiles,
 specifications and expandable description. Tide has one photograph and no
 personalisation; its three tiles sit directly below the gallery, including on
 phones. No placeholder replaces the studio entry. The local cart and saved products can
@@ -64,7 +69,7 @@ to manufacture. The cards show fixture details and the actual empty review
 state, not generated ratings or popularity.
 
 Filter selections and sorting live in the URL (`format`, `custom`,
-`technique`, `color`, `sale`, `category`, `group`, `sort`). Browser Back and the
+`technique`, `color`, `sale`, `category`, `group`, `collection`, `sort`). Browser Back and the
 product breadcrumb return to the previous selection. The page can sort by
 displayed base price, name or available quantity. This is a local React storefront:
 no catalog API, published listings, or checkout integration is included.
@@ -172,6 +177,9 @@ accessible names, without changing authentication appearance. Chalk's sample
 €24.00-to-€19.90 comparison produces a checked, rounded 17% demo tag; all totals
 and saved prices use current integer cents. This is not live offer/pricing logic.
 Refresh restores a valid local cart through the [studio persistence adapter](personalisation.md).
+In the connected catalog, an unlisted SKU is kept separately until the buyer
+removes it or the offer returns. It contributes neither a price nor any orderable
+units. Other cart lines and studio drafts still restore normally.
 Header hover/focus preview supports editing
 and removal. Its bounded last-five item list alone scrolls; header, total and
 View cart remain outside that scroll area, including short viewports.
@@ -213,8 +221,19 @@ orders and payment are not implemented; the subtotal is not a final payable tota
 No timers or artificial loading are added. Account persistence, guest merge and
 backend cart/favorite APIs remain outside this interface-only slice.
 
-Both recommendation rails keep their DOM items and use native horizontal scrolling,
-snap/swipe and edge controls; motion requests are instant under reduced motion.
+Below the purchase controls, “More from this seller” prioritises other items in
+the same named collection. Four tiles fit in the desktop grid; additional
+items can be reached by scrolling or using the arrows. Its collection link opens that filtered catalog;
+if the product has no collection, the seller link opens the single-seller catalog.
+Below the description, “You may also like” is one horizontal list. Matches
+from the seller's descriptive text come first, immediately followed by the
+remaining offers from the same department. Up to five cards fit side by side
+on desktop; scrolling reveals additional cards in the same list. The current
+product and seller-shelf items are excluded. Short lists are centred, and an
+empty list shows no heading or controls.
+The offline preview has only its configured examples, not the live matcher. The rails use native
+horizontal scrolling with snap/swipe and edge controls; motion requests are
+instant under reduced motion.
 
 Storefront routes retain the shell DOM and use React Router links. One feature-owned
 focus/scroll hook covers path and query navigation and bounded document-memory

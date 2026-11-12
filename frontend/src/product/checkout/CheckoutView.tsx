@@ -7,12 +7,12 @@ import { cartOfferView } from '../cart/cartOfferView';
 import { checkoutCopy } from './checkoutCopy';
 import type { CheckoutCopy } from './checkoutCopy';
 import { productCopy } from '../copy';
-import { cartCount, cartLinePrice, cartTotal } from '../demoStore';
+import { cartCount, cartLinePrice, cartStockShortages, cartTotal } from '../demoStore';
 import { Icon } from '../Icon';
 import { useProductLocale } from '../useProductLocale';
 import { cartLineId } from '../demoStore';
 import DesignThumbnail from '../studio/preview/DesignThumbnail';
-import { cartDesignLabel, studioCartCopy } from '../cart/studioCartCopy';
+import { cartDesignLabel, stockShortageNote, studioCartCopy } from '../cart/studioCartCopy';
 import CartDesignPriceDetails from '../cart/CartDesignPriceDetails';
 
 const fields = ['name', 'email', 'street', 'postalCode', 'city', 'country'] as const;
@@ -58,7 +58,7 @@ export default function CheckoutView() {
     <Link to="/preview/cart" state={location.state} className="product-back"><span className="product-flip"><Icon name="arrow" /></span>{t.backToCart}</Link>
     <header className="checkout-header"><h1>{t.title}</h1><p className="checkout-prototype-note" id="checkout-prototype-note"><strong>{t.prototypeLabel}</strong> · {t.prototypeNote}</p></header>
     {demo.cart.length === 0 ? <section className="checkout-empty" aria-labelledby="checkout-empty-title"><span className="product-cart-empty-icon"><Icon name="bag" /></span><h2 id="checkout-empty-title">{t.emptyTitle}</h2><p>{t.emptyBody}</p></section> : <div className="checkout-layout">
-      <CheckoutDetails t={t} />
+      {cartStockShortages(demo).length ? <p role="status">{stockShortageNote[language]}</p> : <CheckoutDetails t={t} />}
       <aside className="checkout-panel checkout-summary" aria-labelledby="checkout-summary-title">
         <h2 id="checkout-summary-title">{t.summaryTitle}</h2>
         <div className="checkout-lines">{demo.cart.map(line => {

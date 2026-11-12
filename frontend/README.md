@@ -22,6 +22,9 @@ npm run preview -- --port 4173 --strictPort
 
 Open [the built storefront](http://localhost:4173/). The preview serves `dist/`, has no backend proxy and is not a production deployment. Prices, stock, personalisation fees and offers in this storefront are local examples. Checkout neither places an order nor takes payment.
 
+To run the existing catalog and product cards against PostgreSQL instead,
+use the separate [connected local catalog](../docs/local-catalog.md) mode.
+
 ## Find a feature
 
 | Change | Start here |

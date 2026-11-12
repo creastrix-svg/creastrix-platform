@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { useStore } from 'react-redux';
-import { Link, Route, Routes } from 'react-router';
+import { Link, Route, Routes, useLocation } from 'react-router';
 import { isFavoriteEvent, readFavoriteIds } from './favorites';
 import { favoritesRead } from './demoStore';
 import { useAppDispatch, useAppSelector } from '../hooks';
@@ -23,9 +23,10 @@ import { InfoView } from './info/InfoView';
 import { NotFoundView } from './NotFoundView';
 import { ReviewFormView } from './reviews/ReviewFormView';
 import { ReviewsView } from './reviews/ReviewsView';
+import ConnectedReviewView from './reviews/ConnectedReviewView';
 import CatalogView from './browse/CatalogView';
 import EditionView from './browse/EditionView';
-import { editionCollectionPath } from './routes';
+import { catalogDetailRoutes, editionCollectionPath } from './routes';
 import StorefrontHome from './home/StorefrontHome';
 import TideProductPage from './detail/TideProductPage';
 import { tideOffer } from './fixtures/tideOffer';
@@ -34,9 +35,17 @@ import './product.css';
 import { rememberProductPreferences, serializeProductPreferences } from './preferences';
 import PersonalizationView from './studio/PersonalizationView';
 import PersistentStudio from './studio/session/PersistentStudio';
+import ConnectedCatalog from './catalog/ConnectedCatalog';
+import { entryForPath } from './catalog/localCatalog';
+import ConnectedProductPage from './detail/ConnectedProductPage';
 
 export default function ProductExperience() {
-  return <PersistentStudio browsingHome={<Storefront cartReady={false} />}><Storefront /></PersistentStudio>;
+  return <ConnectedCatalog><PersistentStudio browsingHome={<Storefront cartReady={false} />}><Storefront /></PersistentStudio></ConnectedCatalog>;
+}
+function CollectionItemRoute({offline}: {offline:'edition'|'concept'}) {
+  const {pathname} = useLocation(), entry = entryForPath(pathname);
+  if (entry?.kind === 'offer') return <ConnectedProductPage key={entry.id}/>;
+  return offline === 'edition' ? <EditionView /> : <ConceptView />;
 }
 function Storefront({ cartReady = true }: { cartReady?: boolean }) {
   const language = useProductLocale(), t = productCopy[language];
@@ -82,12 +91,15 @@ function Storefront({ cartReady = true }: { cartReady?: boolean }) {
         <Route path={tideOffer.href} element={<TideProductPage />} />
         <Route path={tideOffer.href + '/reviews'} element={<ReviewsView product="tide" />} />
         <Route path={tideOffer.href + '/reviews/new'} element={<ReviewFormView product="tide" />} />
-        <Route path={editionCollectionPath + '/:id'} element={<EditionView />} />
+        {catalogDetailRoutes.map(path => <Route key={path + '/reviews'} path={path + '/reviews'} element={<ConnectedReviewView/>}/>)}
+        {catalogDetailRoutes.map(path => <Route key={path + '/reviews/new'} path={path + '/reviews/new'} element={<ConnectedReviewView write/>}/>)}
+        <Route path="/products/:id" element={<ConnectedProductPage />} />
+        <Route path={editionCollectionPath + '/:id'} element={<CollectionItemRoute offline="edition" />} />
         <Route path="/products/loop" element={<ProductPage />} /><Route path="/products/loop/reviews" element={<ReviewsView />} /><Route path="/products/loop/reviews/new" element={<ReviewFormView />} />
         <Route path="/products/loop/personalize" element={<PersonalizationView />} />
         <Route path="/preview/cart" element={<CartView />} /><Route path="/preview/checkout" element={<CheckoutView />} /><Route path="/preview/saved" element={<FavoritesView />} />
         <Route path="/preview/search" element={<SearchResultsView />} /><Route path="/catalog" element={<CatalogView />} /><Route path="/preview/collection" element={<CatalogView />} />
-        <Route path="/preview/items/:id" element={<ConceptView />} /><Route path="/preview/info/:topic" element={<InfoView />} /><Route path="/preview/studio" element={<InfoView studio />} />
+        <Route path="/preview/items/:id" element={<CollectionItemRoute offline="concept" />} /><Route path="/preview/info/:topic" element={<InfoView />} /><Route path="/preview/studio" element={<InfoView studio />} />
         <Route path="*" element={<NotFoundView />} />
       </Routes></StorefrontOrigin.Provider></main>
       <footer className="product-footer"><div className="product-width"><div className="product-footer-grid">

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import config, { AUTH_PROXY_PATTERN, authProxy } from './vite.config';
+import { AUTH_PROXY_PATTERN, authProxy, catalogProxyPattern, frontendConfig } from './vite.config';
+const config = frontendConfig('development');
 
 describe('fixed development transport configuration, not a runtime proxy proof', () => {
   const routed = new RegExp(AUTH_PROXY_PATTERN);
@@ -27,5 +28,15 @@ describe('fixed development transport configuration, not a runtime proxy proof',
     expect(authProxy).not.toHaveProperty('rewrite');
     expect(authProxy).not.toHaveProperty('headers');
     expect(authProxy).not.toHaveProperty('configure');
+  });
+  it('confines the dedicated catalog mode to loopback with no account transport', () => {
+    const config = frontendConfig('local-catalog'), route = new RegExp(catalogProxyPattern);
+    expect(config.server.proxy).toEqual(config.preview.proxy);
+    expect(Object.keys(config.server.proxy)).toEqual([catalogProxyPattern]);
+    expect(config.server).toMatchObject({host:'127.0.0.1',port:4174,strictPort:true});
+    expect(config.build.outDir).toBe('dist-local-catalog');
+    expect(route.test('/api/local-catalog/products')).toBe(true);
+    for (const path of ['/api/me','/auth/login','/api/local-catalog/products/extra','/api/local-catalog/private'])
+      expect(route.test(path)).toBe(false);
   });
 });

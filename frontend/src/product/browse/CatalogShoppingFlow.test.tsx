@@ -52,7 +52,7 @@ it.each([
   expect(url()).toBe('/preview/cart');
   expect(window.scrollY).toBe(0);
   const line = main().getByRole('article', { name: new RegExp('^' + name + ' · ') });
-  expect(within(line).getByRole('link', { name })).toHaveAttribute('href', product);
+  expect(within(line).getByRole('link', { name })).toHaveAttribute('href', name === 'Loop' ? product + '&cartLine=chalk' : product);
   expect(main().getByRole('link', { name: t.continue })).toHaveAttribute('href', product);
 
   await back();

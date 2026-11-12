@@ -1,4 +1,5 @@
 import react from '@vitejs/plugin-react';
+import { availableParallelism } from 'node:os';
 import { defineConfig } from 'vitest/config';
 
 // Route namespace letters (including accepted percent encodings) without rewriting URL/query.
@@ -12,14 +13,23 @@ export const authProxy = {
   cookieDomainRewrite: false as const, cookiePathRewrite: false as const, xfwd: false,
 };
 
-export default defineConfig({
+export const catalogProxyPattern = '^/api/local-catalog/products(?:\\?.*)?$';
+const localCatalogProxy = { [catalogProxyPattern]: { target: 'http://127.0.0.1:8081', changeOrigin: false, followRedirects: false, xfwd: false } };
+export const frontendConfig = (mode: string) => ({
   plugins: [react()],
-  server: { host: '127.0.0.1', port: 3000, strictPort: true, proxy: { [AUTH_PROXY_PATTERN]: authProxy } },
-  preview: { host: '127.0.0.1', port: 3000, strictPort: true, proxy: {} },
+  build: { outDir: mode === 'local-catalog' ? 'dist-local-catalog' : 'dist' },
+  server: { host: '127.0.0.1', port: mode === 'local-catalog' ? 4174 : 3000, strictPort: true,
+    proxy: mode === 'local-catalog' ? localCatalogProxy : { [AUTH_PROXY_PATTERN]: authProxy } },
+  preview: { host: '127.0.0.1', port: mode === 'local-catalog' ? 4174 : 3000, strictPort: true,
+    proxy: mode === 'local-catalog' ? localCatalogProxy : {} },
   test: {
     environment: 'happy-dom',
+    // The studio and gallery tests mount full pages. Bound concurrent DOMs
+    // rather than increasing interaction timeouts on busy developer machines.
+    maxWorkers: Math.min(3, availableParallelism()),
     setupFiles: ['./src/test/setup.ts'],
     restoreMocks: true,
     clearMocks: true,
   },
 });
+export default defineConfig(({mode}) => frontendConfig(mode));

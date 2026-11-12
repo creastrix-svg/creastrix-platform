@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { Provider } from 'react-redux';
@@ -72,7 +72,8 @@ describe('public routes, language and keyboard support', () => {
     const { user, store } = show();
     await screen.findByRole('main', {}, { timeout: 5000 });
     expect(within(screen.getByRole('main')).getByRole('heading', { level: 1 })).toBeVisible();
-    expect(document.title).toBe(homeCopy.en.title + ' · Creastrix');
+    // Route metadata is applied in a passive effect after the lazy page mounts.
+    await waitFor(() => expect(document.title).toBe(homeCopy.en.title + ' · Creastrix'));
     expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute('content', homeCopy.en.description);
     await user.click(within(screen.getByRole('banner')).getByRole('link', { name: productCopy.en.account }));
     expect(screen.getByRole('heading', { level: 1, name: copy.en.accountTitle })).toBeVisible();
