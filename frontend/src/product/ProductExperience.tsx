@@ -88,7 +88,8 @@ function Storefront({ cartReady = true, accountCart }: { cartReady?: boolean; ac
     const measure = () => { const height = element.getBoundingClientRect().height; if (height > 0) shell.style.setProperty('--product-header-height', `${height}px`); };
     measure();
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
-    if (observer) observer.observe(element); else window.addEventListener('resize', measure);
+    // Dock to the whole header: compact layouts can change only its vertical padding.
+    if (observer) observer.observe(element, { box: 'border-box' }); else window.addEventListener('resize', measure);
     return () => { observer?.disconnect(); window.removeEventListener('resize', measure); shell.style.removeProperty('--product-header-height'); };
   }, []);
   useStorefrontNavigation(main);

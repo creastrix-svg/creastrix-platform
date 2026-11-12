@@ -337,12 +337,17 @@ describe('product card and public demo controls', () => {
     let height = 118;
     const original = HTMLElement.prototype.getBoundingClientRect;
     const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) { return this.matches('.product-header') ? new DOMRect(0, 0, 390, height) : original.call(this); });
-    const observations = new Map<Element, () => void>();
+    const observations = new Map<Element, (change: 'content' | 'padding') => void>();
     vi.stubGlobal('ResizeObserver', class {
       elements: Element[] = [];
       callback: () => void;
       constructor(callback: () => void) { this.callback = callback; }
-      observe(element: Element) { this.elements.push(element); observations.set(element, this.callback); }
+      observe(element: Element, options?: ResizeObserverOptions) {
+        this.elements.push(element);
+        observations.set(element, change => {
+          if (change === 'content' || options?.box === 'border-box') this.callback();
+        });
+      }
       disconnect() { for (const element of this.elements) observations.delete(element); }
     });
     const scroll = vi.spyOn(window, 'scrollTo');
@@ -352,8 +357,11 @@ describe('product card and public demo controls', () => {
       expect(shell.style.getPropertyValue('--product-header-height')).toBe('118px');
       for (const name of [t.account, t.favorites, t.cart]) expect(within(header).getByRole('link', { name })).toBeVisible();
       expect(within(header).getByRole('combobox', { name: t.search })).toBeVisible();
-      scroll.mockClear(); height = 96; act(() => observations.get(header)!());
+      // The compact homepage changes only header padding on a height-only resize.
+      scroll.mockClear(); height = 96; act(() => observations.get(header)!('padding'));
       expect(shell.style.getPropertyValue('--product-header-height')).toBe('96px'); expect(scroll).not.toHaveBeenCalled();
+      height = 118; act(() => observations.get(header)!('padding'));
+      expect(shell.style.getPropertyValue('--product-header-height')).toBe('118px');
       unmount(); expect(observations.has(header)).toBe(false);
     } finally { rect.mockRestore(); scroll.mockRestore(); }
   });
