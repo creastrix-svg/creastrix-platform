@@ -4,6 +4,7 @@ import { isCatalogOfferHref, tideOfferPath } from '../routes';
 import { parseCatalogEntries, unrated, type CatalogRating, type Rail } from './catalogEntries';
 import { expandSellerShelf, lowerShelves } from './recommendationShelves';
 import { permanentCatalogMode, permanentPresentation } from './permanentCatalog';
+import { publishedPhotoId } from './photoRenditions';
 export type { CatalogRating } from './catalogEntries';
 
 export const catalogEndpoint = permanentCatalogMode ? '/api/account-catalog/products' : '/api/local-catalog/products';
@@ -49,6 +50,8 @@ function integer(raw: unknown) {
   return typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0 && raw <= 1_000_000 ? raw : invalid();
 }
 function localAsset(raw: unknown, extension: 'webp' | 'glb') {
+  if (extension === 'webp' && import.meta.env.MODE === 'local-catalog' && typeof raw === 'string'
+      && publishedPhotoId(raw, 'detail')) return raw;
   return typeof raw === 'string' && /^\/(product|shop-edition)\/[a-z0-9_-]+\.(webp|glb)$/.test(raw) && raw.endsWith('.' + extension) ? raw : invalid();
 }
 

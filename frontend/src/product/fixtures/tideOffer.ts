@@ -1,5 +1,6 @@
 import { tideOfferPath } from '../routes';
 import { connectedProduct } from '../catalog/localCatalog';
+import { thumbnailFor } from '../catalog/photoRenditions';
 import { variantById } from './loop';
 
 // Local storefront fixture, not inventory or a quote from a commerce backend.
@@ -13,5 +14,5 @@ export const tideOffer = {
   href: tideOfferPath,
   get media() { return connectedProduct('tide')?.variants[0] ?? {photos: ['/shop-edition/tide.webp'], model: null}; },
   get photo() { return this.media.photos[0] ?? ''; },
-  get thumb() { return connectedProduct('tide') ? this.photo : '/shop-edition/tide-small.webp'; },
+  get thumb() { return connectedProduct('tide') ? thumbnailFor(this.photo) : '/shop-edition/tide-small.webp'; },
 } as const;

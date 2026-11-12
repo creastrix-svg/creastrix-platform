@@ -18,6 +18,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
 
 /** The storefront read service is opt-in and cannot share the account pilot's listener or migrations. */
 @Configuration(proxyBeanMethods = false)
@@ -79,8 +80,12 @@ class LocalCatalogConfiguration {
     @Bean
     @Order(1)
     SecurityFilterChain localCatalogReadAccess(HttpSecurity http) throws Exception {
-        // Only this exact GET is handled here. All other requests retain the default deny policy.
-        return http.securityMatcher(PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, PRODUCTS_PATH))
+        // This profile exposes the buyer feed and published derivative reads, never an upload route.
+        var paths = PathPatternRequestMatcher.withDefaults();
+        return http.securityMatcher(new OrRequestMatcher(paths.matcher(HttpMethod.GET, PRODUCTS_PATH),
+                        paths.matcher(HttpMethod.GET, "/api/local-catalog/media/{publication}/{rendition}"),
+                        paths.matcher(HttpMethod.HEAD, "/api/local-catalog/media/{publication}/thumb.jpg"),
+                        paths.matcher(HttpMethod.HEAD, "/api/local-catalog/media/{publication}/detail.jpg")))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll())
                 .build();

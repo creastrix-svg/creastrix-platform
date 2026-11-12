@@ -103,8 +103,9 @@ Stop the frontend and backend with Ctrl+C, then run
   items), not reviews or purchases by real people. No text reviews, accounts
   or verified-purchase claims are generated. This slice reads summaries;
   it does not collect or publish buyer reviews.
-- **Presentation:** React formats amounts and discounts. The database selects
-  media paths; the files themselves, UI labels and studio tools stay in the frontend.
+- **Presentation:** React formats amounts and discounts. Until an operator supplies a
+  cover, the existing bundled photos are used. A seller-supplied cover uses two
+  server-generated images; private originals are never included in the feed.
 
 The connected client reads one catalog snapshot on page load, so list and
 detail agree on the price for the same variant. Reload to see a committed
@@ -134,3 +135,42 @@ reserve anything. The seeded product rows and their variants are **local catalog
 data**, not a shortcut to exposing Ready-Made Product inventory, creating a
 Listing, or accepting a manufacturing order. The [domain specifications](domain/README.md)
 retain their existing approval status.
+
+## Publish a local seller photo
+
+Start the catalog and storefront as described above. From the repository root:
+
+```sh
+bash backend/tools/catalog-photo.sh compile
+bash backend/tools/catalog-photo.sh seller loop cobalt
+# For Tide, start another session: bash backend/tools/catalog-photo.sh seller tide cobalt
+```
+
+Open the private five-minute link printed in the terminal, choose one JPEG or PNG
+and select **Publish local photo**. The page identifies the product and variant.
+Use the link only on this computer; do not put it in an issue or share it in chat.
+The operator acts for Creastrix using local OS access, not a buyer or marketplace
+seller login. The storefront itself has no upload route. If the outcome of a
+submission cannot be confirmed, check the current cover before starting another.
+
+The server creates a thumbnail (long edge up to 480 px) and a larger display photo
+(up to 1600 px). Both preserve proportions, honour supported orientation metadata
+and never enlarge small images. The display files are JPEGs: transparency is
+composited on white and source metadata is omitted. Originals must be no larger
+than 12 MiB, 24 megapixels and 12,000 px on either side. For PNG use sRGB samples
+without an embedded ICC profile (untagged samples are interpreted as sRGB). Supported
+RGB JPEG profiles are converted on read. If an image is rejected, export an RGB
+JPEG in sRGB; do not simply strip a wide-gamut or linear profile from unchanged pixels.
+Animated and unsupported colour formats are refused without changing the cover.
+
+Reload [the catalog](http://127.0.0.1:4174/catalog): the tile loads the thumbnail;
+the product card and expanded gallery load the larger photo. Publication changes
+only the cover of the chosen variant. Other finishes and gallery images stay in
+place. Superseded cover URLs stop serving files; copies already downloaded by buyers
+cannot be revoked.
+
+The dedicated catalog state directory contains `product-media/originals` and
+`product-media/derivatives`, both private. PostgreSQL selects which derivatives
+buyers may retrieve; it never exposes an original's key. Keep these directories
+outside every web root and back them up together with PostgreSQL. There is no
+automatic deletion or third-party seller management.

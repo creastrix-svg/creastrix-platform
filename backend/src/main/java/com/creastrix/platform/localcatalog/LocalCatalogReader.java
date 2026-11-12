@@ -38,10 +38,14 @@ class LocalCatalogReader {
     private static final String READ_PRODUCTS = """
             SELECT p.id, p.name, p.href, p.personalizable, p.currency, p.design_fee_cents,
                    v.id AS variant_id, v.sku, v.cents, v.previous_cents, v.stock, v.colors,
-                   v.check_tone, v.name AS localized_name, v.photos, v.model
+                   v.check_tone, v.name AS localized_name,
+                   CASE WHEN cover.detail_url IS NULL THEN v.photos
+                        ELSE ARRAY[cover.detail_url] || ARRAY(SELECT f.path FROM unnest(v.photos)
+                            WITH ORDINALITY AS f(path,position) WHERE f.position>1 ORDER BY f.position) END AS photos, v.model
               FROM local_catalog.product p
               JOIN local_catalog.variant v ON v.product_id = p.id
               JOIN local_catalog.item_presentation i ON i.product_id = p.id
+              LEFT JOIN local_catalog.published_photo cover ON (cover.product_id,cover.variant_id)=(p.id,v.id)
              WHERE p.kind = 'offer'
              ORDER BY p.display_order, p.id, v.display_order, v.id
             """;
@@ -53,13 +57,16 @@ class LocalCatalogReader {
                    i.collection_id, family.name AS collection_name, i.substitution_key,
                    CASE WHEN p.kind = 'offer' THEN cover.photo ELSE i.photo END AS photo,
                    CASE WHEN p.kind <> 'offer' THEN i.thumb
+                        WHEN cover.thumb_url IS NOT NULL THEN cover.thumb_url
                         WHEN i.photo = cover.photo THEN coalesce(i.thumb, cover.photo)
                         ELSE cover.photo END AS thumb
               FROM local_catalog.product p
               JOIN local_catalog.item_presentation i ON i.product_id = p.id
               LEFT JOIN local_catalog.merchandise_collection family ON family.id = i.collection_id
               LEFT JOIN LATERAL (
-                  SELECT v.id, v.photos[1] AS photo FROM local_catalog.variant v
+                  SELECT v.id, coalesce(pub.detail_url,v.photos[array_lower(v.photos,1)]) AS photo, pub.thumb_url
+                    FROM local_catalog.variant v
+                    LEFT JOIN local_catalog.published_photo pub ON (pub.product_id,pub.variant_id)=(v.product_id,v.id)
                    WHERE v.product_id = p.id ORDER BY v.display_order, v.id LIMIT 1
               ) cover ON p.kind = 'offer'
              WHERE p.kind <> 'offer' OR cover.id IS NOT NULL

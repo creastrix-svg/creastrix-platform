@@ -17,7 +17,7 @@ import { homeTiles } from '../home/homeFeatured';
 import { railItems } from '../detail/carouselContent';
 import { searchCatalog } from '../search';
 import { isStorefrontPath } from '../routes';
-import { cartReturnOfferPath } from '../cart/cartOfferView';
+import { cartOfferView, cartReturnOfferPath } from '../cart/cartOfferView';
 
 vi.hoisted(() => { vi.stubEnv('MODE', 'local-catalog'); });
 
@@ -50,6 +50,7 @@ const fixture = () => {
   ] };
 };
 const ok = (raw: unknown) => new Response(JSON.stringify(raw), { headers: {'content-type': 'application/json; charset=utf-8'} });
+const publication = (n: number) => '/api/local-catalog/media/eed3fe78-6565-4951-9b75-' + String(n).padStart(12, '0') + '/';
 
 describe('local catalog contract', () => {
   it.each(['/products/section-pick', '/products/reviews', '/products/reviews/reviews',
@@ -101,6 +102,21 @@ describe('local catalog contract', () => {
   it('rejects non-JSON (e.g. a missing proxy returning the SPA)', async () => {
     await expect(fetchCatalog(async () => new Response('<html>', {headers: {'content-type':'text/html'}}))).rejects.toThrow('LOCAL_CATALOG_UNAVAILABLE');
   });
+  it('restricts uploaded media to the right rendition and a matching catalog pair', async () => {
+    const base = publication(1), data = fixture(), cover = data.products[0].variants[0], entry = data.entries[0];
+    cover.photos = [base+'detail.jpg','/product/changed.webp'];
+    Object.assign(entry,{photo:base+'detail.jpg',thumb:base+'thumb.jpg'});
+    await expect(fetchCatalog(async () => ok(data))).resolves.toMatchObject({loop:{variants:expect.arrayContaining([
+      expect.objectContaining({id:'cobalt',photos:cover.photos}),
+    ])}});
+    for (const src of [base+'original.jpg', base+'thumb.jpg', base+'detail.jpg?download=1', base+'detail.jpg\n', 'https://images.invalid'+base+'detail.jpg']) {
+      cover.photos = [src]; await expect(fetchCatalog(async () => ok(data))).rejects.toThrow('LOCAL_CATALOG_INVALID');
+    }
+    cover.photos = [base+'detail.jpg'];
+    for (const thumb of [base+'detail.jpg',publication(2)+'thumb.jpg','/product/changed.webp']) {
+      entry.thumb=thumb; await expect(fetchCatalog(async () => ok(data))).rejects.toThrow('LOCAL_CATALOG_INVALID');
+    }
+  });
   it.each([0,1])('never lists a finish that the fixed detail adapter silently replaces (%s)', index => {
     const data = fixture(), product = data.products[index];
     product.variants.push({...product.variants[0], id:'extra', sku:product.id + '-extra'});
@@ -132,6 +148,15 @@ describe('local catalog contract', () => {
 it('gates both existing cards on one real read; failure stays explicit, retry installs different server facts', async () => {
   expect(connectedMode).toBe(true);
   const data = fixture();
+  // Publish a cover for each product's primary finish, and a distinct one for
+  // the discounted finish; filtered tiles must never borrow the default cover.
+  const pot = publication(1), cup = publication(2), chalk = publication(3);
+  for (const [i, base] of [pot,cup].entries()) {
+    Object.assign(data.entries[i],{thumb:base+'thumb.jpg',photo:base+'detail.jpg'});
+    data.products[i].variants[0].photos=[base+'detail.jpg','/product/changed.webp'];
+  }
+  data.products[0].variants[2].photos=[chalk+'detail.jpg','/product/changed.webp'];
+  data.products[0].variants[2].name.en='Glacier chalk';
   const extra = {...data.entries[2], id:'section-pick', name:'Section pick', href:'/products/reviews',
     collectionId:null, collectionName:null, editionOrder:null, homeOrder:null};
   data.entries.push(extra);
@@ -143,17 +168,28 @@ it('gates both existing cards on one real read; failure stays explicit, retry in
   const store = createAppStore('en');
   render(<StrictMode><Provider store={store}><MemoryRouter initialEntries={['/catalog']}>
     <Link to="/products/loop?variant=chalk">Open test pot</Link><Link to="/collections/objects/tide">Open test cup</Link>
-    <Link to="/collections/objects">Open test collection</Link>
+    <Link to="/collections/objects">Open test collection</Link><Link to="/">Open test homepage</Link>
     <App /></MemoryRouter></Provider></StrictMode>);
   expect(await screen.findByRole('alert')).toHaveTextContent('could not be loaded');
   expect(screen.queryByText('Loop', {exact:true})).toBeNull();
   fireEvent.click(screen.getByRole('button', {name:'Try again'}));
   expect(await screen.findByText('Database pot', {exact:true})).toBeVisible();
+  for (const [href,base] of [['/products/loop',pot],['/collections/objects/tide',cup]]) {
+    const img=document.querySelector(`.catalog-offer-link[href="${href}"] img`);
+    expect(img).toHaveAttribute('src',base+'thumb.jpg');
+    expect(img).not.toHaveAttribute('srcset');
+  }
   expect(homeTiles('en','desk').map(e => e.name)).toEqual(['Nebula','Database cup']);
   // Removing the cup from the editorial selection must not remove the offer.
   expect(editionItems('ru').map(e => e.title)).toEqual(['Local title nebula']);
   expect(searchCatalog('Nebula', 'en')[0]).toMatchObject({href:'/collections/objects/nebula',kind:'product',cents:7800});
   expect(searchCatalog('Halo', 'en')).toHaveLength(0);
+  const search = within(screen.getByRole('search')).getByRole('combobox');
+  fireEvent.change(search,{target:{value:'Glacier'}});
+  const swatchResult = await screen.findByRole('option',{name:/Glacier chalk/});
+  expect(swatchResult).toHaveAttribute('href','/products/loop?variant=chalk');
+  expect(swatchResult.querySelector('img')).toHaveAttribute('src',chalk+'thumb.jpg');
+  fireEvent.keyDown(search,{key:'Escape'});
   expect(browseCatalog(new URLSearchParams('format=concept'),'en').concepts.map(e => e.name)).toEqual(['Ring study']);
   expect(browseCatalog(new URLSearchParams('format=ready'),'en').offers.find(e => e.name === 'Nebula')).toMatchObject({minCents:7800,stock:7});
   expect(railItems('nebula','studio','en')).toEqual([]);
@@ -166,6 +202,7 @@ it('gates both existing cards on one real read; failure stays explicit, retry in
   const offer = browseCatalog(new URLSearchParams('sale=1'), 'en').offers[0];
   expect(offer.minCents).toBe(1275);
   expect(offer.finishes[0].stock).toBe(2);
+  expect(offer.finishes[0].photo).toBe(chalk+'thumb.jpg');
   fireEvent.click(screen.getByRole('link', {name:'Nebula'}));
   expect(await screen.findByRole('heading', {name:'Nebula'})).toBeVisible();
   expect(screen.queryByText('Design preview',{exact:true})).toBeNull();
@@ -178,12 +215,33 @@ it('gates both existing cards on one real read; failure stays explicit, retry in
     .getAllByRole('link').map(link => link.getAttribute('href'));
   expect(targets('More from this seller')).toEqual(['/collections/objects/nebula']);
   expect(targets('You may also like')).toEqual(['/collections/objects/tide', extra.href]);
+  expect(screen.getByRole('region',{name:'You may also like'}).querySelector("a[href='/collections/objects/tide'] img")).toHaveAttribute('src',cup+'thumb.jpg');
   expect(screen.queryByRole('region', {name:'More from this section'})).toBeNull();
   const sellerLink = screen.getByRole('link', {name:'More from this seller'});
   expect(sellerLink).toHaveTextContent('Maker Series');
   expect(sellerLink).toHaveAttribute('href','/catalog?collection=maker-series');
   expect(screen.getAllByText('€12.75').length).toBeGreaterThan(0);
-  expect(mediaForVariant('chalk')).toMatchObject({model:null,photos:['/product/changed.webp']});
+  expect(mediaForVariant('chalk')).toMatchObject({model:null,photos:[chalk+'detail.jpg','/product/changed.webp']});
+  const checkGallery = (base: string) => {
+    const open = document.querySelector<HTMLButtonElement>('.product-photo-open')!, main = open.querySelector('img')!;
+    const thumbs = document.querySelectorAll('.product-thumbnails img');
+    expect(main).toHaveAttribute('src',base+'detail.jpg'); expect(thumbs[0]).toHaveAttribute('src',base+'thumb.jpg');
+    expect(thumbs[1]).toHaveAttribute('src','/product/changed.webp');
+    // The detail rendition is independently available even if thumbnail delivery fails.
+    fireEvent.error(thumbs[0]);
+    fireEvent.load(main); fireEvent.click(open);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.querySelector('.product-gallery-image img')).toHaveAttribute('src',base+'detail.jpg');
+    fireEvent.keyDown(dialog,{key:'Escape'});
+  };
+  checkGallery(chalk);
+  fireEvent.click(screen.getByRole('button',{name:'Add to cart'}));
+  const peekOpener=document.querySelector('.product-cart-anchor a')!;
+  fireEvent.focus(peekOpener);
+  expect(document.querySelector(".product-peek-line[data-cart-line-id='chalk'] img")).toHaveAttribute('src',chalk+'thumb.jpg');
+  fireEvent.keyDown(peekOpener,{key:'Escape'});
+  // Favourites, the full cart and the checkout summary use this same compact projection.
+  expect(cartOfferView('tide-cobalt','en').photo).toBe(cup+'thumb.jpg');
   expect(document.title).toContain('Database pot');
   expect(cartLinePrice({variant:'chalk'}).unitCents).toBe(1275);
   expect(cartSkuStock('chalk')).toBe(2);
@@ -206,11 +264,16 @@ it('gates both existing cards on one real read; failure stays explicit, retry in
   expect(await screen.findByRole('heading', {name:extra.name})).toBeVisible();
   fireEvent.click(screen.getByText('Open test cup'));
   expect(await screen.findByRole('heading', {name:'Database cup'})).toBeVisible();
+  checkGallery(cup);
   expect(targets('More from this seller')).toEqual(['/products/loop','/collections/objects/nebula',extra.href]);
   expect(within(screen.getByRole('main')).getAllByText('€8.35').length).toBeGreaterThan(0);
   expect(cartSkuStock('tide-cobalt')).toBe(6);
   fireEvent.click(screen.getByText('Open test collection'));
   expect(await screen.findByRole('link', {name:/Nebula.*€78\.00/})).toBeVisible();
+  fireEvent.click(screen.getByText('Open test homepage'));
+  expect(await screen.findByRole('link',{name:/Database cup.*Local title tide/})).toBeVisible();
+  const homeCup = document.querySelector(".home-featured-card[href='/collections/objects/tide'] img");
+  expect(homeCup).toHaveAttribute('src',cup+'thumb.jpg'); expect(homeCup).not.toHaveAttribute('srcset');
   expect(request).toHaveBeenCalledTimes(2);
   expect(request).toHaveBeenCalledWith(catalogEndpoint,expect.objectContaining({cache:'no-store',credentials:'omit',redirect:'error'}));
 });

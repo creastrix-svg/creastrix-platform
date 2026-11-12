@@ -1,6 +1,8 @@
 import react from '@vitejs/plugin-react';
 import { availableParallelism } from 'node:os';
+import type { IncomingMessage } from 'node:http';
 import { defineConfig } from 'vitest/config';
+import { mediaNamespace, publishedPhotoId } from './src/product/catalog/photoRenditions.ts';
 
 // Route namespace letters (including accepted percent encodings) without rewriting URL/query.
 // Segment boundaries keep /login a React page and unknown backend routes out of SPA fallback.
@@ -14,7 +16,22 @@ export const authProxy = {
 };
 
 export const catalogProxyPattern = '^/api/local-catalog/products(?:\\?.*)?$';
-const localCatalogProxy = { [catalogProxyPattern]: { target: 'http://127.0.0.1:8081', changeOrigin: false, followRedirects: false, xfwd: false } };
+const catalogTarget = { target: 'http://127.0.0.1:8081', changeOrigin: false, followRedirects: false, xfwd: false };
+export const mediaProxyPattern = '^' + mediaNamespace;
+// Match the namespace so an unknown rendition returns 404, not the SPA HTML.
+// Vite's bypass=false rejects at the frontend; only a public derivative is forwarded.
+export const publicMediaProxyGate = (req: Pick<IncomingMessage,'method' | 'url' | 'headers'>) => {
+  if ((req.method !== 'GET' && req.method !== 'HEAD')
+    || !(publishedPhotoId(req.url, 'thumb') || publishedPhotoId(req.url, 'detail'))) return false as const;
+  // Images do not need browser credentials. Remove them before Vite constructs the upstream request.
+  delete req.headers.cookie;
+  delete req.headers.authorization;
+  delete req.headers['proxy-authorization'];
+};
+const localCatalogProxy = {
+  [catalogProxyPattern]: catalogTarget,
+  [mediaProxyPattern]: { ...catalogTarget, bypass: publicMediaProxyGate },
+};
 export const frontendConfig = (mode: string) => ({
   plugins: [react()],
   build: { outDir: mode === 'local-catalog' ? 'dist-local-catalog' : 'dist' },

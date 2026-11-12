@@ -2,6 +2,7 @@ import { photoDescription, swatchBackground } from '../productDisplay';
 import { readCartSku, type CartSku } from '../fixtures/cartSkus';
 import { editionItem } from '../fixtures/editionCatalog';
 import { connectedOffer, entryForPath } from '../catalog/localCatalog';
+import { thumbnailFor } from '../catalog/photoRenditions';
 import { productCopy } from '../copy';
 import type { StorefrontLocale } from '../locale';
 
@@ -11,7 +12,7 @@ export function cartOfferView(sku: CartSku, locale: StorefrontLocale) {
   const { label, color, productHref, search, photo, stock, previousCents } = readCartSku(sku);
   const finish = color.name[locale];
   const item = label.name !== undefined ? { name: label.name, title: finish } : editionItem(label.editionId, locale)!;
-  return { name: item.name, detail: item.title, finish, href: productHref + search, photo, stock, previousCents,
+  return { name: item.name, detail: item.title, finish, href: productHref + search, photo: photo ? thumbnailFor(photo) : photo, stock, previousCents,
     alt: photoDescription(label.editionId ? item.name : productCopy[locale].photoAlt, item.title), swatch: swatchBackground(color.colors) };
 }
 

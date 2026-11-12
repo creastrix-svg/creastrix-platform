@@ -12,6 +12,7 @@ import { appliedModelSource } from '../studio/preview/personalizationModel';
 import type { ModelDecoration } from '../studio/preview/personalizationModel';
 import { personalizationCopy } from '../studio/personalizationCopy';
 import type { StorefrontLocale } from '../locale';
+import { thumbnailFor } from '../catalog/photoRenditions';
 
 const ModelPreview = lazy(() => new Promise<typeof import('./ModelPreview')>((resolve, reject) => {
   // Bound failure, not minimum latency; this cannot cancel the module fetch.
@@ -90,7 +91,8 @@ export function OfferMediaGallery({ media, sku, finishName, favorite, toggleFavo
     {!hasPhotos && thumbnailPlaceholder('empty')}
     {photos.map((source, index) => {
       const key = `${sku}:${source}`;
-      return failedPhotos.has(key) ? thumbnailPlaceholder(key) : <button type="button" key={key} aria-label={`${t.photoNumber} ${index + 1}`} aria-pressed={currentPhoto === index && displayMode === 'photo'} onClick={() => { setPhoto(index); selectMode('photo'); }}><MediaImage src={source} alt="" width={expanded ? 64 : 76} height={expanded ? 48 : 52} loadingLabel={t.loadingPhoto} errorLabel={t.noPhotoShort} onFailure={() => failPhoto(key)} /></button>;
+      const thumb = thumbnailFor(source);
+      return failedPhotos.has(key) ? thumbnailPlaceholder(key) : <button type="button" key={key} aria-label={`${t.photoNumber} ${index + 1}`} aria-pressed={currentPhoto === index && displayMode === 'photo'} onClick={() => { setPhoto(index); selectMode('photo'); }}><MediaImage src={thumb} alt="" width={expanded ? 64 : 76} height={expanded ? 48 : 52} loadingLabel={t.loadingPhoto} errorLabel={t.noPhotoShort} onFailure={thumb === source ? () => failPhoto(key) : undefined} /></button>;
     })}
   </div>;
   return <section className="product-gallery" aria-label={t.photo}>

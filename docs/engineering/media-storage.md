@@ -1,6 +1,6 @@
 # Media storage: local now, S3 candidate for Frankfurt
 
-The [local synthetic cart](account-cart-local-run.md) uses private disk storage for **personalisation only**. Its PostgreSQL records identify the internal owner, design revision, ordered resource references, opaque object keys, sizes and SHA-256 digests. Image and font files live outside SQL, outside the repository and outside any static web root. A digest, filename or object key is not permission to read a file. The Loop editor saves the normalised PNG used in the design, not necessarily the original camera file; supported custom fonts retain their bytes. This is a working-tree candidate, not a deployed media service.
+Two independent local features use the immutable file store. The [synthetic cart](account-cart-local-run.md) keeps the buyer's applied PNG and custom font private. The [catalog photo workflow](../local-catalog.md#publish-a-local-seller-photo) retains the operator's original and publishes only two generated renditions through the active variant cover. They use separate directories and databases. PostgreSQL stores metadata and references, not file bodies. A digest, filename or key is not a read permission. Neither workflow is a deployed media service.
 
 ## What belongs in each store
 
@@ -12,7 +12,7 @@ The [local synthetic cart](account-cart-local-run.md) uses private disk storage 
 | Drawing or blueprint | Editable design or manufacturing file | Flattened, approved preview with private layers removed |
 | 3D model | Master mesh, textures and working files | Approved render or separately cleared viewer model |
 
-These are boundaries for future features, not implemented upload endpoints or new rights for a seller. A private buyer/cart preview remains private; rendering it does not authorise publication. A public-facing derivative should have its own identity and reference its source revision. Withdrawal must be able to stop serving it without altering the source.
+The product-photo row is implemented only in the dedicated local single-operator catalog. Avatars, published drawing/model derivatives and third-party seller access remain future work. A buyer/cart preview remains private; rendering it does not authorise publication. A public-facing derivative has a separate identity from its source; withdrawing a product photo must not alter the original.
 
 ## Adding the next media type
 

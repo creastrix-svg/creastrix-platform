@@ -32,6 +32,20 @@ for program in postgres initdb pg_ctl psql createdb; do
     [[ -x "$bin/$program" ]] || die "Missing $program in $bin; set CREASTRIX_PG_BIN to the PostgreSQL server bin directory."
 done
 
+[[ "$state" == /* && "$state" != *$'\n'* ]] || die "Expected an absolute private catalog state directory."
+case "/$state/" in */../*|*/./*) die "Use a catalog state path without traversal." ;; esac
+ancestor="$state"
+while [[ ! -d "$ancestor" ]]; do
+    [[ ! -L "$ancestor" && ! -e "$ancestor" ]] || die "Invalid catalog state path."
+    ancestor=$(dirname "$ancestor")
+done
+ancestor=$(cd "$ancestor" && pwd -P)
+checkout=$(cd "$(dirname "$0")/../.." && pwd -P)
+while :; do
+    [[ ! "$ancestor" -ef "$checkout" ]] || die "Private media must be outside the checkout and all web roots."
+    [[ "$ancestor" != / ]] || break
+    ancestor=$(dirname "$ancestor")
+done
 if [[ "$action" == start && ! -e "$state" ]]; then
     mkdir -p "$(dirname "$state")"
     mkdir -m 700 "$state"
@@ -46,6 +60,11 @@ fi
 [[ "$(<"$state/cluster-kind")" == creastrix-local-catalog-v1 && -f "$cluster/PG_VERSION" &&
     -s "$state/admin.password" && -s "$state/app.password" ]] ||
     die "Incomplete or unrecognised cluster at $state; inspect it manually. No data will be replaced."
+private_dir() {
+    if [[ ! -e "$1" && ! -L "$1" ]]; then mkdir -m 700 "$1"; fi
+    [[ -d "$1" && ! -L "$1" && -O "$1" && -n "$(find "$1" -prune -type d -perm 0700 -print)" ]] ||
+        die "Expected an owner-only private catalog directory."
+}
 
 # Command-line options select this cluster explicitly. Ignore inherited libpq
 # settings such as a service name or hostaddr that could redirect local calls.
@@ -83,6 +102,19 @@ SQL
     run)
         is_running || die "The dedicated catalog database is stopped. Use start."
         [[ $# -gt 0 ]] || die "run requires a command"
+        media="$(cd "$state" && pwd -P)/product-media"
+        private_dir "$state"
+        private_dir "$media"
+        private_dir "$media/derivatives"
+        export CREASTRIX_CATALOG_MEDIA_DERIVATIVES="$media/derivatives"
+        # Only the local operator publishes. The storefront does not need an originals root.
+        unset CREASTRIX_CATALOG_MEDIA_ORIGINALS
+        if [[ "$1" == "creastrix-local-photo-writer" ]]; then
+            shift
+            [[ $# -gt 0 ]] || die "Expected a local operator command."
+            private_dir "$media/originals"
+            export CREASTRIX_CATALOG_MEDIA_ORIGINALS="$media/originals"
+        fi
         export CREASTRIX_CATALOG_DB_URL="jdbc:postgresql://127.0.0.1:$port/$database"
         export CREASTRIX_CATALOG_DB_USERNAME="$app"
         export CREASTRIX_CATALOG_DB_PASSWORD="$(<"$state/app.password")"
