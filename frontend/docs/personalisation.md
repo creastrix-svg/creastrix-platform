@@ -33,6 +33,19 @@ its draft. Add to cart copies the entire applied composition into a stable local
 line. Equal designs of the same variant add to that line; different designs and plain
 items stay separate. Exact-line editing owns a detached draft: explicit Save updates
 only that line, while cancel/back leaves both the cart and product draft unchanged.
+Opening an active Loop line by its image or name carries both the finish and
+the cart line ID. Its product card reads the line's saved design, quantity and
+unit price, not the current catalog preview for that colour. A plain line
+stays plain even when the same finish has a separate applied catalog design.
+A missing or mismatched line cannot silently open a different configuration.
+Returning from the review list or review form keeps the same cart line context.
+Removing personalisation on this card converts only that line to the plain
+finish and removes its per-unit fee. The buyer stays on the product card, now
+bound to that plain line; “View cart” opens the cart only when chosen. If a plain line for that finish already
+exists, its quantity increases by exactly the converted quantity. Other
+designs and the catalog draft are untouched. Clearing the last decoration in
+the cart editor previews the base price; **Remove personalisation** commits
+that change, whereas leaving the editor without saving keeps the saved design.
 The AI brief is product-local and not part of a cart design; line editing exposes
 only text/image controls. All design lines share the variant's stock capacity.
 Minicart, remove/undo and checkout summaries preserve those identities and amounts.
@@ -54,6 +67,11 @@ font. An unavailable resource fails visibly rather than silently using a fallbac
 The record is limited to 24 Mi characters, 48 distinct raster assets, 64 million
 decoded pixels and three custom fonts. Normalized PNG restoration has a separate
 10 MiB/1536-pixel-edge limit; the public compressed upload remains 5 MiB/16 MP.
+Cart lines share this record-size limit; there is no separate line-count cap.
+If a plain SKU disappears from the connected catalog, its key and quantity remain
+in the saved record. The cart lists it separately, excluded from totals and checkout,
+until the buyer removes it or a later visit finds it listed again. This does not
+discard other items or drafts, or treat malformed stored data as an offer.
 Writes are queued; saved means transaction completion, not request success. A
 compare-and-write in the same transaction refuses to overwrite a changed record
 from another tab. This is single-tab editing with conflict detection, not cross-tab

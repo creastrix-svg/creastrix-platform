@@ -22,6 +22,7 @@ This page helps readers find the correct source. It is a navigation aid and does
 - [Agent Instructions](../AGENTS.md) — operational governance for repository work.
 - [Backend README](../backend/README.md) — backend setup and implementation guidance.
 - [Frontend README](../frontend/README.md) — local startup, feature locations and verification.
+- [Connected local catalog](local-catalog.md) — run the buyer catalog and product cards against a dedicated PostgreSQL database.
 - [Personalisation zones](frontend-personalization-zones.md) — configured buyer tools and the gap to production fulfillment.
 - [Local account pilot](authentication-pilot.md) and [provider migration](authentication-provider-migration.md) — current boundaries and operator procedures.
 - [Engineering history](engineering/integration-history.md) — dated integration and verification records, separate from current instructions.

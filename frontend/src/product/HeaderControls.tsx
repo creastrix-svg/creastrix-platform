@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../hooks';
 import { isVariantId } from './fixtures/loop';
 import { money } from './productDisplay';
-import { cartOfferView } from './cart/cartOfferView';
+import { cartOfferView, cartReturnOfferPath } from './cart/cartOfferView';
 import { isTideOfferPath } from './routes';
 import { tideOffer } from './fixtures/tideOffer';
 import { productCopy } from './copy';
@@ -56,7 +56,7 @@ export function SearchControl() {
       onFocus={() => { setDraft({ key: location.key, value: query }); setOpen(true); }} />
     <button type="submit" className="product-icon-button" aria-label={t.searchSubmit}><Icon name="search" /></button>
     {showing && <div className="product-search-suggestions"><ul id={id + '-results'} role="listbox" aria-label={t.results}>
-      {items.map(item => <li key={item.id}><Link id={id + '-' + item.id} role="option" aria-selected={activeId === item.id} tabIndex={-1} to={item.href} onMouseDown={event => event.preventDefault()} onClick={finish}><img src={item.photo} alt="" width="48" height="48" /><span>{item.name}<small>{searchResultSummary(item, language)}</small></span><Icon name="arrow" /></Link></li>)}
+      {items.map(item => <li key={item.id}><Link id={id + '-' + item.id} role="option" aria-selected={activeId === item.id} tabIndex={-1} to={item.href} onMouseDown={event => event.preventDefault()} onClick={finish}>{item.photo ? <img src={item.photo} alt="" width="48" height="48" /> : <Icon name="image" />}<span>{item.name}<small>{searchResultSummary(item, language)}</small></span><Icon name="arrow" /></Link></li>)}
     </ul>{items.length === 0 && <p role="status">{t.noResults}</p>}<button type="submit" className="product-text-button">{t.results}<Icon name="arrow" /></button></div>}
   </form>;
 }
@@ -66,7 +66,8 @@ export function HeaderCart({ ready = true }: { ready?: boolean }) {
   const c = studioCartCopy[language];
   const demo = useAppSelector(state => state.productDemo), dispatch = useAppDispatch();
   const location = useLocation();
-  const returnState = isTideOfferPath(location.pathname) ? { cartReturnTo: tideOffer.href }
+  const offerPath = cartReturnOfferPath(location.pathname + location.search);
+  const returnState = offerPath ? { cartReturnTo: offerPath } : isTideOfferPath(location.pathname) ? { cartReturnTo: tideOffer.href }
     : location.pathname === '/products/loop' ? { cartReturnTo: '/products/loop' }
     : location.pathname === '/preview/cart' || location.pathname === '/preview/checkout' ? location.state : null;
   const [openKey, setOpenKey] = useState<string | null>(null);

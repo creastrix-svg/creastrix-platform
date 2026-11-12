@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../../hooks';
-import { variantById } from '../fixtures/loop';
 import { productCopy } from '../copy';
 import { cartAdded, favoriteToggled, variantCartQuantity } from '../demoStore';
-import { editionItems } from '../fixtures/editionCatalog';
+import { editionItem, editionItems } from '../fixtures/editionCatalog';
 import { shelfCopy } from '../home/homeShelfCopy';
 import { OfferMediaGallery } from '../media/MediaGallery';
 import ProductCardLayout from './ProductCardLayout';
@@ -28,8 +27,8 @@ function readQuantity() {
 
 export default function TideProductPage() {
   const locale = useProductLocale(), t = productCopy[locale];
-  const edition = editionItems(locale), item = edition.find(entry => entry.id === tideOffer.id)!;
-  const cobalt = variantById(tideOffer.colorId);
+  const edition = editionItems(locale), item = editionItem(tideOffer.id, locale)!;
+  const cobalt = tideOffer.finish;
   const inCart = useAppSelector(state => variantCartQuantity(state.productDemo, tideOffer.sku));
   const favorite = useAppSelector(state => state.productDemo.favorites.includes(tideOffer.sku));
   const dispatch = useAppDispatch();
@@ -44,10 +43,10 @@ export default function TideProductPage() {
     finishes={[{ id: tideOffer.sku, name: cobalt.name[locale], colors: cobalt.colors, checkTone: cobalt.checkTone }]} selected={tideOffer.sku}
     gallery={<OfferMediaGallery sku={tideOffer.sku} finishName={cobalt.name[locale]} locale={locale}
       t={{ ...t, photoAlt: item.name + ' · ' + item.title + ' · ' + item.material }}
-      media={{ photos: [tideOffer.photo], model: null }} imageSize={[1024, 1024]} unavailableModelReason={t.modelFailed}
+      media={tideOffer.media} imageSize={[1024, 1024]} unavailableModelReason={tideOffer.media.model ? undefined : t.modelFailed}
       favorite={favorite} toggleFavorite={() => dispatch(favoriteToggled(tideOffer.sku))} />}
     reviews={{ list: reviewList, write: score => reviewList + '/new?rating=' + score }}
-    price={<ProductPrice cents={tideOffer.unitCents} language={locale} t={t} />}
+    price={<ProductPrice cents={tideOffer.unitCents} previousCents={tideOffer.previousCents} language={locale} t={t} />}
     purchase={<ProductPurchasePanel locale={locale} stock={tideOffer.stock} remaining={tideOffer.stock - inCart}
       unitCents={tideOffer.unitCents} requested={quantity} inCart={inCart} exhaustedLabel={t.allInCart}
       returnTo={tideOffer.href} onQuantity={updateQuantity}

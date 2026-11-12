@@ -44,7 +44,8 @@ it.each(storefrontLocales)('presents the actual Tide offer without Loop-only cap
   expect(screen.getByRole('link', { name: t.noReviews })).toHaveAttribute('href', tideOffer.href + '/reviews');
   expect(screen.queryByText(t.personalButton)).toBeNull();
   expect(within(container.querySelector<HTMLElement>('.product-price-row')!).getByText(t.without)).toBeVisible();
-  expect(screen.queryByText(/Loop/)).toBeNull();
+  const sellerShelf = screen.getByRole('region', {name:t.moreSeller});
+  for (const mention of screen.getAllByText(/Loop/)) expect(sellerShelf).toContainElement(mention);
 });
 
 it('keeps all standard product sections and moves the three features right below the gallery', async () => {
@@ -56,12 +57,13 @@ it('keeps all standard product sections and moves the three features right below
   const seller = within(container.querySelector<HTMLElement>('.product-seller')!);
   expect(seller.getByText('Creastrix')).toBeVisible();
   expect(seller.getByRole('link')).toHaveAttribute('href','/preview/info/about');
-  for (const rail of [t.moreStudio, t.related]) {
-    const section = within(screen.getByRole('region',{name:rail}));
-    const links = within(section.getByRole('list')).getAllByRole('link');
-    expect(links.length).toBeGreaterThan(1);
-    for (const link of links) expect(link.getAttribute('href')).toMatch(/^\/collections\/objects\/(?!tide$)/);
-  }
+  const section = within(screen.getByRole('region',{name:t.moreSeller}));
+  expect(section.getByRole('link',{name:t.moreSeller})).toHaveAttribute('href','/catalog');
+  const links = within(section.getByRole('list')).getAllByRole('link');
+  expect(links.map(link => link.getAttribute('href'))).toEqual([
+    ...['halo', 'flute', 'reed', 'prism'].map(id => '/collections/objects/' + id), '/products/loop',
+  ]);
+  expect(screen.queryByRole('region',{name:t.youMayLike})).toBeNull();
   await user.click(screen.getByText(t.readMore));
   expect(screen.getByRole('heading',{name:t.specsTitle})).toBeVisible();
   await user.click(screen.getByText(t.readLess));

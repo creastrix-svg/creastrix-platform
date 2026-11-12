@@ -3,7 +3,8 @@ import type { ModelViewerElement } from '@google/model-viewer';
 import { afterEach, expect, it, vi } from 'vitest';
 import ModelPreview from '../../media/ModelPreview';
 import { productCopy } from '../../copy';
-import { createPersonalizationModel, loopModelPoint, studioModelSource } from './personalizationModel';
+import { appliedModelSource, createPersonalizationModel, loopModelPoint, studioModelSource } from './personalizationModel';
+
 import type { ModelDecoration } from './personalizationModel';
 import { letteringFonts } from '../design/personalization';
 import { loopLetteringArea } from '../design/studioGeometry';
@@ -12,6 +13,12 @@ import type { StudioObject } from '../design/studioComposition';
 import { imageLayout, studioArea } from '../design/studioComposition';
 
 vi.mock('@google/model-viewer', () => ({}));
+
+it('selects the authored decorated mesh only for its matching catalog model', () => {
+  expect(appliedModelSource('chalk', null)).toBeNull();
+  expect(appliedModelSource('chalk', '/product/replacement.glb')).toBe('/product/replacement.glb');
+  expect(appliedModelSource('chalk', '/product/loop-shaped-chalk.glb')).toBe(studioModelSource('chalk'));
+});
 const cobalt = [.017641954488384078, .07036009569659588, .6038273388553378, 1];
 function material(name: string) {
   return { name, pbrMetallicRoughness: { baseColorFactor: [...cobalt], setBaseColorFactor: vi.fn(), baseColorTexture: { texture: null, setTexture: vi.fn() } } };

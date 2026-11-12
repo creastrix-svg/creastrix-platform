@@ -4,9 +4,9 @@ Creastrix connects buyers, designers and makers. The buyer should be able to dis
 
 ## Current implementation state
 
-- **Storefront:** the homepage, catalog, product pages, studio, favourites, cart and checkout preview are integrated through [PR #45](https://github.com/creastrix-svg/creastrix-platform/pull/45). They run on local product fixtures. The browser can retain drafts and cart lines in IndexedDB and favourites in localStorage. This is neither account storage nor server-authoritative price or inventory. See the [frontend guide](frontend/README.md).
+- **Storefront:** the homepage, catalog, product pages, studio, favourites, cart and checkout preview share the storefront introduced in [PR #45](https://github.com/creastrix-svg/creastrix-platform/pull/45). The default build uses fixtures; the optional connected build reads catalog offers and recommendations from local PostgreSQL through the backend. Drafts and cart lines stay in IndexedDB and favourites in localStorage. Checkout does not reserve stock or guarantee a price. See the [frontend guide](frontend/README.md).
 - **Authentication:** the owner-only, single-instance local pilot uses Cognito Frankfurt and a server-side session. Admission uses the current exact issuer/subject, not an email match. Auth0 is historical, not an active provider. Sign-in does not create a workspace or confer staff rights. Email confirmation, account transfer and public admission are separate operations. See the [pilot](docs/authentication-pilot.md) and [provider runbook](docs/authentication-provider-migration.md).
-- **Backend:** the modular monolith implements the User, Organization and Workspace foundations and part of Ready-Made Product: creation, archive/activate and durable manual quantity deltas. It has scoped platform-access policy and storage workflows, not a live admin interface. No backend catalog, saved cart, guest-account cart merge, ordering, stock allocation for checkout or payment integration is delivered. See [implementation coverage and limits](backend/README.md#implemented-domain-foundation).
+- **Backend:** the modular monolith implements the User, Organization and Workspace foundations and part of Ready-Made Product: creation, archive/activate and durable manual quantity deltas. The optional [local catalog](docs/local-catalog.md) is read-only and separate from those domain tables. Platform-access policy and storage workflows exist without a live admin interface. Account carts, guest-account cart merge, ordering, checkout stock allocation and payments are not implemented. See [implementation coverage and limits](backend/README.md#implemented-domain-foundation).
 - **Readiness:** the original cookie follow-up has a local-only disposition. Public access, staff use, business writes and multi-instance deployment have a separate [open readiness gate](docs/authentication-pilot.md#open-cookie-follow-up). Historical test results do not clear that gate. Do not infer current external provider configuration or deployment state from Git.
 
 Working-tree changes and feature branches are proposals. Inspect the accepted main baseline before describing a capability as integrated; review, CI, local operation and rollout are different events.
@@ -21,6 +21,10 @@ Read the [domain decision notes](docs/engineering/domain-decision-notes.md) for 
 
 ## Product direction
 
+- Work locally on buyer scenarios through the database, backend and existing
+  frontend together. Loop and Tide are the first two catalog records, not
+  separate page designs. The [local catalog contract](docs/local-catalog.md)
+  is a read-only step; it does not change Listing approval or fulfillment rules.
 - Creastrix is the single buyer-facing seller and merchant for the current MVP direction. Seller self-service and third-party fulfillment are later decisions.
 - A product's fulfillment format and its optional personalisation are distinct. In the storefront a ready-made product can be purchased plain or personalised if its configured areas permit it. Design concepts alone are not purchasable offers. Product names, photos and sample prices are fixtures, not platform rules.
 - The product author configures areas, allowed operations and tools. The buyer works within those areas. The studio can preview text and artwork, including visual cut/engraving examples, but cannot certify a production cut, generate manufacturing files or promise AI generation. See the [owner's configured-area decision](docs/frontend-personalization-zones.md#accepted-direction-for-existing-stock-products).

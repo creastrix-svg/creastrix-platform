@@ -1,4 +1,6 @@
 import type { LetteringColor } from './design/personalization';
+import { connectedProduct } from '../catalog/localCatalog';
+import { loopName } from '../fixtures/loop';
 import { builtinStudioFonts, isStudioFontId, standardStudioFonts } from './design/studioFonts';
 import type { BuiltinStudioFont } from './design/studioFonts';
 
@@ -35,7 +37,8 @@ export type StudioProduct = Readonly<{
  */
 export const studioProducts: Readonly<Record<StudioProductId, StudioProduct>> = {
   loop: {
-    id: 'loop', name: 'Loop', readyMade: true, enabled: true,
+    id: 'loop', get name() { return loopName(); }, readyMade: true,
+    get enabled() { return connectedProduct('loop')?.personalizable ?? true; },
     zones: [{
       id: 'surface', operation: 'print', tools: ['text', 'image', 'ai'],
       fonts: standardStudioFonts, allowCustomFonts: true,

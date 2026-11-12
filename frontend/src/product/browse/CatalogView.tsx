@@ -4,11 +4,15 @@ import { money } from '../productDisplay';
 import { clearBrowse, facetKeys, toggleFacet } from './catalogBrowse';
 import { browseCatalog } from './catalogFixtures';
 import type { CatalogOffer, FacetKey } from './catalogBrowse';
-import { catalogCopy } from './catalogCopy';
+import { catalogCopy, productListLabels } from './catalogCopy';
 import { productCopy } from '../copy';
+import { ratingForPath } from '../catalog/localCatalog';
+import { RatingBadge } from '../reviews/RatingBadge';
+import { ratingText } from '../reviews/ratingText';
 import { Icon } from '../Icon';
 import { StorefrontBack } from '../StorefrontBack';
 import { isCatalogPath } from '../routes';
+import { hasDesignConcepts } from '../catalog/localCatalog';
 import { StorefrontOrigin } from '../storefrontOrigin';
 import { useProductLocale } from '../useProductLocale';
 import './catalogView.css';
@@ -28,6 +32,7 @@ function OfferCard({ offer, narrowed }: { offer: CatalogOffer; narrowed: boolean
   const search = narrowed ? first.search : '';
   const discount = one ? first.discount : null;
   const personal = offer.personalizable;
+  const reviewsLabel = ratingText(ratingForPath(offer.href), locale);
   const description = ['spec', 'price', 'options', ...(one ? ['stock'] : []), ...(personal ? ['custom'] : [])].map(key => titleId + '-' + key).join(' ');
   return <article className="catalog-offer">
     <Link to={offer.href + search} aria-labelledby={titleId} aria-describedby={description} className="catalog-offer-link">
@@ -53,7 +58,7 @@ function OfferCard({ offer, narrowed }: { offer: CatalogOffer; narrowed: boolean
     </Link>
     <div className="catalog-card-details">
       {personal && <span className="catalog-custom" id={titleId + '-custom'}><Icon name="spark" />{copy.withPersonalization}</span>}
-      {offer.reviewsHref && <Link className="catalog-reviews" to={offer.reviewsHref + search} aria-label={t.noReviews + ' · ' + offer.name}><Icon name="star" />{t.noReviews}</Link>}
+      {offer.reviewsHref && <Link className="catalog-reviews" to={offer.reviewsHref + search} aria-label={reviewsLabel + ' · ' + offer.name}><Icon name="star" />{reviewsLabel}</Link>}
     </div>
   </article>;
 }
@@ -87,10 +92,14 @@ export default function CatalogView() {
       replace: true, preventScrollReset: true, state: { ...location.state, catalogFiltersOpen: open },
     });
   }
-  function pickSingle(key: 'sale' | 'sort' | 'group', value: string | null) {
+  function pickSingle(key: 'sale' | 'sort' | 'group' | 'collection', value: string | null) {
     const next = new URLSearchParams(params);
     if (value === null) next.delete(key); else next.set(key, value);
     update(next);
+  }
+  function removeScope(key: 'group' | 'collection') {
+    filterTrigger.current?.focus({ preventScroll: true });
+    pickSingle(key, null);
   }
   function resetFilters() {
     // The reset control becomes disabled, so return focus to a stable sibling.
@@ -100,12 +109,12 @@ export default function CatalogView() {
 
   return <div className="catalog-page">
     <header className="catalog-heading">
-      <div><h1>{copy.pageHeading}</h1><p className="catalog-meta">
-        {state.group && <button type="button" className="catalog-group-chip"
-          aria-label={`${t.remove}: ${copy.customOrMade}`} onClick={() => {
-            filterTrigger.current?.focus({ preventScroll: true });
-            pickSingle('group', null);
-          }}>{copy.customOrMade}<Icon name="close" /></button>}
+      <div><h1>{hasDesignConcepts() ? copy.pageHeading : productListLabels[locale][0]}</h1><p className="catalog-meta">
+        {([
+          ['collection', state.hasCollection ? state.collectionName ?? copy.unknownCollection : null],
+          ['group', state.group && copy.customOrMade],
+        ] as const).map(([key, label]) => label && <button key={key} type="button" className="catalog-group-chip"
+          aria-label={`${t.remove}: ${label}`} onClick={() => removeScope(key)}>{label}<Icon name="close" /></button>)}
         {categoryName && <><span>{categoryName}</span><span aria-hidden="true" className="catalog-separator">/</span></>}
         <span role="status" aria-atomic="true">{copy.results}: <strong>{state.total}</strong></span>
       </p></div>
@@ -128,7 +137,7 @@ export default function CatalogView() {
     </div>
     <div className="catalog-facet-panel" id={panelId} hidden={!expanded}>
       {facetKeys.map(key => <fieldset key={key}><legend>{copy[key]}</legend>
-        {state.options[key].map(value => <label key={value} className="catalog-facet-option">
+        {state.options[key].filter(value => key !== 'format' || value !== 'concept' || hasDesignConcepts() || state.selected.format.includes('concept')).map(value => <label key={value} className="catalog-facet-option">
           <input type="checkbox" checked={state.selected[key].includes(value)} aria-label={facetLabels[key][value]} aria-describedby={panelId + '-' + key + '-' + value}
             onChange={() => update(toggleFacet(params, key, value, state.options))} />
           <span>{facetLabels[key][value]}</span><small id={panelId + '-' + key + '-' + value}><span className="product-sr-only">{copy.results}: </span>{state.counts[key][value]}</small>
@@ -150,7 +159,7 @@ export default function CatalogView() {
         <Link className="catalog-concept" key={item.href} to={item.href}>
           <span className="catalog-photo"><CatalogPhoto src={item.photo} missing={t.noPhotoShort} eager={!state.offers.length && index < 2} /></span>
           <span className="catalog-concept-name"><strong>{item.name}</strong><Icon name="arrow" /></span>
-          <span className="catalog-concept-caption">{item.caption}</span>
+          <span className="catalog-concept-caption">{item.caption}</span><RatingBadge href={item.href} locale={locale}/>
         </Link>)}</div>
     </section>}
     {!state.total && <section className="catalog-empty"><Icon name="search" /><h2>{copy.emptyTitle}</h2><p>{copy.emptyHint}</p></section>}

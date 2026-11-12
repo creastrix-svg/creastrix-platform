@@ -4,6 +4,8 @@ import { homeCopy } from './homeCopy';
 import HomeSpotlight from './HomeSpotlight';
 import { Icon } from '../Icon';
 import { useProductLocale } from '../useProductLocale';
+import { hasDesignConcepts } from '../catalog/localCatalog';
+import { editionCollectionPath, editionCopy } from '../fixtures/editionCatalog';
 import './home.css';
 
 const departments = [
@@ -29,12 +31,14 @@ export default function StorefrontHome() {
     </section>
     {studio}
     <nav className="home-departments" aria-label={h.headline}>
-      {departments.map(({ label, hint, href, image, height }) => <Link className="home-department" key={href} to={href}>
+      {departments.map(({ label, hint, href, image, height }) => {
+        const collection = label === 'concepts' && !hasDesignConcepts();
+        return <Link className="home-department" key={href} to={collection ? editionCollectionPath : href}>
         <span className="department-photo"><img alt="" decoding="async" src={'/shop-edition/' + image + '.webp'}
           srcSet={'/shop-edition/' + image + '-small.webp 450w, /shop-edition/' + image + '.webp 900w'}
           sizes="(max-width: 440px) 92px, (max-width: 1600px) 33vw, 500px" width="900" height={height}/></span>
-        <span className="department-caption"><span><strong>{h[label]}</strong><small>{h[hint]}</small></span><Icon name="arrow"/></span>
-      </Link>)}
+        <span className="department-caption"><span><strong>{collection ? editionCopy[locale].title : h[label]}</strong><small>{collection ? editionCopy[locale].index : h[hint]}</small></span><Icon name="arrow"/></span>
+      </Link>})}
     </nav>
     <HomeSpotlight/>
   </div>;

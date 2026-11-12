@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Provider } from 'react-redux';
-import { MemoryRouter } from 'react-router';
+import { Link, MemoryRouter } from 'react-router';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createAppStore } from '../../../store';
@@ -23,7 +23,7 @@ function show() { return render(<Provider store={createAppStore('en')}><MemoryRo
 beforeEach(() => {
   vi.stubGlobal('indexedDB', {});
   vi.mocked(studioStorage).mockReset().mockResolvedValue(null);
-  vi.mocked(restoreStudio).mockReset().mockResolvedValue({ composition: initialStudioComposition(), drafts: {}, applied: {}, customFonts: [], lines: [], serial: 1 });
+  vi.mocked(restoreStudio).mockReset().mockResolvedValue({ composition: initialStudioComposition(), drafts: {}, applied: {}, customFonts: [], lines: [], unavailableLines: [], serial: 1 });
   vi.mocked(serializeStudio).mockReset().mockImplementation(state => {
     const object = compositionHistory(state, 'cobalt').present.objects[0];
     const text = object.kind === 'text' ? object.value.text : '';
@@ -32,6 +32,24 @@ beforeEach(() => {
   });
 });
 afterEach(() => { vi.unstubAllGlobals(); });
+it('keeps the failed-save warning on Home after removing the last unavailable item', async () => {
+  const retired = [{variant:'retired-standard', quantity:1}];
+  vi.mocked(restoreStudio).mockResolvedValue({composition:initialStudioComposition(), drafts:{}, applied:{},
+    customFonts:[], lines:[], unavailableLines:retired, serial:1});
+  vi.mocked(serializeStudio).mockImplementation((_composition, _creative, _cart, unlisted) => unlisted?.length ? 'before' : 'after');
+  vi.mocked(studioStorage).mockImplementation(async (op, value) => {
+    if (op === 'write' && value === 'after') throw new Error('QUOTA');
+    return 'before';
+  });
+  render(<Provider store={createAppStore('en')}><MemoryRouter initialEntries={['/preview/cart']}>
+    <PersistentStudio browsingHome={<p>Browse</p>}><Link to="/">Home</Link></PersistentStudio>
+  </MemoryRouter></Provider>);
+  fireEvent.click(await screen.findByRole('button', {name:'Remove · retired-standard'}));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Not saved locally'));
+  fireEvent.click(screen.getByRole('link', {name:'Home'}));
+  expect(screen.getByRole('status')).toHaveTextContent('Not saved locally');
+  expect(studioStorage).toHaveBeenCalledWith('write', 'after', 'before');
+});
 it.each(['/collections/objects/tide', '/collections/objects/Tide/'])('waits for the cart before allowing purchases on %s', async path => {
   const read = deferred<string | null>();
   vi.mocked(studioStorage).mockReturnValue(read.promise);

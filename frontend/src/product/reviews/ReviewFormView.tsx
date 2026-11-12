@@ -11,7 +11,7 @@ export function ReviewFormView({ product = 'loop' }: { product?: ReviewProduct }
   const rating = values.length === 1 && /^[1-5]$/.test(values[0]) ? Number(values[0]) : null;
   return <ReviewForm key={product + ':' + params.toString()} initialRating={rating} productHref={reviewLinks(product, params).product} />;
 }
-function ReviewForm({ initialRating, productHref }: { initialRating: number | null; productHref: string }) {
+export function ReviewForm({ initialRating, productHref }: { initialRating: number | null; productHref: string }) {
   const t = productCopy[useProductLocale()], id = useId();
   const [rating, setRating] = useState(initialRating), [text, setText] = useState('');
   return <div className="product-preview-page"><ProductBack to={productHref} /><h1>{t.reviewFormTitle}</h1><p>{t.reviewDemoNote}</p><form className="product-review-form" aria-label={t.reviewFormTitle} onSubmit={event => event.preventDefault()}>

@@ -284,6 +284,31 @@ describe('buyer catalog', () => {
     expect(disclosure()).toHaveAccessibleDescription(/\b1\b/);
   });
 
+  it('restores the exact collection URL on Back and removes only the collection when its chip is activated', async () => {
+    const shared = '/catalog?collection=loop&format=ready&sort=price-asc';
+    const { user } = await openCatalog(shared);
+    const remove = () => main().getByRole('button', { name: productCopy.en.remove + ': Loop' });
+    expect(remove()).toHaveTextContent('Loop');
+    expect(productTargets()).toEqual(['product']);
+    await user.click(main().getByRole('link', { name: 'Loop' }));
+    await user.click(screen.getByRole('button', { name: 'Browser back' }));
+    expect(currentURL().pathname + currentURL().search).toBe(shared);
+    expect(productTargets()).toEqual(['product']);
+    await user.click(remove());
+    expect(disclosure()).toHaveFocus();
+    expect(currentURL().search).toBe('?format=ready&sort=price-asc');
+    expect(productTargets()).toEqual(['tide', 'product']);
+  });
+
+  it('shows an empty state and a removable collection filter for an unknown direct link', async () => {
+    const { user } = await openCatalog('/catalog?collection=not-a-collection');
+    expect(main().getByRole('heading', { name: catalogCopy.en.emptyTitle })).toBeVisible();
+    expect(productTargets()).toEqual([]);
+    await user.click(main().getByRole('button', { name: productCopy.en.remove + ': ' + catalogCopy.en.unknownCollection }));
+    expect(currentURL().search).toBe('');
+    expect(productTargets()).toEqual(['product', 'tide']);
+  });
+
   it('keeps the confirmed product-page colour on a later generic visit instead of choosing a colour for the buyer', async () => {
     const { user } = await openCatalog();
     const loop = () => main().getByRole('link', { name:'Loop' });

@@ -5,13 +5,12 @@ import { money } from '../productDisplay';
 import { campaignCopy } from './campaignCopy';
 import { catalogCopy } from '../browse/catalogCopy';
 import { productCopy } from '../copy';
-import { editionItems } from '../fixtures/editionCatalog';
-import { filterHomeEdition, homeOffer, homeOfferInSection, shelfCatalogHref } from './homeFeatured';
+import { homeTiles, shelfCatalogHref } from './homeFeatured';
 import { shelfCopy, shelfFilters } from './homeShelfCopy';
 import type { ShelfFilter } from './homeShelfCopy';
 import { Icon } from '../Icon';
 import { useProductLocale } from '../useProductLocale';
-import { tideOffer } from '../fixtures/tideOffer';
+import { RatingBadge } from '../reviews/RatingBadge';
 import './homeSpotlight.css';
 
 // Keep a filter when Back restores this history entry, without leaking it to a
@@ -33,7 +32,7 @@ function FeaturePhoto({ src, srcSet, sizes, unavailable }: { src: string; srcSet
 
 function Shelf({ entryKey }: { entryKey: string }) {
   const locale = useProductLocale(), copy = productCopy[locale], h = shelfCopy[locale];
-  const store = useStore(), id = useId(), items = editionItems(locale), campaign = campaignCopy[locale];
+  const store = useStore(), id = useId(), campaign = campaignCopy[locale];
   const [filter, setFilter] = useState<ShelfFilter>(() => filtersByStore.get(store)?.get(entryKey) ?? 'all');
   const selectedButton = useRef<HTMLButtonElement>(null);
   const toolbar = useRef<HTMLDivElement>(null), grid = useRef<HTMLUListElement>(null);
@@ -68,8 +67,7 @@ function Shelf({ entryKey }: { entryKey: string }) {
     observer.observe(strip);
     return () => observer.disconnect();
   }, [filter, locale]);
-  const filtered = filterHomeEdition(items, filter);
-  const offer = homeOfferInSection(filter) ? homeOffer() : null;
+  const filtered = homeTiles(locale, filter);
   return <section className="home-selection" aria-labelledby={id + '-heading'}>
     <h2 className="home-section-title" id={id + '-heading'}>{campaign.featured}</h2>
     <div className="home-shelf-toolbar" ref={toolbar}>
@@ -77,30 +75,20 @@ function Shelf({ entryKey }: { entryKey: string }) {
         <button key={choice} type="button" ref={choice === filter ? selectedButton : undefined} aria-pressed={choice === filter} aria-controls={id + '-items'} onClick={() => chooseFilter(choice)}>{h[choice]}</button>)}</div>
       <Link className="home-all" to={shelfCatalogHref(filter)}>{campaign.seeSelection}<Icon name="arrow"/></Link>
     </div>
-    <span className="product-sr-only" role="status">{h.selected}: <strong>{filtered.length + (offer ? 1 : 0)}</strong></span>
+    <span className="product-sr-only" role="status">{h.selected}: <strong>{filtered.length}</strong></span>
     <ul className="home-featured" id={id + '-items'} role="list" ref={grid}>
-      {offer && <li className="home-featured-tile">
-        <Link to={offer.href} className="home-featured-card">
-          <span className="home-featured-media"><FeaturePhoto src={offer.photo} unavailable={copy.noPhotoShort}/></span>
-          <span className="home-featured-caption">
-            <span className="home-featured-title"><strong>{offer.name}</strong><span>{copy.subtitle}</span></span>
-            <span className="home-featured-material">{catalogCopy[locale].finishes}: {offer.finishCount}</span>
-            <span className="home-offer-end"><strong>{money(offer.minPrice, locale)}{offer.maxPrice !== offer.minPrice && <> – {money(offer.maxPrice, locale)}</>}</strong>
-              <span className="home-offer-action">{h.shop}<Icon name="arrow"/></span></span>
-          </span>
-        </Link>
-      </li>}
       {filtered.map(item => {
       const title = id + '-' + item.id, material = title + '-material', status = title + '-status';
       return <li key={item.id} className="home-featured-tile">
         <Link to={item.href} className="home-featured-card" aria-labelledby={title} aria-describedby={material + ' ' + status}>
-          <span className="home-featured-media"><FeaturePhoto src={item.thumb} srcSet={item.thumb + ' 480w, ' + item.photo + ' 1024w'}
+          <span className="home-featured-media"><FeaturePhoto src={item.thumb} srcSet={item.thumb && item.photo && item.thumb !== item.photo ? item.thumb + ' 480w, ' + item.photo + ' 1024w' : undefined}
             sizes="(min-width: 1600px) 370px, (min-width: 1024px) 24vw, (min-width: 780px) 32vw, 48vw" unavailable={copy.noPhotoShort}/></span>
           <span className="home-featured-caption">
             <span className="home-featured-title" id={title}><strong>{item.name}</strong><span>{item.title}</span></span>
-            <span className="home-featured-material" id={material}>{item.material}</span>
-            {item.id === tideOffer.id
-              ? <span className="home-offer-end" id={status}><strong>{money(tideOffer.unitCents, locale)}</strong><span className="home-offer-action">{h.shop}<Icon name="arrow"/></span></span>
+            <span className="home-featured-material" id={material}>{item.finishCount === undefined ? item.material : catalogCopy[locale].finishes + ': ' + item.finishCount}</span>
+            <RatingBadge href={item.href} locale={locale}/>
+            {item.min !== undefined
+              ? <span className="home-offer-end" id={status}><strong>{money(item.min, locale)}{item.max !== undefined && item.max !== item.min && <> – {money(item.max, locale)}</>}</strong><span className="home-offer-action">{h.shop}<Icon name="arrow"/></span></span>
               : <small className="home-featured-status" id={status}>{h.preview}</small>}
           </span>
         </Link>

@@ -15,7 +15,7 @@ npm run build
 npm run preview -- --port 4173 --strictPort
 ```
 
-Open [the homepage](http://localhost:4173/) or [the catalog](http://localhost:4173/catalog). This preview binds to loopback and has **no backend proxy**. It does not place orders, charge a payment method, or sign you in. For live editing or the separately configured local account pilot, use the [frontend guide](frontend/README.md#local-use).
+Open [the homepage](http://localhost:4173/) or [the catalog](http://localhost:4173/catalog). This offline preview binds to loopback and has **no backend proxy**. For the full shop with all 39 local products, prices and ratings in PostgreSQL, run the [connected local catalog](docs/local-catalog.md). Neither mode places an order or takes payment. For the separate account pilot see the [frontend guide](frontend/README.md#local-use).
 
 <a id="current-state"></a>
 
@@ -23,10 +23,10 @@ Open [the homepage](http://localhost:4173/) or [the catalog](http://localhost:41
 
 | Area | Implemented | Boundary |
 | --- | --- | --- |
-| Shopping | Homepage, catalog, local search, product pages, variants, media, saved products, cart and checkout preview | Prices, stock and images come from fixtures. A checkout preview is not an order. |
+| Shopping | Homepage, catalog, local search, product pages, variants, media, saved products, cart and checkout preview | The connected catalog reads all 39 local items, illustrative ratings, prices and recommendations from PostgreSQL. The offline preview uses fixtures. Checkout is not an order. |
 | Personalisation | A product can offer configured zones, text and artwork with visual previews. Applied designs can become separate cart lines. | Drafts and cart lines are saved in the browser, not in an account. Neither a visual preview nor an AI idea field is a manufacturing service. |
 | Accounts | A local, owner-only account pilot uses hosted Cognito sign-in, email confirmation/recovery and the backend session. | Cognito registration alone does not grant access. No email-based account merging or public rollout. |
-| Backend | User, organization, workspace, ready-made inventory and scoped staff-policy foundations, with JDBC/PostgreSQL enforcement. | Not a storefront catalog/cart API, a live staff console, an order system or a payment integration. |
+| Backend | User, organization, workspace, ready-made inventory and scoped staff-policy foundations; a separate local read-only catalog profile. | No account cart, order system, live staff console or payments. |
 
 The buyer interface is integrated through [PR #45](https://github.com/creastrix-svg/creastrix-platform/pull/45). Sample products illustrate different capabilities; they are not platform entities or permanent navigation sections.
 

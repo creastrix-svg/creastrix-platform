@@ -6,6 +6,9 @@
   "engines": { "node": "22.14.0", "npm": "10.9.2" },
   "packageManager": "npm@10.9.2",
   "scripts": {
+    "dev:catalog": "vite --mode local-catalog",
+    "build:catalog": "vite build --mode local-catalog",
+    "preview:catalog": "vite preview --mode local-catalog",
     "dev": "vite",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

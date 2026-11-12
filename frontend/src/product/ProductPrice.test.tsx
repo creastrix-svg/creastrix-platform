@@ -5,6 +5,12 @@ import { discountPercent } from './productDisplay';
 import { productCopy } from './copy';
 import { storefrontLocales } from './locale';
 
+it('retains the applied-design label for a zero-fee design', () => {
+  render(<ProductPrice cents={2400} hasDesign designFeeCents={0} language="en" t={productCopy.en} />);
+  expect(screen.getByText('Personalisation: +€0.00 per item')).toBeVisible();
+  expect(screen.queryByText(productCopy.en.without)).toBeNull();
+});
+
 it.each(['de', 'en'] as const)('formats four digits and two decimals with a derived comparison in %s', language => {
   const { container } = render(<ProductPrice cents={123_456} previousCents={135_789} language={language} t={productCopy[language]} />);
   expect(container.querySelector('.product-price')).toHaveTextContent(language === 'de' ? '1.234,56 €' : '€1,234.56');

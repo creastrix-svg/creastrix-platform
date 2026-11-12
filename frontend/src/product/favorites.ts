@@ -1,4 +1,5 @@
-import { variants } from './fixtures/loop';
+import { isVariantId, variants } from './fixtures/loop';
+import { catalogReady, connectedOffers } from './catalog/localCatalog';
 import { isCartSku } from './cartSku';
 import type { CartSku } from './cartSku';
 import { tideOffer } from './fixtures/tideOffer';
@@ -6,11 +7,18 @@ import { tideOffer } from './fixtures/tideOffer';
 // One bounded key per known colour: saving Coral cannot replace another tab's
 // Chalk. Removal deletes only that key; no startup or bulk snapshot writes.
 const prefix = 'creastrix.product.loop.favorites.v1.';
-export const favoriteSkus: readonly CartSku[] = [...variants.map(({id}) => id), tideOffer.sku];
-export const favoriteKey = (id: CartSku) => id === tideOffer.sku ? 'creastrix.product.tide.favorites.v1.cobalt' : prefix + id;
+const legacySkus = [...variants.map(({id}) => id), tideOffer.sku];
+export function favoriteSkus(): readonly CartSku[] {
+  // Account routes initialise the shared store before the catalog is loaded.
+  // The storefront rereads markers once its snapshot is ready.
+  const offers = catalogReady() ? connectedOffers() : undefined;
+  return offers ? offers.flatMap(product => product.variants.map(v => v.sku)).filter(isCartSku) : legacySkus;
+}
+export const favoriteKey = (id: CartSku) => id === tideOffer.sku ? 'creastrix.product.tide.favorites.v1.cobalt'
+  : isVariantId(id) ? prefix + id : 'creastrix.catalog.favorites.v1.' + id;
 const unsaved = new WeakMap<object, Map<CartSku, boolean>>();
 export function readFavoriteIds(owner?: object): CartSku[] | null {
-  try { return favoriteSkus.filter(id => (owner && unsaved.get(owner)?.get(id)) ?? (localStorage.getItem(favoriteKey(id)) === '1')); }
+  try { return favoriteSkus().filter(id => (owner && unsaved.get(owner)?.get(id)) ?? (localStorage.getItem(favoriteKey(id)) === '1')); }
   catch { return null; }
 }
 export function writeFavorite(owner: object, id: CartSku, saved: boolean) {
@@ -28,6 +36,6 @@ export function writeFavorite(owner: object, id: CartSku, saved: boolean) {
   return !unsaved.get(owner)?.size;
 }
 export function isFavoriteEvent(event: StorageEvent) {
-  try { return event.storageArea === localStorage && (event.key === null || favoriteSkus.some(id => event.key === favoriteKey(id))); }
+  try { return event.storageArea === localStorage && (event.key === null || favoriteSkus().some(id => event.key === favoriteKey(id))); }
   catch { return false; }
 }

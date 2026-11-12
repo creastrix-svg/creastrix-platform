@@ -1,5 +1,7 @@
 import { isVariantId, variants } from './fixtures/loop';
 import type { VariantId } from './fixtures/loop';
+import { variantById } from './fixtures/loop';
+import { catalogReady } from './catalog/localCatalog';
 
 export type MediaMode = 'photo' | 'model';
 export type ProductPreferences = { selectedVariant: VariantId; purchaseQuantities: Record<VariantId, number>; mediaMode: MediaMode; descriptionOpen: boolean };
@@ -24,7 +26,9 @@ export function readProductPreferences(): ProductPreferences {
       || !record(value.purchaseQuantities) || !exactKeys(value.purchaseQuantities, variants.map(variant => variant.id))
       || !['photo', 'model'].includes(value.mediaMode as string) || typeof value.descriptionOpen !== 'boolean') return defaultProductPreferences();
     const result = defaultProductPreferences();
-    for (const variant of variants) result.purchaseQuantities[variant.id] = quantity(value.purchaseQuantities[variant.id], variant.stock);
+    // Account routes initialise the shared store without starting a catalog read.
+    // In connected mode, defer the stock bound until the storefront loads.
+    for (const {id} of variants) result.purchaseQuantities[id] = quantity(value.purchaseQuantities[id], catalogReady() ? variantById(id).stock : Number.MAX_SAFE_INTEGER);
     return { ...result, selectedVariant: value.selectedVariant, mediaMode: value.mediaMode as MediaMode, descriptionOpen: value.descriptionOpen };
   } catch {
     return defaultProductPreferences();
@@ -34,7 +38,7 @@ export function readProductPreferences(): ProductPreferences {
 export function serializeProductPreferences(value: ProductPreferences): string {
   const purchaseQuantities = defaultProductPreferences().purchaseQuantities;
   // A cart-exhausted zero is not a durable purchase choice; a fresh empty cart starts at one.
-  for (const variant of variants) purchaseQuantities[variant.id] = quantity(value.purchaseQuantities[variant.id], variant.stock);
+  for (const {id} of variants) purchaseQuantities[id] = quantity(value.purchaseQuantities[id], variantById(id).stock);
   return JSON.stringify({ version: 1, selectedVariant: value.selectedVariant, purchaseQuantities, mediaMode: value.mediaMode, descriptionOpen: value.descriptionOpen });
 }
 

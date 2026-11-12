@@ -1,5 +1,7 @@
 import { useContext, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
+import { ratingForPath } from '../catalog/localCatalog';
+import { ratingText } from '../reviews/ratingText';
 import type { SwatchColors } from '../productDisplay';
 import { catalogCopy } from '../browse/catalogCopy';
 import { productCopy } from '../copy';
@@ -7,7 +9,7 @@ import { Icon } from '../Icon';
 import type { StorefrontLocale } from '../locale';
 import { isCatalogPath } from '../routes';
 import { StorefrontOrigin } from '../storefrontOrigin';
-import Carousel from './Carousel';
+import Carousel, { LowerRecommendations } from './Carousel';
 import type { CarouselContent } from './carouselContent';
 
 type Finish<Id extends string> = { id: Id; name: string; colors: SwatchColors; checkTone: 'light' | 'dark' };
@@ -23,7 +25,7 @@ type ProductCardProps<Id extends string> = {
   features: readonly [string, string, string];
   about: { title: string; body: string; facts: TextPairs };
   description: { intro: string; sections: TextPairs; facts: TextPairs };
-  recommendations: { studio: CarouselContent; related: CarouselContent };
+  recommendations: { studio: CarouselContent; related: CarouselContent; section: CarouselContent };
   personalization?: ReactNode;
   descriptionOpen?: boolean; onDescriptionChange?: (open: boolean) => void;
 };
@@ -37,6 +39,7 @@ export default function ProductCardLayout<Id extends string>(props: ProductCardP
   const { locale, name, subtitle, category, finishes, selected } = props;
   const navigate = useNavigate(), origin = useContext(StorefrontOrigin);
   const t = productCopy[locale];
+  const rating = ratingForPath(useLocation().pathname);
   const [starPreview, setStarPreview] = useState(0);
   const [localOpen, setLocalOpen] = useState(false);
   const isOpen = props.descriptionOpen ?? localOpen;
@@ -57,7 +60,7 @@ export default function ProductCardLayout<Id extends string>(props: ProductCardP
       <section className="product-information" data-product-variant={props.urlVariant} aria-label={t.choose}>
         <h1>{name}</h1><p className="product-subtitle">{subtitle}</p>
         <div className="product-rating" onBlur={() => setStarPreview(0)} onPointerDown={event => { if (event.pointerType !== 'mouse') setStarPreview(0); }}>
-          <span className="product-stars" role="group" aria-label={t.reviewRating} onPointerLeave={() => setStarPreview(0)}>{Array.from({ length: 5 }, (_, i) => <button type="button" key={i} className="product-star-choice" aria-label={`${t.reviewRating}: ${i + 1} ${t.ratingOutOf}`} data-highlighted={i < starPreview} onPointerEnter={event => { if (event.pointerType === 'mouse' && window.matchMedia('(hover: hover) and (pointer: fine)').matches) setStarPreview(i + 1); }} onClick={() => navigate(props.reviews.write(i + 1))}><Icon name="star" /></button>)}</span><Link to={props.reviews.list}>{t.noReviews}</Link>
+          <span className="product-stars" role="group" aria-label={t.reviewRating} onPointerLeave={() => setStarPreview(0)}>{Array.from({ length: 5 }, (_, i) => <button type="button" key={i} className="product-star-choice" aria-label={`${t.reviewRating}: ${i + 1} ${t.ratingOutOf}`} data-highlighted={i < starPreview} data-rated={!starPreview && i < Math.round(rating.average ?? 0)} onPointerEnter={event => { if (event.pointerType === 'mouse' && window.matchMedia('(hover: hover) and (pointer: fine)').matches) setStarPreview(i + 1); }} onClick={() => navigate(props.reviews.write(i + 1))}><Icon name="star" /></button>)}</span><Link to={props.reviews.list}>{ratingText(rating, locale)}</Link>
         </div>
         {props.price}
         <fieldset className="product-colors"><legend>{t.color} <strong>{finishes.find(color => color.id === selected)?.name}</strong></legend><div>
@@ -77,7 +80,7 @@ export default function ProductCardLayout<Id extends string>(props: ProductCardP
           <div><strong>{props.seller.name}</strong><small>{props.seller.byline}</small></div>
           <Link to={props.seller.href} aria-label={props.seller.label}><Icon name="arrow" /></Link>
         </div>
-        <Carousel title={t.moreStudio} mini t={t} content={props.recommendations.studio} />
+        <Carousel title={t.moreSeller} mini locale={locale} t={t} content={props.recommendations.studio} />
       </section>
       {props.personalization && <>{props.personalization}{features}</>}
       <section className="product-about"><h2>{props.about.title}</h2><p>{props.about.body}</p>
@@ -92,7 +95,7 @@ export default function ProductCardLayout<Id extends string>(props: ProductCardP
         </div><div><h3>{t.specsTitle}</h3><dl className="product-description-specs"><FactRows rows={props.description.facts} /></dl></div></div>
       </details>
     </section>
-    <Carousel title={t.related} t={t} content={props.recommendations.related} />
+    <LowerRecommendations similar={props.recommendations.related} section={props.recommendations.section} locale={locale} t={t}/>
   </>;
 }
 

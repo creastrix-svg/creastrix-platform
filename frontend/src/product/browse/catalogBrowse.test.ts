@@ -15,6 +15,22 @@ const loopFinishes = (query: string) => browse(query).offers.find(o => o.name ==
 const offers = (query: string) => browse(query).offers.map(o => o.name);
 
 describe('local buyer catalog facets', () => {
+  it('limits a shared Loop collection to its product and the six studio designs, including in facet counts', () => {
+    const family = browse('collection=loop');
+    expect(family.offers.map(offer => offer.href)).toEqual(['/products/loop']);
+    expect(family.concepts.map(item => item.href)).toEqual([
+      'loop-mini', 'loop-wide', 'loop-tray', 'loop-tall', 'loop-duo', 'loop-stand',
+    ].map(id => '/preview/items/' + id));
+    expect(family).toMatchObject({ hasCollection: true, filterCount: 1, total: 7, counts: { format: { ready: 1, concept: 6 } } });
+    expect(browse('collection=loop&category=kitchen').total).toBe(0);
+    expect(loopFinishes('collection=loop&group=custom-or-made&sale=1')).toEqual(['chalk']);
+  });
+
+  it.each(['collection=tide', 'collection=', 'collection=loop&collection=other'])('does not broaden an unresolved %s', query => {
+    expect(browse(query)).toMatchObject({ hasCollection: true, total: 0, filterCount: 1, offers: [], concepts: [],
+      counts: { format: { ready: 0, concept: 0 } } });
+  });
+
   it('includes each creative path independently while excluding ordinary stock and view-only concepts', () => {
     for (const facets of [{ format: 'ready', custom: 'yes' }, { format: 'made-to-order', custom: 'no' }, { format: 'file' }]) {
       expect(belongsToCustomOrMade(facets)).toBe(true);
@@ -110,7 +126,7 @@ describe('local buyer catalog facets', () => {
   });
 
   it('updates without mutating the source and clears only owned parameters', () => {
-    const original = new URLSearchParams('ref=spring&color=unknown&color=chalk&sale=1&sort=price-asc&group=custom-or-made');
+    const original = new URLSearchParams('ref=spring&collection=loop&color=unknown&color=chalk&sale=1&sort=price-asc&group=custom-or-made');
     const { options } = browse();
     const combined = toggleFacet(original, 'color', 'coral', options);
     expect(combined.getAll('color')).toEqual(['coral', 'chalk']);

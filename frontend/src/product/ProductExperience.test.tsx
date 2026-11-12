@@ -871,7 +871,7 @@ describe('remembered public variant and explicit URL round-trips', () => {
     await user.click(screen.getByRole('button', { name: t.add }));
     await user.click(within(screen.getByRole('banner')).getByRole('link', { name: t.cart }));
     const line = screen.getByRole('article', { name: 'Loop · Cobalt & chalk' });
-    expect(within(line).getByRole('link', { name: 'Loop' })).toHaveAttribute('href', '/products/loop?variant=cobalt-chalk');
+    expect(within(line).getByRole('link', { name: 'Loop' })).toHaveAttribute('href', '/products/loop?variant=cobalt-chalk&cartLine=cobalt-chalk');
     if (action === 'checkout') {
       await user.click(screen.getByRole('link', { name: checkoutCopy.en.proceed }));
       await user.click(screen.getByRole('link', { name: checkoutCopy.en.backToCart }));
@@ -1258,9 +1258,9 @@ describe('viewport media modal and honest personalisation boundary', () => {
 });
 
 describe('native horizontal carousel requests', () => {
-  it.each([false, true])('keeps the same six DOM items, requests motion appropriately (reduced=%s), and disables edges', async reduced => {
+  it.each([false, true])('keeps the same DOM items, requests motion appropriately (reduced=%s), and disables edges', async reduced => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: reduced })));
-    render(<MemoryRouter><Carousel title="Related" t={productCopy.en} content={loopCarouselContent(productCopy.en)} /></MemoryRouter>);
+    render(<MemoryRouter><Carousel title="Related" locale="en" t={productCopy.en} content={loopCarouselContent('en', 'related')} /></MemoryRouter>);
     const list = screen.getByRole('list');
     const items = within(list).getAllByRole('listitem');
     Object.defineProperties(list, { clientWidth: { configurable: true, value: 300 }, scrollWidth: { configurable: true, value: 1000 }, scrollLeft: { configurable: true, writable: true, value: 0 } });
@@ -1274,7 +1274,8 @@ describe('native horizontal carousel requests', () => {
     list.scrollLeft = 700; fireEvent.scroll(list);
     expect(next).toBeDisabled(); expect(previous).toBeEnabled();
     expect(within(list).getAllByRole('listitem')).toEqual(items);
-    expect(screen.getByRole('link', { name: 'Related' })).toHaveAttribute('href', '/catalog');
+    expect(screen.getByRole('heading', { name: 'Related' })).toBeVisible();
+    expect(screen.queryByRole('link', { name: 'Related' })).toBeNull();
   });
 });
 
