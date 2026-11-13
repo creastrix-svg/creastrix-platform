@@ -10,6 +10,7 @@ import ProductPage from './detail/ProductPage';
 import { HeaderCart, SearchControl } from './HeaderControls';
 import { useStorefrontNavigation } from './useStorefrontNavigation';
 import { StorefrontOrigin, useStorefrontOrigin } from './storefrontOrigin';
+import { StorefrontHistoryBack, useStorefrontHistoryBack } from './storefrontHistoryBack';
 import { useProductMetadata } from './metadata';
 import { useProductLocale } from './useProductLocale';
 import { useAppearance } from './appearance';
@@ -111,6 +112,7 @@ function Storefront({ cartReady = true, accountCart }: { cartReady?: boolean; ac
   }, []);
   useStorefrontNavigation(main);
   const origin = useStorefrontOrigin();
+  const historyBack = useStorefrontHistoryBack();
   useProductMetadata(t, language, Boolean(accountCart));
   return <div className="product-storefront" data-theme={theme}>
     <div data-storefront-content>
@@ -122,7 +124,7 @@ function Storefront({ cartReady = true, accountCart }: { cartReady?: boolean; ac
       </header>
       {demo.favoritesMemoryOnly && <p role="status" className="product-width">{t.favoritesMemoryOnly}</p>}
       <StorefrontNavigation appearance={appearance} onAppearance={setAppearance} />
-      <main className="product-main product-width" id="product-main" tabIndex={-1} ref={main}><StorefrontOrigin.Provider value={origin}><AccountPurchaseContext.Provider value={accountCart??null}><GuestCartActionsEnabled.Provider value={!accountCart}><Routes>
+      <main className="product-main product-width" id="product-main" tabIndex={-1} ref={main}><StorefrontOrigin.Provider value={origin}><StorefrontHistoryBack.Provider value={historyBack}><AccountPurchaseContext.Provider value={accountCart??null}><GuestCartActionsEnabled.Provider value={!accountCart}><Routes>
         <Route path="/" element={permanentCatalogMode && !sharedCatalogMode ? <Navigate to="/catalog" replace /> : <StorefrontHome />} />
         <Route path={editionCollectionPath} element={<EditionView />} />
         <Route path={tideOffer.href} element={sharedCatalogMode ? <ConnectedProductPage/> : permanentCatalogMode ? <PermanentTideRoute /> : <TideProductPage />} />
@@ -140,7 +142,7 @@ function Storefront({ cartReady = true, accountCart }: { cartReady?: boolean; ac
         <Route path="/preview/search" element={<SearchResultsView />} /><Route path="/catalog" element={<CatalogView />} /><Route path="/preview/collection" element={<CatalogView />} />
         <Route path="/preview/items/:id" element={<CollectionItemRoute offline="concept" />} /><Route path="/preview/info/:topic" element={<InfoView />} /><Route path="/preview/studio" element={<InfoView studio />} />
         <Route path="*" element={<NotFoundView />} />
-      </Routes></GuestCartActionsEnabled.Provider></AccountPurchaseContext.Provider></StorefrontOrigin.Provider></main>
+      </Routes></GuestCartActionsEnabled.Provider></AccountPurchaseContext.Provider></StorefrontHistoryBack.Provider></StorefrontOrigin.Provider></main>
       <footer className="product-footer"><div className="product-width"><div className="product-footer-grid">
         <div className="product-footer-brand"><Link to="/" className="product-logo"><img src="/brand/creastrix-logo-horizontal-black.svg" alt="Creastrix" width="160" height="40" /></Link><p>{t.footerTagline}</p></div>
         <section><h2>{t.buyers}</h2><Link to="/catalog">{catalogCopy[language].title}</Link><Link to="/preview/saved">{t.favorites}</Link></section>

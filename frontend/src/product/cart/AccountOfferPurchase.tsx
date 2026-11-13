@@ -68,7 +68,7 @@ export function AccountOfferPurchase({admission,writer,offerId,variant,returnTo,
   return <PurchaseControls locale={locale} stock={variant.stock} remaining={remaining} requested={quantity} onQuantity={selectQuantity}
     inCart={exact} unitCents={unitCents} onAdd={amount=>void add(amount,false)} exhaustedLabel={t.allInCart}
     locked={projection===null || (phase!=='ready'&&phase!=='rejected')} quantityLocked={retry||phase==='sending'} frozenQuantity={retry||phase==='sending'?status.quantity:undefined}
-    returnTo={returnTo} feedback={<>
+    adding={phase==='sending'} returnTo={returnTo} feedback={<>
       {phase==='sending' && <span>{l[2]}</span>}
       {phase==='rejected' && <span>{l[5]}</span>}
       {phase==='storage' && <span>{l[6]}</span>}

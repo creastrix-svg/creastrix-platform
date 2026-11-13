@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { catalogReady, loadLocalCatalog } from './localCatalog';
 import { useProductLocale } from '../useProductLocale';
+import LoadingFrame from '../../LoadingFrame';
 
 const messages = {
   en: ['Loading catalog…', 'The catalog could not be loaded.', 'Try again'],
@@ -24,6 +25,6 @@ export default function ConnectedCatalog({children}: {children: ReactNode}) {
     return () => { active = false; };
   }, [phase]);
   if (phase === 'ready') return children;
-  return <main className="product-width">{phase === 'pending' ? <p role="status">{labels[0]}</p> :
-    <><p role="alert">{labels[1]}</p><button type="button" className="product-secondary" onClick={() => setPhase('pending')}>{labels[2]}</button></>}</main>;
+  if (phase === 'pending') return <LoadingFrame label={labels[0]}/>;
+  return <main className="product-width"><p role="alert">{labels[1]}</p><button type="button" className="product-secondary" onClick={() => setPhase('pending')}>{labels[2]}</button></main>;
 }

@@ -117,9 +117,17 @@ it('credits a signed-in purchase only once, reads server totals, and never posts
     await user.dblClick(add);
     await waitFor(()=>expect(api.posts()).toHaveLength(1));
     expect(add).toBeDisabled();
+    expect(add).toHaveAttribute('aria-busy','true');
+    expect(add).toHaveAccessibleName(copy.add);
+    expect(add.querySelector('.product-spinner')).toBeVisible();
+    expect(screen.getByRole('button',{name:copy.decrease})).toBeDisabled();
+    expect(screen.getByRole('button',{name:copy.increase})).toBeDisabled();
+    expect(screen.getByRole('textbox',{name:copy.quantity})).toBeDisabled();
+    expect(screen.getByRole('banner').querySelector('a[href="/preview/cart"]')).toBeVisible();
     expect(screen.queryByText(copy.alreadyInCart.replace('{n}','2'))).not.toBeInTheDocument();
     await act(async()=>gate.done());
     expect(await shownQuantity(2)).toBeVisible();
+    expect(screen.getByRole('button',{name:copy.add}).querySelector('.product-spinner')).toBeNull();
     expect(api.calls.slice(api.calls.indexOf(api.posts()[0])+1).some(r=>r.path==='/api/account-cart'&&r.method==='GET')).toBe(true);
     first.guestUntouched();
     await user.click(screen.getByRole('link',{name:copy.viewCart}));

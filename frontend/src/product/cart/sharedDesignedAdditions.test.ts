@@ -30,6 +30,18 @@ function rig(){
     async(key,action,value)=>{if(action==='put')artwork.set(key,value!);else if(action==='remove')artwork.delete(key);return artwork.get(key);});
   return {create,stages,receipts,calls,loss,artwork};
 }
+it('locks the selected quantity as soon as personalised artwork preparation starts',async()=>{
+  const api=rig(),writer=api.create();
+  writer.open(b,sku);
+  const first=writer.submit(b,sku,2,false,drawing);
+  try{
+    expect(writer.getSnapshot()).toMatchObject({phase:'sending',quantity:2});
+    expect(await writer.submit(b,sku,3,false,drawing)).toBe(false);
+    expect(await first).toBe(true);
+    expect(api.stages.size).toBe(1);expect(api.receipts.size).toBe(1);
+    expect(api.calls.at(-1)?.body.quantity).toBe('2');
+  }finally{await first;writer.dispose();}
+});
 it('resumes a lost stage response and a lost addition response across two reloads; one immutable design and one quantity',async()=>{
   const api=rig();api.loss.stage=true;api.loss.add=true;
   let sender=api.create();sender.open(b,sku);

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router';
 import { AuthenticationContext } from './authentication';
 import ConfirmEmail from './ConfirmEmail';
+import LoadingFrame from './LoadingFrame';
 import { useAppDispatch, useAppSelector } from './hooks';
 import { copy } from './i18n';
 import { languageSelected } from './store';
@@ -148,7 +149,7 @@ export default function App({ cartSession }: { cartSession?: LocalCartSession } 
   }, [auth, runtime]);
 
   if (storefront) {
-    const page=<Suspense fallback={<p role="status">Creastrix…</p>}>{cartSession ? <><GuestCartTransferNotice session={cartSession} /><LocalAccountStorefront session={cartSession} /></> : <ProductExperience />}</Suspense>;
+    const page=<Suspense fallback={<LoadingFrame label={language==='de'?'Lädt…':'Loading…'}/>}>{cartSession ? <><GuestCartTransferNotice session={cartSession} /><LocalAccountStorefront session={cartSession} /></> : <ProductExperience />}</Suspense>;
     return <CartUndoVisitScope open={currentPath==='/preview/cart'}>{page}</CartUndoVisitScope>;
   }
 

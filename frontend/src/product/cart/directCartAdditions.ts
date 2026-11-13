@@ -92,6 +92,9 @@ export function createDirectCartAdditions(fetcher:typeof fetch,guard:Guard,refre
       }
       if(previous){expected=previous;set({scope,phase:'pending',quantity:Number(previous.quantity)});return null;}
       if(!Number.isSafeInteger(count)||!quantityOk(String(count)))return null;
+      // Artwork hashing and local storage can take time before the first HTTP
+      // request. Freeze the displayed quantity for the same gesture we locked.
+      if(applied)set({scope,phase:'sending',quantity:count});
       const intent:Intent={owner:b.ownerId,namespace:b.namespace,sku,id:crypto.randomUUID(),quantity:String(count),
         ...(applied ? {design:{designId:crypto.randomUUID(),designRevision:'1'},staged:false,digest:await purchaseDesignDigest(applied)} : {})};
       if(applied){

@@ -1,10 +1,9 @@
 import { useSyncExternalStore } from 'react';
-import { Link } from 'react-router';
 import { sameOwner } from '../../authBoundary';
 import { useAppSelector } from '../../hooks';
 import ProductExperience from '../ProductExperience';
 import type { LocalCartSession } from './localCartSession';
-import { copy } from '../../i18n';
+import ReadOnlyStorefront from '../catalog/ReadOnlyStorefront';
 import {StudioChooserContext} from '../studio/session/studioChooserContext';
 
 /** Local development entry only. No transport is installed for an unverified
@@ -12,7 +11,6 @@ import {StudioChooserContext} from '../studio/session/studioChooserContext';
  * in place of an account result while login state is being resolved. */
 export default function LocalAccountStorefront({ session }: { session: LocalCartSession }) {
   const auth = useAppSelector(state => state.authentication);
-  const t = copy[useAppSelector(state => state.ui.language)];
   const admission = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const continuity=session.studioChooser;
   const held=auth.phase==='CHECKING'?continuity.held():null;
@@ -26,6 +24,6 @@ export default function LocalAccountStorefront({ session }: { session: LocalCart
       <ProductExperience key={held?.key??continuity.key()} accountCart={(held?held.account:admitted?admission:null)??undefined}
         studioKey={held?.key??continuity.key()}/>
     </div></StudioChooserContext.Provider>}
-    {!show&&<main><p role="status">{t.status[auth.phase]}</p><Link to="/login">{t.login}</Link></main>}
+    {!show&&<ReadOnlyStorefront phase={auth.phase}/>}
   </>;
 }

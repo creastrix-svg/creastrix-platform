@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { PropsWithChildren, ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
+import LoadingFrame from '../../../LoadingFrame';
 import { useAppDispatch, useAppSelector } from '../../../hooks';
 import { cartHydrated } from '../../demoStore';
 import { compositionReducer, initialStudioComposition } from '../design/studioComposition';
@@ -169,7 +170,7 @@ function PersistenceGate({ children, browsingHome, showGuestCartNotices = true }
   // link-only cart is available until hydration, so it cannot mutate a stale cart.
   const publicHome = browsingHome !== undefined && (location.pathname === '/' ||
     (isEditionPath(location.pathname) && !isTideOfferPath(location.pathname) && entryForPath(location.pathname)?.kind !== 'offer'));
-  if (!publicHome && phase === 'loading') return <p role="status" className="studio-local-status">{c.loading}</p>;
+  if (!publicHome && phase === 'loading') return <LoadingFrame label={c.loading}/>;
   if (phase === 'quarantined') return <p className="studio-local-status" role="status" data-guest-edit-quarantined>{quarantinedCartNote[locale]}</p>;
   if (phase === 'conflict') return showGuestCartNotices ? <p className="studio-local-status" role="alert">{c.saveFailed}</p> : <>{children}</>;
   if (!publicHome && phase === 'failed') return <section className="studio-local-status" role="alert"><p>{c.restoreFailed}</p>{!permanentCatalogMode && <button type="button" onClick={() => setPhase('memory')}>{c.memory}</button>}</section>;
