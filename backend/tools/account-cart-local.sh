@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Dedicated synthetic account-cart candidate. Never discovers or operates on
-# an existing developer database. No destroy, purge, or cloud operations.
+# Dedicated synthetic account-cart candidate. The explicit shared mode also
+# reads one fixed, managed local catalog. No automatic database discovery or cloud access.
 set -euo pipefail
 umask 077
 backend=$(cd "$(dirname "$0")/.." && pwd -P)
@@ -11,8 +11,8 @@ role=account_cart_local_app
 admin=account_cart_local_admin
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 case "${1:-}" in
-  start-db|status|stop-db|compile|server|seed|snapshot|snapshot-json|fault-once|fault-twice|server-two-buyers|seed-two-buyers|next-buyer-a|next-buyer-b|snapshot-json-b) action=$1 ;;
-  *) fail "Usage: bash backend/tools/account-cart-local.sh {start-db|status|stop-db|compile|server|seed|snapshot|snapshot-json|fault-once|fault-twice|server-two-buyers|seed-two-buyers|next-buyer-a|next-buyer-b|snapshot-json-b}" ;;
+  start-db|status|stop-db|compile|server|seed|snapshot|snapshot-json|snapshot-additions|fault-once|fault-twice|server-two-buyers|seed-two-buyers|next-buyer-a|next-buyer-b|snapshot-json-b|setup-shared-catalog|server-shared|server-shared-two-buyers) action=$1 ;;
+  *) fail "Usage: bash backend/tools/account-cart-local.sh {start-db|status|stop-db|compile|server|seed|snapshot|snapshot-json|snapshot-additions|fault-once|fault-twice|server-two-buyers|seed-two-buyers|next-buyer-a|next-buyer-b|snapshot-json-b|setup-shared-catalog|server-shared|server-shared-two-buyers}" ;;
 esac
 [[ $# == 1 ]] || fail 'Unexpected arguments'
 if [[ "$action" == compile ]]; then
@@ -65,6 +65,51 @@ cluster="$state/pgdata"
    -s "$state/admin.password" && -s "$state/app.password" ]] || fail 'Incomplete state; will not repair or replace it.'
 unset PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGOPTIONS PGSERVICE PGSERVICEFILE PGPASSWORD PGPASSFILE
 export PGCONNECT_TIMEOUT=3
+if [[ "$action" == setup-shared-catalog || "$action" == server-shared || "$action" == server-shared-two-buyers ]]; then
+  catalog="$(dirname "$state")/catalog-local"
+  [[ -d "$catalog" && ! -L "$catalog" && -O "$catalog" && -n "$(find "$catalog" -prune -type d -perm 0700 -print)" &&
+     -f "$catalog/cluster-kind" && "$(<"$catalog/cluster-kind")" == creastrix-local-catalog-v1 ]] || fail 'Missing dedicated private storefront catalog.'
+  secret="$state/catalog-lookup.password"
+  reader=local_catalog_cart_reader
+  check=(-X -Atq -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 55483 -d creastrix_local_catalog)
+  if [[ "$action" == setup-shared-catalog ]]; then
+    for file in "$catalog/admin.password" "$catalog/app.password"; do
+      [[ -s "$file" && -f "$file" && ! -L "$file" && -O "$file" &&
+         -n "$(find "$file" -prune -type f -perm 0600 -print)" ]] || fail 'Expected owner-only managed catalog setup credentials.'
+    done
+    admin_q=("$bin/psql" "${check[@]}" -U local_catalog_admin)
+    export PGPASSWORD="$(<"$catalog/admin.password")"
+    [[ "$("${admin_q[@]}" -c "SELECT current_database()='creastrix_local_catalog' AND current_user='local_catalog_admin' AND to_regprocedure('local_catalog.cart_variants(text[])') IS NOT NULL AND to_regclass('local_catalog.variant_identity') IS NOT NULL")" == t ]] || fail 'Migrate the local storefront catalog through V13 before setup.'
+    if [[ ! -e "$secret" && ! -L "$secret" ]]; then
+      [[ "$("${admin_q[@]}" -c "SELECT count(*) FROM pg_roles WHERE rolname='local_catalog_cart_reader'")" == 0 ]] || fail 'Pre-existing lookup role has no managed credential; refusing to replace it.'
+      (set -C; openssl rand -hex 32 > "$secret")
+    fi
+  fi
+  [[ -f "$secret" && ! -L "$secret" && -O "$secret" && -s "$secret" &&
+     -n "$(find "$secret" -prune -type f -perm 0600 -print)" ]] || fail 'Run setup-shared-catalog with a private managed credential first.'
+  export CART_CATALOG_LOOKUP_PASSWORD="$(<"$secret")"
+  if [[ "$action" == setup-shared-catalog ]]; then
+    if [[ "$("${admin_q[@]}" -c "SELECT count(*) FROM pg_roles WHERE rolname='local_catalog_cart_reader'")" == 0 ]]; then
+      "${admin_q[@]}" <<'SQL'
+\getenv reader_password CART_CATALOG_LOOKUP_PASSWORD
+CREATE ROLE local_catalog_cart_reader LOGIN PASSWORD :'reader_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+SQL
+    fi
+    [[ "$("${admin_q[@]}" -c "SELECT rolcanlogin AND NOT (rolsuper OR rolbypassrls OR rolinherit OR rolcreaterole OR rolcreatedb OR rolreplication) AND NOT EXISTS (SELECT 1 FROM pg_auth_members WHERE member=r.oid) FROM pg_roles r WHERE rolname='local_catalog_cart_reader'")" == t ]] || fail 'Unexpected role attributes or memberships; refusing to grant lookup.'
+    # Confirm the saved credential belongs to the specified identity before issuing grants.
+    [[ "$(PGPASSWORD="$CART_CATALOG_LOOKUP_PASSWORD" "$bin/psql" "${check[@]}" -U "$reader" -c "SELECT current_user")" == "$reader" ]] || fail 'Lookup login did not match.'
+    PGPASSWORD="$(<"$catalog/app.password")" "$bin/psql" "${check[@]}" -U local_catalog_app <<'SQL'
+BEGIN;
+GRANT USAGE ON SCHEMA local_catalog TO local_catalog_cart_reader;
+GRANT EXECUTE ON FUNCTION local_catalog.cart_variants(text[]) TO local_catalog_cart_reader;
+COMMIT;
+SQL
+    printf 'Local storefront lookup provisioned; no buyer permissions or catalog data changed.\n'
+    exit
+  fi
+else
+  unset CART_CATALOG_LOOKUP_PASSWORD
+fi
 conn=(-h 127.0.0.1 -p "$port")
 running() { "$bin/pg_ctl" -D "$cluster" status >/dev/null 2>&1; }
 case "$action" in
@@ -93,21 +138,28 @@ cpfile="$backend/target/local-account-cart.classpath"
 export CART_LOCAL_DB_PASSWORD="$(<"$state/app.password")"
 export CART_LOCAL_ASSET_ROOT="$state/assets"
 classpath="$backend/target/test-classes:$backend/target/classes:$(<"$cpfile")"
-if [[ "$action" == server || "$action" == server-two-buyers ]]; then
+if [[ "$action" == server || "$action" == server-two-buyers || "$action" == server-shared || "$action" == server-shared-two-buyers ]]; then
   # The JDK font parser can spool input bytes. Keep its temporary files in this
   # operator's private state, separate from durable objects and the static web root.
   scratch="$state/parser-tmp"
   if [[ ! -e "$scratch" && ! -L "$scratch" ]]; then mkdir -m 700 "$scratch"; fi
   [[ -d "$scratch" && -O "$scratch" && ! -L "$scratch" &&
      -n "$(find "$scratch" -prune -type d -perm 0700 -print)" ]] || fail 'Expected private parser scratch (0700).'
-  if [[ "$action" == server-two-buyers ]]; then
-    exec java "-Djava.io.tmpdir=$scratch" -cp "$classpath" com.creastrix.platform.authentication.LocalAccountCartLauncher --two-buyers
-  fi
-  exec java "-Djava.io.tmpdir=$scratch" -cp "$classpath" com.creastrix.platform.authentication.LocalAccountCartLauncher
+  set --
+  if [[ "$action" == server-shared* ]]; then set -- "$@" --shared-catalog; fi
+  if [[ "$action" == *two-buyers ]]; then set -- "$@" --two-buyers; fi
+  exec java "-Djava.io.tmpdir=$scratch" -cp "$classpath" com.creastrix.platform.authentication.LocalAccountCartLauncher "$@"
 fi
 export PGPASSWORD="$CART_LOCAL_DB_PASSWORD"
 local_psql=("$bin/psql" -X -v ON_ERROR_STOP=1 "${conn[@]}" -U "$role" -d "$database")
 case "$action" in
+  snapshot-additions)
+    exec "${local_psql[@]}" -Atq <<'SQL'
+SELECT coalesce(json_agg(json_build_object('id',intent_id,'sku',sku,'quantity',quantity::text,
+     'state',state,'version',applied_version::text) ORDER BY applied_version,intent_id),'[]'::json)
+  FROM account_cart.direct_add_receipt WHERE owner_id='10000000-0000-4000-8000-000000000001';
+SQL
+    ;;
   seed-two-buyers)
     exec "${local_psql[@]}" -f "$backend/src/test/resources/account-cart-local/two-buyers-fixture.sql" ;;
   next-buyer-a|next-buyer-b)
@@ -148,4 +200,5 @@ esac
 java -cp "$classpath" com.creastrix.platform.accountcart.assets.LocalCartFixtureAsset
 "${local_psql[@]}" -f "$backend/src/test/resources/account-cart-local/fixture.sql"
 "${local_psql[@]}" -f "$backend/src/test/resources/account-cart-local/lane-fixture.sql"
-exec "${local_psql[@]}" -f "$backend/src/test/resources/account-cart-local/loop-studio-fixture.sql"
+"${local_psql[@]}" -f "$backend/src/test/resources/account-cart-local/loop-studio-fixture.sql"
+exec "${local_psql[@]}" -f "$backend/src/test/resources/account-cart-local/tide-add-fixture.sql"

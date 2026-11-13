@@ -17,6 +17,7 @@ import StorefrontNavigation from './StorefrontNavigation';
 import CartView from './cart/CartView';
 import AccountCartView from './cart/AccountCartView';
 import { GuestCartActionsEnabled } from './cart/guestCartActions';
+import { AccountPurchaseContext } from './cart/accountPurchaseContext';
 import type { AccountCartAdmission } from './cart/accountCartAdmission';
 import CheckoutView from './checkout/CheckoutView';
 import { SearchResultsView } from './browse/SearchResultsView';
@@ -41,12 +42,19 @@ import PersistentStudio from './studio/session/PersistentStudio';
 import ConnectedCatalog from './catalog/ConnectedCatalog';
 import { catalogReady, connectedProduct, entryForPath } from './catalog/localCatalog';
 import ConnectedProductPage from './detail/ConnectedProductPage';
-import { permanentCatalogMode } from './catalog/permanentCatalog';
+import { permanentCatalogMode, sharedCatalogMode } from './catalog/permanentCatalog';
+import { AccountStudio } from './studio/session/AccountStudio';
 
 export default function ProductExperience({ accountCart }: { accountCart?: AccountCartAdmission } = {}) {
   const cartPage = useMatch('/preview/cart'), checkoutPage = useMatch('/preview/checkout');
   // Guest IndexedDB restore may expose removed/unlisted rows and its own retry
   // action. It is not part of reading or recovering an admitted account cart.
+  if (accountCart && sharedCatalogMode) {
+    const {userId,owner}=accountCart;
+    return <AccountStudio key={[userId,owner.document,owner.epoch,owner.request,owner.revision].join(':')}>
+      {cartPage || checkoutPage ? <Storefront accountCart={accountCart}/> : <ConnectedCatalog><Storefront accountCart={accountCart}/></ConnectedCatalog>}
+    </AccountStudio>;
+  }
   if (accountCart && (cartPage || checkoutPage)) return <Storefront accountCart={accountCart} />;
   if (accountCart && permanentCatalogMode) return <ConnectedCatalog><Storefront accountCart={accountCart} /></ConnectedCatalog>;
   return <ConnectedCatalog><PersistentStudio showGuestCartNotices={!accountCart} browsingHome={<Storefront cartReady={false} accountCart={accountCart} />}><Storefront accountCart={accountCart} /></PersistentStudio></ConnectedCatalog>;
@@ -56,9 +64,13 @@ function CollectionItemRoute({offline}: {offline:'edition'|'concept'}) {
   if (entry?.kind === 'offer') return <ConnectedProductPage key={entry.id}/>;
   return offline === 'edition' ? <EditionView /> : <ConceptView />;
 }
+function PermanentTideRoute() {
+  const {search}=useLocation();
+  return <Navigate to={'/products/tide'+search} replace/>;
+}
 // Resolve this only when the product route mounts: a cold account cart is independent of catalog loading.
 function LoopRoute({studio = false, account}: {studio?: boolean; account: boolean}) {
-  if (permanentCatalogMode && (account || !connectedProduct('loop')?.personalizable)) {
+  if (permanentCatalogMode && ((!sharedCatalogMode && account) || !connectedProduct('loop')?.personalizable)) {
     return studio ? <NotFoundView /> : <ConnectedProductPage />;
   }
   return studio ? <PersonalizationView /> : <ProductPage />;
@@ -105,10 +117,10 @@ function Storefront({ cartReady = true, accountCart }: { cartReady?: boolean; ac
       </header>
       {demo.favoritesMemoryOnly && <p role="status" className="product-width">{t.favoritesMemoryOnly}</p>}
       <StorefrontNavigation appearance={appearance} onAppearance={setAppearance} />
-      <main className="product-main product-width" id="product-main" tabIndex={-1} ref={main}><StorefrontOrigin.Provider value={origin}><GuestCartActionsEnabled.Provider value={!accountCart}><Routes>
-        <Route path="/" element={permanentCatalogMode ? <Navigate to="/catalog" replace /> : <StorefrontHome />} />
+      <main className="product-main product-width" id="product-main" tabIndex={-1} ref={main}><StorefrontOrigin.Provider value={origin}><AccountPurchaseContext.Provider value={accountCart??null}><GuestCartActionsEnabled.Provider value={!accountCart}><Routes>
+        <Route path="/" element={permanentCatalogMode && !sharedCatalogMode ? <Navigate to="/catalog" replace /> : <StorefrontHome />} />
         <Route path={editionCollectionPath} element={<EditionView />} />
-        <Route path={tideOffer.href} element={permanentCatalogMode ? <NotFoundView /> : <TideProductPage />} />
+        <Route path={tideOffer.href} element={sharedCatalogMode ? <ConnectedProductPage/> : permanentCatalogMode ? <PermanentTideRoute /> : <TideProductPage />} />
         <Route path={tideOffer.href + '/reviews'} element={<ReviewsView product="tide" />} />
         <Route path={tideOffer.href + '/reviews/new'} element={<ReviewFormView product="tide" />} />
         {catalogDetailRoutes.map(path => <Route key={path + '/reviews'} path={path + '/reviews'} element={<ConnectedReviewView/>}/>)}
@@ -122,7 +134,7 @@ function Storefront({ cartReady = true, accountCart }: { cartReady?: boolean; ac
         <Route path="/preview/search" element={<SearchResultsView />} /><Route path="/catalog" element={<CatalogView />} /><Route path="/preview/collection" element={<CatalogView />} />
         <Route path="/preview/items/:id" element={<CollectionItemRoute offline="concept" />} /><Route path="/preview/info/:topic" element={<InfoView />} /><Route path="/preview/studio" element={<InfoView studio />} />
         <Route path="*" element={<NotFoundView />} />
-      </Routes></GuestCartActionsEnabled.Provider></StorefrontOrigin.Provider></main>
+      </Routes></GuestCartActionsEnabled.Provider></AccountPurchaseContext.Provider></StorefrontOrigin.Provider></main>
       <footer className="product-footer"><div className="product-width"><div className="product-footer-grid">
         <div className="product-footer-brand"><Link to="/" className="product-logo"><img src="/brand/creastrix-logo-horizontal-black.svg" alt="Creastrix" width="160" height="40" /></Link><p>{t.footerTagline}</p></div>
         <section><h2>{t.buyers}</h2><Link to="/catalog">{catalogCopy[language].title}</Link><Link to="/preview/saved">{t.favorites}</Link></section>

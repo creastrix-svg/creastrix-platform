@@ -3,7 +3,7 @@ import { canPersonalize, studioProducts } from '../studio/studioProducts';
 import { isVariantId, mediaForVariant, variantById, type VariantId } from './loop';
 import { tideOffer } from './tideOffer';
 import { connectedSku } from '../catalog/localCatalog';
-import { permanentCatalogMode } from '../catalog/permanentCatalog';
+import { permanentCatalogMode, sharedCatalogMode } from '../catalog/permanentCatalog';
 
 // The unqualified finish IDs are existing browser cart keys. An editorial
 // product with the same colour has its own SKU, not another alias for that finish.
@@ -39,7 +39,7 @@ export function readCartSku(sku: CartSku) {
   return {
     label: { name: studioProducts.loop.name }, color: variant, stock: variant.stock, cents: variant.cents, previousCents: variant.previousCents,
     productHref: '/products/loop', search: '?variant=' + sku, photo: mediaForVariant(sku).photos[0],
-    get acceptsDesign() { return canPersonalize(studioProducts.loop); },
+    get acceptsDesign() { return canPersonalize(studioProducts.loop) && (!sharedCatalogMode || connectedSku(sku)?.variant.studioFormat==='surface-print-v1'); },
     priceWithDesign: () => loopPrice(sku, true),
   } as const;
 }

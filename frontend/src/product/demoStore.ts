@@ -117,7 +117,7 @@ const slice = createSlice({
       if (line) line.quantity += Math.min(capacity, payload.quantity);
       else {
         const next: CartLine = { variant: sku, quantity: Math.min(capacity, payload.quantity), ...(design ? { id: `design-${state.cartSerial++}`, design: copyDesign(design),
-          ...(permanentCatalogMode ? {templateRevision:connectedSku(sku)!.product.templateRevision} : {}) } : {}) };
+          ...(permanentCatalogMode ? {templateRevision:connectedSku(sku)!.variant.templateRevision ?? connectedSku(sku)!.product.templateRevision} : {}) } : {}) };
         const id = cartLineId(next);
         if (!state.cartOrder.includes(id)) state.cartOrder.push(id);
         insertCartLine(state, next);

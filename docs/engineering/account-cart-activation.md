@@ -54,6 +54,19 @@ the existing React storefront, a loopback test identity provider and a dedicated
 PostgreSQL/private-file store. The default build, real Cognito account pilot,
 public users, staff and checkout remain outside this authorisation.
 
+The owner subsequently authorised one additional local shopping action: a buyer
+already signed in to this synthetic profile may add a plain enabled variant
+(initially Tide / Cobalt blue). This is not another guest transfer. Its independent
+action ID, exact quantity and committed cart version make a retry distinguishable
+from a new addition. It grants no write access to the separate real account pilot.
+
+The owner extended this local slice to the **same catalog the buyer browses**:
+plain additions use available published variants, not a manually maintained
+per-SKU allowlist. An applied personalisation joins the purchase only as a
+verified immutable version owned by this buyer and compatible with the offer
+and variant. A plain line and a personalised line stay distinct. This decision
+is limited to the local synthetic sign-in and does not authorise orders or payments.
+
 For this single-instance test profile the server assigns one shared write
 context for switchable test sign-ins. A new sign-in or logout retires the
 previous generation. Every import mutation must serialize its original

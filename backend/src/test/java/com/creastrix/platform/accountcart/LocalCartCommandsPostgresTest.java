@@ -46,7 +46,7 @@ class LocalCartCommandsPostgresTest {
         ds=new DriverManagerDataSource("jdbc:postgresql://127.0.0.1:"+PG.getMappedPort(5432)+"/"+PG.getDatabaseName(),PG.getUsername(),PG.getPassword());
         var flyway=Flyway.configure().dataSource(ds).locations("classpath:db/migration","classpath:db/account-cart-local")
                 .configuration(Map.of("flyway.postgresql.transactional.lock","false")).load();
-        flyway.migrate(); assertThat(flyway.info().current().getVersion().toString()).isEqualTo("25");
+        flyway.migrate(); assertThat(flyway.info().current().getVersion().toString()).isEqualTo("28");
         sql=new JdbcTemplate(ds);
         var files=privateStore("private");
         LocalCartFixtureAsset.ensurePresent(files);

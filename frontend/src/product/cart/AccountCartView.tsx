@@ -9,7 +9,8 @@ import CartSourceImage from './CartSourceImage';
 import { accountProductLabels } from './accountProductLabels';
 import { isLoopFinish } from './appliedLoopDesign';
 import CartAppliedDesign from './CartAppliedDesign';
-import { permanentCatalogMode } from '../catalog/permanentCatalog';
+import { permanentCatalogMode, sharedCatalogMode } from '../catalog/permanentCatalog';
+import { PendingDirectAdditions } from './PendingDirectAdditions';
 
 // Pending or denied access is not an empty cart. Only a confirmed read can display lines.
 const messages = {
@@ -32,15 +33,21 @@ export default function AccountCartView({ admission }: { admission: AccountCartA
   return <section className="product-preview-page cart-view">
     <h1>{t.cart}</h1>
     {state.phase === 'ready' ? <div data-private-account>
+      {permanentCatalogMode && admission.directAdditions && state.binding &&
+        <PendingDirectAdditions admission={admission} writer={admission.directAdditions} binding={state.binding}/>}
       {state.cart.length === 0 ? <p>{t.emptyCart}</p> : <ul>{state.cart.map(line =>
-        <li key={line.lineId} data-account-cart-line={line.lineId}>{line.product?.listed
-          ? <Link to={'/products/' + line.product.offerId + '?variant=' + line.product.variantId}>{line.offerLabel}</Link>
+        <li key={line.lineId} data-account-cart-line={line.lineId}>{line.product?.listed && (!sharedCatalogMode || line.product.href)
+          ? <Link to={(line.product.href??('/products/' + line.product.offerId)) + '?variant=' + line.product.variantId
+            + (sharedCatalogMode && line.designLabel!==null ? '&accountLine='+line.lineId : '')}>{line.offerLabel}</Link>
           : <strong>{line.offerLabel}</strong>} · {line.variantLabel}
           {line.designLabel !== null && <> · {line.designLabel}</>} × {line.quantity}
           {line.product && !line.product.listed && <> · {accountProductLabels[locale][2]}</>}
           {line.product?.templateRevision && <> · {accountProductLabels[locale][0]}: {line.product.templateRevision}
-            {permanentCatalogMode && line.product.offerId==='loop' && line.product.templateRevision==='2' && isLoopFinish(line.product.variantId)
-              ? <CartAppliedDesign key={line.lineId} admission={admission} lineId={line.lineId} variant={line.product.variantId}
+            {permanentCatalogMode && line.product.templateRevision==='2' && (sharedCatalogMode
+              ? line.product.studioFormat==='surface-print-v1' && !!line.product.sku : line.product.offerId==='loop' && isLoopFinish(line.product.variantId))
+              ? <CartAppliedDesign key={line.lineId} admission={admission} lineId={line.lineId} sku={line.product.sku??line.product.variantId}
+                  variant={isLoopFinish(line.product.variantId)?line.product.variantId:'cobalt'}
+                  flat={sharedCatalogMode && line.product.offerId!=='loop'}
                   swatch={line.product.swatch} secondSwatch={line.product.secondSwatch}/>
               : <CartSourceImage key={line.lineId + ':' + line.product.templateRevision} admission={admission} lineId={line.lineId}/>}</>}
         </li>)}</ul>}

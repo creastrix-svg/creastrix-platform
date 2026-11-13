@@ -1,6 +1,7 @@
 import { storefrontLocales } from '../locale';
 
-export const permanentCatalogMode = import.meta.env.DEV && import.meta.env.MODE === 'account-cart-local';
+export const sharedCatalogMode = import.meta.env.DEV && import.meta.env.MODE === 'shared-cart-local';
+export const permanentCatalogMode = sharedCatalogMode || (import.meta.env.DEV && import.meta.env.MODE === 'account-cart-local');
 const object = (v: unknown): Record<string, unknown> => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('PERMANENT_CATALOG_INVALID');
   return v as Record<string, unknown>;
@@ -24,6 +25,7 @@ export function permanentPresentation(raw: unknown) {
     return { id: o.id, href: '/products/' + o.id, currency: o.currency, name: o.label, templateRevision: o.templateRevision,
       personalizable: studio, designFeeCents: studio ? o.studioFeeCents : 0, variants: rows.map(v => {
         return { id: v.id, sku: v.sku, name: translations(v.label), cents: v.cents,
+          ...(v.directAddSupported===true ? {directAddSupported:true} : {}),
           stock: v.stock, previousCents: v.previousCents ?? null, colors: v.secondSwatch == null ? [v.swatch] : [v.swatch,v.secondSwatch],
           checkTone: v.checkTone ?? 'dark', photos: v.photos ?? [], model: v.model ?? null,
           // The archived template is an import/display capability, not an editor. Its

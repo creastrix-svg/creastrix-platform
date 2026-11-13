@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import { isVariantId, variantById } from '../fixtures/loop';
+import { readCartSku } from '../fixtures/cartSkus';
+import type {CatalogProduct,CatalogVariant} from '../catalog/localCatalog';
+import {FlatSurfaceSketch} from './preview/FlatSurfaceSketch';
 import { money } from '../productDisplay';
 import { loopPrice, loopDesignFee } from '../loopPricing';
 import { loopPricingCopy } from '../loopPricingCopy';
@@ -31,7 +34,8 @@ import { studioCartCopy } from '../cart/studioCartCopy';
 import { GuestCartActionsEnabled } from '../cart/guestCartActions';
 import { ReadOnlyCartNotice } from '../detail/ProductPurchasePanel';
 import { permanentCatalogMode } from '../catalog/permanentCatalog';
-import { designFontHint, designLabels } from '../cart/accountProductLabels';
+import { accountDesignNote, designFontHint, designLabels } from '../cart/accountProductLabels';
+import {AccountPurchaseContext} from '../cart/accountPurchaseContext';
 import { isLoopV2Font, loopV2Fonts } from './design/loopV2Fonts';
 import { transferableLoopFont } from './design/studioFonts';
 import { NotFoundView } from '../NotFoundView';
@@ -91,6 +95,7 @@ export default function PersonalizationView() {
   if(permanentCatalogMode && ((products.length>0 && (products.length!==1 || products[0]!=='loop'))
       || (values.length>0 && (values.length!==1 || !isVariantId(values[0]))))) return <NotFoundView/>;
   const initialProduct = products.length === 1 && products[0] === 'lamp' ? 'lamp' : 'loop';
+  if(initialProduct==='loop' && permanentCatalogMode && !readCartSku(variant).acceptsDesign)return <NotFoundView/>;
   const editing = params.getAll('edit');
   if (editing.length) {
     if (!guestActions) return <ReadOnlyCartNotice />;
@@ -124,10 +129,16 @@ function CartEditorSession({ line, document }: { line: CartLine<VariantId>; docu
   }} /></PersonalizationSession.Provider>;
 }
 
-function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initialProduct: StudioProductId; onSave?: (objects: readonly StudioObject[]) => void }) {
-  const language = useProductLocale(), p = personalizationCopy[language], t = productCopy[language], color = variantById(variant);
+type PublishedSurface={offer:CatalogProduct;finish:CatalogVariant};
+export function PublishedSurfaceEditor({offer,finish}:PublishedSurface){
+  return <Studio variant="cobalt" initialProduct="loop" surface={{offer,finish}}/>;
+}
+function Studio({ variant, initialProduct, onSave,surface }: { variant: VariantId; initialProduct: StudioProductId;
+  onSave?: (objects: readonly StudioObject[]) => void;surface?:PublishedSurface }) {
+  const language = useProductLocale(), p = personalizationCopy[language], t = productCopy[language], color = surface?.finish??variantById(variant);
   const e = studioExtensionCopy[language], z = studioZoneCopy[language], creative = useStudioCreative();
   const example = initialProduct;
+  const privateStudio=useContext(AccountPurchaseContext);
   const origin = useContext(StorefrontOrigin);
   const sectionOrigin = origin?.startsWith('/preview/') ? origin : null;
   const returnToProduct = !sectionOrigin && example === 'loop';
@@ -135,7 +146,10 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
   const cartCopy = studioCartCopy[language];
   const [selectedZone, setSelectedZone] = useState<StudioZoneId>(initialProduct === 'lamp' ? 'panel' : 'surface');
   const [selectedTool, setSelectedTool] = useState<StudioTool>(initialProduct === 'lamp' ? 'pattern' : 'text');
-  const profile = getStudioProduct(example), available = canPersonalize(profile);
+  const original=getStudioProduct(example);
+  const profile = surface?{id:original.id,name:surface.offer.name,readyMade:true,zones:original.zones,
+    enabled:surface.offer.personalizable && surface.finish.studioFormat==='surface-print-v1' && surface.finish.templateRevision==='2'}:original;
+  const available = canPersonalize(profile);
   const zone = getStudioZone(profile, selectedZone) ?? profile.zones[0];
   // The profile drives both visible controls and action admission. A URL, stale
   // tab choice or in-flight file result cannot turn on an unavailable operation.
@@ -231,7 +245,9 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
   // Only an intentionally empty cart draft may convert the line to a plain SKU;
   // a failed validation or an image still being loaded must never remove a design.
   const clearingLine = !!onSave && available && !hasContent && !wholeIssue && imageStatus !== 'pending';
-  const quote = example === 'loop' && (valid || clearingLine || (!onSave && !hasContent)) ? loopPrice(variant, valid) : undefined;
+  const quote = example === 'loop' && (valid || clearingLine || (!onSave && !hasContent)) ? surface
+    ? {baseCents:surface.finish.cents,feeCents:valid?surface.offer.designFeeCents:0,unitCents:surface.finish.cents+(valid?surface.offer.designFeeCents:0)}
+    : loopPrice(variant, valid) : undefined;
   const applied = state.applied[target];
   const baseApplied = state.applied[baseTarget], panelApplied = state.applied['lamp-panel'];
   const dirty = !baseApplied || compositionKey(baseInspected.objects) !== compositionKey(baseApplied) || !sameArtwork(baseDraft, creative.applied[baseTarget])
@@ -341,13 +357,14 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
   }
   const toolLabel = (item: StudioTool) => ({ text: e.textTab, image: e.imageTab, ai: e.aiTab, pattern: z.patternTab })[item];
   const toolIcon = (item: StudioTool) => ({ text: 'layers', image: 'image', ai: 'spark', pattern: 'layers' })[item] as 'layers' | 'image' | 'spark';
+  const flat=surface && <FlatSurfaceSketch label={p.preview} fill={color.colors[0]} objects={baseInspected.objects} selectedId={document.selectedId} onSelectObject={selectObject} onMoveObject={moveObject} onMoveEnd={endGroup}/>;
   const patterns = <div className="studio-pattern-choices" role="group" aria-label={e.cutout}>{(['botanical', 'forest', 'orbit'] as const).map(pattern => <button type="button" key={pattern} aria-label={{ botanical: e.patternBotanical, forest: e.patternForest, orbit: e.patternOrbit }[pattern]} aria-pressed={panelDraft.pattern === pattern} onClick={() => choosePattern(pattern)}><LampSketch pattern={pattern} bridges mode="panel" label={{ botanical: e.patternBotanical, forest: e.patternForest, orbit: e.patternOrbit }[pattern]} /><span>{{ botanical: e.patternBotanical, forest: e.patternForest, orbit: e.patternOrbit }[pattern]}</span></button>)}</div>;
   return <div className="personalization-studio" data-studio-variant={variant} data-studio-product={example} data-studio-zone={zone?.id}>
-    <div className="studio-topline"><Link className="product-back" to={returnPath} state={!onSave && returnToProduct ? { productReturn: true } : null}><span className="product-flip"><Icon name="arrow" /></span>{onSave ? cartCopy.cancel : returnToProduct ? p.back : sectionOrigin ? t.back : t.browseCollection}</Link><span className="studio-product-id">{example === 'lamp' ? e.lampName : 'Loop'} <span>·</span> {example === 'lamp' ? e.lampDescription : color.name[language]}</span></div>
+    <div className="studio-topline"><Link className="product-back" to={surface?surface.offer.href+'?variant='+surface.finish.id:returnPath} state={!onSave && returnToProduct ? { productReturn: true } : null}><span className="product-flip"><Icon name="arrow" /></span>{surface ? p.back : onSave ? cartCopy.cancel : returnToProduct ? p.back : sectionOrigin ? t.back : t.browseCollection}</Link><span className="studio-product-id">{example === 'lamp' ? e.lampName : surface?.offer.name??'Loop'} <span>·</span> {example === 'lamp' ? e.lampDescription : color.name[language]}</span></div>
     <header className="studio-heading"><div><span className="studio-eyebrow"><Icon name="spark" />{p.eyebrow}</span><h1>{p.title}</h1><p>{z.intro}</p></div></header>
     {!available || !zone ? <div className="studio-unavailable" role="status"><Icon name="cube" /><p>{z.unavailable}</p></div> : <div className="studio-layout">
       <section className="studio-visual-column" aria-label={p.preview}>
-        {example === 'lamp' ? <StudioLampPreview value={basePreview} panelText={panelPreview} baseObjects={baseInspected.objects} panelObjects={panelInspected.objects} selectedId={document.selectedId} onSelectObject={selectObject} onMoveObject={moveObject} draft={lampDraft} zone={zone.id === 'panel' ? 'panel' : 'base'} onSelectZone={chooseZone} onMoveEnd={endGroup} highlightTextBand={zone.id === 'panel'} expanded={expanded} onExpand={() => setExpanded(true)} onClose={() => setExpanded(false)} /> : <StudioPreview compare={compare} onCompare={() => setCompare(current => !current)} variant={variant} value={shown} objects={baseInspected.objects} selectedId={document.selectedId} onSelectObject={selectObject} onMoveObject={moveObject} artwork={firstArtwork(baseDocument)} fits={baseInspected.valid} onMove={move} onMoveEnd={endGroup} expanded={expanded} onExpand={() => setExpanded(true)} onClose={() => setExpanded(false)} />}
+        {flat || (example === 'lamp' ? <StudioLampPreview value={basePreview} panelText={panelPreview} baseObjects={baseInspected.objects} panelObjects={panelInspected.objects} selectedId={document.selectedId} onSelectObject={selectObject} onMoveObject={moveObject} draft={lampDraft} zone={zone.id === 'panel' ? 'panel' : 'base'} onSelectZone={chooseZone} onMoveEnd={endGroup} highlightTextBand={zone.id === 'panel'} expanded={expanded} onExpand={() => setExpanded(true)} onClose={() => setExpanded(false)} /> : <StudioPreview compare={compare} onCompare={() => setCompare(current => !current)} variant={variant} value={shown} objects={baseInspected.objects} selectedId={document.selectedId} onSelectObject={selectObject} onMoveObject={moveObject} artwork={firstArtwork(baseDocument)} fits={baseInspected.valid} onMove={move} onMoveEnd={endGroup} expanded={expanded} onExpand={() => setExpanded(true)} onClose={() => setExpanded(false)} />)}
       </section>
       <section className="studio-panel" aria-label={p.eyebrow}>
         <div className="studio-zone-heading"><span>{z.zoneLabel}</span></div>
@@ -357,12 +374,13 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
         <StudioObjectTools objects={document.objects} selectedId={document.selectedId} onSelect={selectObject} canAddText={zone.tools.includes('text')} canAddImage={zone.tools.includes('image')} imagePending={pendingImage} imageHintId={id + '-image-hint'} onAdd={kind => { if (kind === 'image') { pickImage('add'); return; } leaveZone(); setSelectedTool('text'); dispatch({ type: 'add', variant: target, kind: 'text' }); }} onDelete={() => { if (selected) { leaveZone(); dispatch({ type: 'delete', variant: target, id: selected.id }); } }} onReorder={direction => { if (selected) { endGroup(); dispatch({ type: 'reorder', variant: target, id: selected.id, direction }); setAppliedMessage(false); } }} />
         {canUseStudioTool(profile, zone.id, 'image') && <div className="studio-image-feedback">
           <input hidden type="file" ref={imageInput} accept="image/png,image/jpeg,image/webp" aria-label={e.uploadImage} disabled={pendingImage} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void acceptImageFile(file); }} />
-          <p id={id + '-image-hint'}>{e.imageFormats}. {permanentCatalogMode ? designLabels[language][1] : e.imageLocalOnly}</p>
+          <p id={id + '-image-hint'}>{e.imageFormats}. {privateStudio ? accountDesignNote[language] : permanentCatalogMode ? designLabels[language][1] : e.imageLocalOnly}</p>
           <div className="studio-upload-message" role={imageError ? 'alert' : 'status'}>{imageError || (pendingImage ? c.loadingImage : imageStatus === 'added' ? e.imageLoaded : imageStatus === 'replaced' ? e.imageReplaced : '')}</div>
         </div>}
         {zone.tools.length > 1 && <div className="studio-tool-tabs" role="group" aria-label={p.eyebrow}>{zone.tools.filter(tab => !onSave || tab !== 'ai').map(tab => <button type="button" key={tab} disabled={tab === 'image' && !document.objects.some(object => object.kind === 'image')} aria-pressed={tool === tab} onClick={() => chooseTool(tab)}><Icon name={toolIcon(tab)} />{toolLabel(tab)}</button>)}</div>}
         <div className="studio-panel-heading"><h2>{tool === 'text' ? cutText ? z.cutTextLabel : p.textLabel : tool ? toolLabel(tool) : ''}</h2><div className="studio-history"><button type="button" className="product-icon-button" aria-label={p.undo} title={p.undo} disabled={!history.past.length} onClick={() => { leaveZone(); dispatch({ type: 'undo', variant: target }); }}><Icon name="rotateLeft" /></button><button type="button" className="product-icon-button" aria-label={p.redo} title={p.redo} disabled={!history.future.length} onClick={() => { leaveZone(); dispatch({ type: 'redo', variant: target }); }}><Icon name="rotateRight" /></button></div></div>
-        <button type="button" className="studio-mobile-preview" onClick={() => setExpanded(true)} aria-label={p.preview}>{example === 'lamp' ? <LampZoneSketch value={basePreview} panelText={panelPreview} baseObjects={baseInspected.objects} panelObjects={panelInspected.objects} draft={lampDraft} zone={zone.id === 'panel' ? 'panel' : 'base'} label={p.preview} /> : <LetteringSketch variant={variant} {...loopPreviewContent(shown, baseInspected.objects, firstArtwork(baseDocument), compare)} label={p.preview} />}<span>{p.preview}<Icon name="expand" /></span></button>
+        <button type="button" className="studio-mobile-preview" onClick={() => setExpanded(true)} aria-label={p.preview}>{surface ? <FlatSurfaceSketch label={p.preview} fill={color.colors[0]} objects={baseInspected.objects}/> : example === 'lamp' ? <LampZoneSketch value={basePreview} panelText={panelPreview} baseObjects={baseInspected.objects} panelObjects={panelInspected.objects} draft={lampDraft} zone={zone.id === 'panel' ? 'panel' : 'base'} label={p.preview} /> : <LetteringSketch variant={variant} {...loopPreviewContent(shown, baseInspected.objects, firstArtwork(baseDocument), compare)} label={p.preview} />}<span>{p.preview}<Icon name="expand" /></span></button>
+        {surface && expanded && <Modal title={p.preview} closeLabel={t.close} onClose={()=>setExpanded(false)}>{flat}</Modal>}
         {tool === 'pattern' && <>{patterns}<p className="studio-pattern-note">{z.panelRestriction}</p></>}
         {tool === 'text' && selected?.kind === 'text' && <>
         {cutText && <p className="studio-pattern-note">{z.cutTextHint}</p>}
@@ -385,7 +403,7 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
         <div className="studio-apply">
           {example === 'loop' && <div className="studio-price-summary" aria-live="polite" aria-atomic="true">
             {quote && <div><span>{priceCopy.unitTotal}</span><strong>{money(quote.unitCents, language)}</strong></div>}
-            <small>{quote?.feeCents ? <>{priceCopy.base}: {money(quote.baseCents, language)} · {priceCopy.fee(money(quote.feeCents, language))}</> : clearingLine ? e.withoutDesign : priceCopy.from(money(loopDesignFee(), language))}</small>
+            <small>{quote?.feeCents ? <>{priceCopy.base}: {money(quote.baseCents, language)} · {priceCopy.fee(money(quote.feeCents, language))}</> : clearingLine ? e.withoutDesign : priceCopy.from(money(surface?.offer.designFeeCents??loopDesignFee(), language))}</small>
           </div>}
           <button type="button" className="product-primary" disabled={(!valid && !clearingLine) || !dirty} onClick={apply}><Icon name={applied && !dirty ? 'check' : 'spark'} />{clearingLine ? e.removeDesign : onSave ? cartCopy.save : applied && !dirty ? p.applied : p.apply}<Icon name="arrow" /></button>
           <div className="studio-apply-status" role="status">{appliedMessage ? <><Icon name="check" />{example === 'lamp' ? e.artworkApplied : p.completed}</> : clearingLine ? p.changes : !valid ? wholeIssue || (zone.tools.includes('image') ? p.textRequired : p.textOnlyRequired) : applied && !dirty ? p.applied : p.changes}</div>
@@ -393,7 +411,7 @@ function Studio({ variant, initialProduct, onSave }: { variant: VariantId; initi
         </div>
       </section>
     </div>}
-    <details className="studio-disclosure"><summary><Icon name="help" />{p.disclosureTitle}<Icon name="chevron" /></summary><p>{p.disclosureBody}</p><p>{permanentCatalogMode ? designLabels[language][1] : example === 'loop' ? cartCopy.localNote : p.savedNote}</p></details>
+    <details className="studio-disclosure"><summary><Icon name="help" />{p.disclosureTitle}<Icon name="chevron" /></summary><p>{p.disclosureBody}</p><p>{privateStudio ? accountDesignNote[language] : permanentCatalogMode ? designLabels[language][1] : example === 'loop' ? cartCopy.localNote : p.savedNote}</p></details>
     {resetOpen && <Modal title={e.resetTextTitle} closeLabel={t.close} onClose={() => setResetOpen(false)}><div className="studio-reset"><p>{e.resetTextBody}</p><div><button type="button" className="product-secondary" onClick={() => setResetOpen(false)}>{p.cancel}</button><button type="button" className="product-primary" onClick={() => { supersedeFont(); dispatch({ type: 'reset', variant: target }); setResetOpen(false); setAppliedMessage(false); setTextLimited(false); }}>{p.confirmReset}</button></div></div></Modal>}
   </div>;
 }

@@ -6,7 +6,7 @@ catalog. A synthetic buyer signs in through a local signed OIDC flow and reads
 their own cart. Each line points to its stable offer/variant and its applied
 design revision's template, independent of the latest template. An explicit
 source-image request can read a single eligible PNG through its authorised
-cart line. For a supported layered Loop design the buyer can instead open
+cart line. For a supported layered print design the buyer can instead open
 **View applied design**, which loads the composition and its private files through that cart line.
 
 **What the isolated writer does:** before leaving the storefront for sign-in,
@@ -30,12 +30,49 @@ applied design: the server must still recognise its original revision and varian
 The importer does not
 import unrelated drafts. An unsupported format, missing resource or legacy design
 without its pinned template keeps the **whole batch** from being credited. The
-application never converts an unsupported design into a plain line. Ordinary
-signed-in buying, catalog editing, checkout, file collection and writes for
-real users are not enabled. None of the local results clear the
+application never converts an unsupported design into a plain line. Adding a
+product after sign-in is a separate purchase action, not another import. Account cart edits,
+checkout, file collection and writes for real users are not enabled. None of the local results clear the
 [business write gate](account-cart-import.md) for a public deployment.
 
 ## Start on loopback
+
+### Use the same catalog as the storefront
+
+Keep the [catalog service](../local-catalog.md) running on port 8081. A guest
+on port 4174 and a signed-in test buyer on `http://localhost:4317` read the
+same product feed, gallery, published cover, prices and stock. The account
+database stores cart lines, receipts, private designs and stable historical
+references; it is not the authority for what is on sale.
+
+After compiling the current backend and applying the catalog migrations through
+its own launcher:
+
+```sh
+bash backend/tools/account-cart-local.sh setup-shared-catalog
+bash backend/tools/account-cart-local.sh server-shared
+# In another terminal:
+cd frontend
+npm run dev:shared-cart
+```
+
+Use a clean local Chrome profile for synthetic sign-in. The shared launcher
+and the earlier fixture launcher are alternatives on the **same ports**. Do
+not combine the catalog and authentication Spring profiles. Real Cognito,
+checkout, stock allocation and public writes are outside this workflow.
+
+Sign in and open the catalog. Any available variant of a published offer can
+be added plain without a SKU-specific code change. The server checks current
+availability even if the buyer has an old page open. Optional personalisation
+also requires an active template the editor supports. Applying a design is not
+a purchase: use **Add to cart** on the product card. After reload, **View
+applied design** on the cart line opens the account's saved composition.
+Opening that line returns to the saved design rather than the plain product.
+If the seller no longer offers the template, that link does not offer a plain
+replacement. A compatible surface on a new product can use the flat editor
+without requiring a product-specific 3D model.
+
+### Earlier isolated fixture
 
 Use a JDK 25, the repository frontend toolchain and local PostgreSQL server
 tools. Use a **fresh isolated browser profile** for this synthetic application,
@@ -64,6 +101,35 @@ npm run dev:account-cart
 | Existing React storefront | `http://localhost:4317` |
 | Spring / dedicated synthetic OIDC issuer | `127.0.0.1:8191` / `127.0.0.1:8192` |
 | Separate PostgreSQL | `127.0.0.1:55489/creastrix_account_cart_local` |
+
+### Add two Tide cups after sign-in
+
+In an isolated Chrome profile, sign in at `http://localhost:4317/login` **before**
+adding anything. Open [Tide](http://localhost:4317/products/tide), select 2, click
+**Add to cart** once, and follow **View cart**. If the account had no Tide line
+beforehand, it should show one plain Tide / Cobalt blue line with quantity 2.
+Reload the cart: this is a read, not another addition. Do not empty an existing
+buyer's cart to run this check.
+
+Each deliberate addition has its own ID. Retrying the same ID and quantity
+acknowledges the original addition; a genuinely new click after success adds
+more units. The server checks the signed-in buyer, enabled variant, accumulated
+quantity and current stock. It commits the quantity and its acknowledgement in
+one PostgreSQL transaction. There is no stock reservation, guest transfer or order.
+If a valid addition is refused because the item is unavailable, that intent
+remains refused even if the item returns to stock. A purchase after restocking
+requires a new click. If a response is lost instead, **View cart** reads the
+server state; retrying the pending click uses its original ID and quantity.
+The pending action is remembered in the same browser tab, not across devices.
+For a read-only check, compare `snapshot-json` and `snapshot-additions` from
+`backend/tools/account-cart-local.sh` before and after reloading.
+
+The earlier isolated fixture enables only `tide-cobalt` and seeds its starting catalog
+values once. In this profile the card and write use the same permanent catalog
+row; the separate seller-photo storefront on port 4174 is **not** a live feed of
+price, stock or media into this database. Reseeding does not reset a user's cart.
+
+### Other local journeys
 
 Open `/products/kiln-cup?variant=blue`, then `/login` and use the hosted
 sign-in button. The test issuer selects only the configured synthetic buyer;

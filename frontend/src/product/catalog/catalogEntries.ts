@@ -1,5 +1,6 @@
 import { storefrontLocales, type StorefrontLocale } from '../locale';
 import { publishedPhotoId } from './photoRenditions';
+import { sharedCatalogMode } from './permanentCatalog';
 
 export type CatalogRating = Readonly<{ count: number; average: number | null }>;
 type Localized = Readonly<Record<StorefrontLocale, string>>;
@@ -19,7 +20,7 @@ const slug = (v: unknown) => typeof v === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*
 const position = (v: unknown) => v === null || (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0) ? v : invalid();
 const photo = (v: unknown) => v === null || (typeof v === 'string' && /^\/(?:product|shop-edition)\/[a-z0-9_-]+\.webp$/.test(v)) ? v : invalid();
 function entryPhotos(e: Record<string, unknown>) {
-  if (import.meta.env.MODE === 'local-catalog' && typeof e.photo === 'string' && typeof e.thumb === 'string') {
+  if ((import.meta.env.MODE === 'local-catalog' || sharedCatalogMode) && typeof e.photo === 'string' && typeof e.thumb === 'string') {
     const id = publishedPhotoId(e.photo, 'detail');
     if (id && publishedPhotoId(e.thumb, 'thumb') === id) return { photo: e.photo, thumb: e.thumb };
   }

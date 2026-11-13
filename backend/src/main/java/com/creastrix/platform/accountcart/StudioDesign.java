@@ -136,7 +136,7 @@ public final class StudioDesign {
     public static StudioDesign parse(JsonNode body) {
         require(body!=null && body.isObject() && body.size()==4);
         String sku=string(body,"sku"), rev=string(body,"templateRevision");
-        require(sku.length()<=128 && sku.matches("[a-z0-9]+(-[a-z0-9]+)*") && rev.equals("2"));
+        require(sku.length()<=200 && sku.matches("[a-z0-9]+(-[a-z0-9]+)*") && rev.equals("2"));
         require(string(body,"zone").equals("surface"));
         var objects=body.get("objects"); require(objects!=null && objects.isArray() && objects.size()>=1 && objects.size()<=8);
         var resources=new ArrayList<Resource>(); var buffer=new ByteArrayOutputStream();

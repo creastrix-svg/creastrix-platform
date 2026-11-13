@@ -3,18 +3,20 @@ import type { SwatchColors } from '../productDisplay';
 import { isCatalogOfferHref, tideOfferPath } from '../routes';
 import { parseCatalogEntries, unrated, type CatalogRating, type Rail } from './catalogEntries';
 import { expandSellerShelf, lowerShelves } from './recommendationShelves';
-import { permanentCatalogMode, permanentPresentation } from './permanentCatalog';
+import { permanentCatalogMode, permanentPresentation, sharedCatalogMode } from './permanentCatalog';
 import { publishedPhotoId } from './photoRenditions';
 export type { CatalogRating } from './catalogEntries';
 
-export const catalogEndpoint = permanentCatalogMode ? '/api/account-catalog/products' : '/api/local-catalog/products';
+const fixtureAccountCatalog = permanentCatalogMode && !sharedCatalogMode;
+export const catalogEndpoint = fixtureAccountCatalog ? '/api/account-catalog/products' : '/api/local-catalog/products';
 export const connectedMode = import.meta.env.MODE === 'local-catalog' || permanentCatalogMode;
 export type CatalogProductId = 'loop' | 'tide';
 export type LoopFinish = 'cobalt' | 'coral' | 'chalk' | 'cobalt-chalk';
 type Variant<Id extends string = string> = Readonly<{
   id: Id; sku: string; cents: number; previousCents?: number; stock: number;
   name: Readonly<Record<StorefrontLocale, string>>; colors: SwatchColors; checkTone: 'dark' | 'light';
-  photos: readonly string[]; model: string | null; retainedLoopV2FeeCents?: number;
+  photos: readonly string[]; model: string | null; retainedLoopV2FeeCents?: number; directAddSupported?: true;
+  studioFormat?:'surface-print-v1'; templateRevision?:'2';
 }>;
 type Product<Id extends string = string> = Readonly<{
   id: string; name: string; href: string; personalizable: boolean; designFeeCents: number; variants: readonly Variant<Id>[]; templateRevision?: string;
@@ -50,7 +52,7 @@ function integer(raw: unknown) {
   return typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0 && raw <= 1_000_000 ? raw : invalid();
 }
 function localAsset(raw: unknown, extension: 'webp' | 'glb') {
-  if (extension === 'webp' && import.meta.env.MODE === 'local-catalog' && typeof raw === 'string'
+  if (extension === 'webp' && (sharedCatalogMode || import.meta.env.MODE === 'local-catalog') && typeof raw === 'string'
       && publishedPhotoId(raw, 'detail')) return raw;
   return typeof raw === 'string' && /^\/(product|shop-edition)\/[a-z0-9_-]+\.(webp|glb)$/.test(raw) && raw.endsWith('.' + extension) ? raw : invalid();
 }
@@ -64,7 +66,7 @@ function readProduct(raw: unknown): Product {
   const variants = p.variants.map(rawVariant => {
     const v = record(rawVariant);
     const finish = key(v.id), sku = key(v.sku);
-    if (seen.has(finish) || isReservedCartLineId(sku)) return invalid();
+    if (seen.has(finish) || isReservedCartLineId(sku) || (sharedCatalogMode && sku.length>200)) return invalid();
     seen.add(finish);
     const names = record(v.name);
     const name = Object.fromEntries(storefrontLocales.map(locale => [locale, permanentCatalogMode ? serverLabel(names[locale]) : label(names[locale], 120)])) as Record<StorefrontLocale, string>;
@@ -79,6 +81,10 @@ function readProduct(raw: unknown): Product {
     return Object.freeze({ id: finish, sku, name: Object.freeze(name), cents, previousCents, stock,
       colors: Object.freeze([...v.colors]) as SwatchColors, checkTone: v.checkTone,
       photos: Object.freeze(photos), model: v.model === null ? null : localAsset(v.model, 'glb'),
+      ...(sharedCatalogMode || (fixtureAccountCatalog && v.directAddSupported===true) ? {directAddSupported:true as const} : {}),
+      ...(sharedCatalogMode && p.personalizable && v.studioFormat==='surface-print-v1' && v.templateRevision==='2'
+        ? {studioFormat:'surface-print-v1' as const,templateRevision:'2' as const} : {}),
+      ...(sharedCatalogMode && v.retainedStudioRevision==='2' ? {retainedLoopV2FeeCents:integer(p.designFeeCents)} : {}),
       ...(permanentCatalogMode && Object.hasOwn(v,'retainedLoopV2FeeCents')
         ? { retainedLoopV2FeeCents: integer(v.retainedLoopV2FeeCents) } : {}) });
   });
@@ -154,11 +160,18 @@ export async function fetchCatalog(transport: typeof fetch): Promise<Catalog> {
     throw new Error('LOCAL_CATALOG_UNAVAILABLE');
   }
   const payload: unknown = await response.json();
-  const raw = permanentCatalogMode ? permanentPresentation(payload) : payload;
+  const raw = fixtureAccountCatalog ? permanentPresentation(payload) : payload;
   const products = parseLocalCatalog(raw);
   const offersById = new Map(products.map(p => [p.id, p]));
   const skus = new Map(products.flatMap(product => product.variants.map(variant => [variant.sku, {product,variant}] as const)));
-  const cards = permanentCatalogMode
+  // A specialised model is a presentation enhancement, never an admission list
+  // for catalogue entries or purchases. Its absence does not invalidate the feed.
+  const candidate=offersById.get('loop');
+  const cards = sharedCatalogMode
+    ? (candidate?.href==='/products/loop' && candidate.variants.length===loopIds.length &&
+        loopIds.every(id=>candidate.variants.some(v=>v.id===id && v.sku===id))
+      ? {loop:cardAdapter(products,'loop','/products/loop',loopIds,id=>id)} : {})
+    : fixtureAccountCatalog
     ? (offersById.get('loop')?.personalizable ? {loop: cardAdapter(products,'loop','/products/loop',loopIds,id => id)} : {})
     : storefrontCatalog(products);
   return { ...cards, ...parseCatalogEntries(raw, products), products, offersById, skus };

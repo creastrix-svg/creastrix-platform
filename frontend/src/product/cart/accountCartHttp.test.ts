@@ -5,6 +5,13 @@ const ownerId = '10000000-0000-4000-8000-000000000001';
 const line = {lineId:'50000000-0000-4000-8000-000000000001',offerId:'kiln-cup',variantId:'blue',listed:false,
   offerLabel:'Retired cup',variantLabel:'Blue',quantity:'9223372036854775807',designLabel:'Original',templateRevision:'1'};
 const response = (cart: unknown[]) => Response.json({kind:'ready',ownerId,cart});
+it.each(['offerId','variantId','sku'])('keeps an oversize historical %s as a non-routable label alongside other admitted rows',async(field)=>{
+  const historic={...line,lineId:crypto.randomUUID(),listed:true,href:'/products/old-cup',[field]:'x'.repeat(201)};
+  const reply=await accountCartHttp(async()=>response([historic,line])).read(new AbortController().signal);
+  expect(reply).toMatchObject({kind:'ready',cart:[{offerLabel:'Retired cup',quantity:line.quantity,
+    product:{listed:false,offerId:'',variantId:'',templateRevision:null}},{lineId:line.lineId,product:{offerId:'kiln-cup'}}]});
+  expect(JSON.stringify(reply)).not.toContain('x'.repeat(201));
+});
 it.each(['ready','pending'] as const)('exposes only the intent of this validated %s response and clears stale proof',async kind=>{
   const ticket=crypto.randomUUID(),intent=crypto.randomUUID(),other=crypto.randomUUID();
   const body=(who:string,proof:unknown)=>Response.json({kind,ownerId:who,guestIntent:proof,

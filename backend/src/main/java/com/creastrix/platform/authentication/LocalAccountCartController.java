@@ -45,9 +45,9 @@ class LocalAccountCartController {
 
     LocalAccountCartController(JdbcTemplate jdbc, PrivateCartAssetStore files,LocalCartSessionBinding.SyntheticRuntime synthetic,
                                AccountController accounts) {
-        reader = new PermanentCartReader(jdbc);
+        reader = new PermanentCartReader(jdbc,synthetic.catalog());
         artwork = new CartLineArtworkReader(jdbc, files);
-        binding=new LocalCartSessionBinding(new LocalCartCommands(java.util.Objects.requireNonNull(jdbc.getDataSource()),files));
+        binding=new LocalCartSessionBinding(new LocalCartCommands(java.util.Objects.requireNonNull(jdbc.getDataSource()),files,synthetic.catalog()));
         this.accounts=accounts;
     }
 

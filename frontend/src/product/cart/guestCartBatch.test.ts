@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { guestCartTransfer, type TransferPhase } from './guestCartTransfer';
 
 const catalogRevision=vi.hoisted(()=>({value:'2',retained:false}));
-vi.mock('../catalog/permanentCatalog', () => ({ permanentCatalogMode: true }));
+vi.mock('../catalog/permanentCatalog', () => ({ permanentCatalogMode: true, sharedCatalogMode:false }));
 vi.mock('../catalog/localCatalog', async original => ({
   ...await original<typeof import('../catalog/localCatalog')>(),
   connectedSku: (sku:string) => sku==='kiln-blue' ? {product:{id:'kiln-cup'},variant:{id:'blue',sku}}

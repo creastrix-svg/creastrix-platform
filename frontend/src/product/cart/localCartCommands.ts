@@ -5,6 +5,7 @@ import type { AppliedLoopDesign } from './appliedLoopDesign';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type Binding = Readonly<{ownerId:string; namespace:string; writeContext:string}>;
 export type Guard = Readonly<{ownerId:string; owns:() => boolean}>;
+export type DesignRef = Readonly<{designId:string;designRevision:'1'}>;
 export type ImportItem = {sku:string; designId:string|null; designRevision:string|null; quantity:string};
 const refused = (): never => { throw new Error('CART_COMMAND_UNAVAILABLE'); };
 const object = (v:unknown): Record<string,unknown> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string,unknown> : refused();
@@ -53,6 +54,24 @@ export function localCartCommands(fetcher:typeof fetch, guard:Guard) {
       ...(payload === undefined ? {} : {body:JSON.stringify(payload)})},statuses);
   }
   return {
+    async addPlain(binding:Binding, requestId:string, sku:string, quantity:string, signal:AbortSignal, design?:DesignRef) {
+      if (binding.ownerId!==guard.ownerId || sku.length>200 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(sku)
+          || !/^[1-9][0-9]{0,6}$/.test(quantity) || Number(quantity)>1_000_000) return refused();
+      if(design && (tokenId(design.designId)!==design.designId || design.designRevision!=='1'))return refused();
+      const {status,value}=await request('/api/account-cart/additions/'+tokenId(requestId),signal,true,{
+        'X-Cart-Namespace':tokenId(binding.namespace), 'X-Cart-Context':tokenId(binding.writeContext),
+      },{sku,quantity,...(design?{designId:design.designId,designRevision:design.designRevision}:{})},[200,409,422,503]);
+      if(status===200 && value.state==='APPLIED' && typeof value.version==='string' && /^[1-9][0-9]{0,18}$/.test(value.version)
+          && BigInt(value.version)<=9223372036854775807n) {
+        if(design && Object.keys(value).length===3)return {appliedLine:tokenId(value.lineId)};
+        if(!design && Object.keys(value).length===2)return 'applied' as const;
+      }
+      if(value.error==='request_not_completed' && Object.keys(value).length===1) {
+        if(status===422) return 'rejected' as const;
+        if(status===409) return 'conflict' as const;
+      }
+      return refused(); // No conclusive acknowledgement: keep the original intent.
+    },
     async stage(binding:Binding,stageId:string,design:AppliedLoopDesign,signal:AbortSignal) {
       if(guard.ownerId!==binding.ownerId) return refused();
       const id=tokenId(stageId);

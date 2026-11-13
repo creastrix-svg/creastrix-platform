@@ -1,7 +1,8 @@
 import { useMemo, useSyncExternalStore } from 'react';
+import type { Binding } from './localCartCommands';
 
 type CartRead<T> =
-  | { kind: 'ready'; ownerId: string; cart: T }
+  | { kind: 'ready'; ownerId: string; cart: T; binding?: Binding }
   | { kind: 'pending'; ownerId: string; ticket: string }
   | { kind: 'read-unavailable' }
   | { kind: 'denied' };
@@ -17,7 +18,7 @@ export interface AccountCartTransport<T> {
 
 export type AccountCartState<T> =
   | { phase: 'inactive' | 'opening' | 'recovering' | 'unavailable' | 'read-unavailable' | 'blocked' }
-  | { phase: 'ready'; cart: T };
+  | { phase: 'ready'; cart: T; binding?: Binding };
 
 const inactive = { phase: 'inactive' } as const;
 const opening = { phase: 'opening' } as const;
@@ -70,7 +71,7 @@ export function createAccountCartAccess<T>(
       if (result.kind === 'denied' || result.ownerId !== ownerId) return stop();
       if (result.kind === 'ready') {
         ticket = undefined;
-        set({ phase: 'ready', cart: result.cart });
+        set({ phase: 'ready', cart: result.cart, ...(result.binding ? {binding:result.binding} : {}) });
       } else if (result.kind === 'pending' && mode === 'initial' && result.ticket) {
         ticket = result.ticket;
         await recover();

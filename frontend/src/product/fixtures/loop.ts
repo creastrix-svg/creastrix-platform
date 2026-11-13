@@ -1,7 +1,7 @@
 import type { StorefrontLocale } from '../locale';
 import type { SwatchColors } from '../productDisplay';
 import { connectedProduct, connectedSku, type LoopFinish } from '../catalog/localCatalog';
-import { permanentCatalogMode } from '../catalog/permanentCatalog';
+import { permanentCatalogMode, sharedCatalogMode } from '../catalog/permanentCatalog';
 
 // These IDs are the Loop fixture's finishes, not an exhaustive list of storefront variants.
 export type VariantId = LoopFinish;
@@ -18,6 +18,7 @@ export const isVariantId = (value: unknown): value is VariantId => {
   if(typeof value!=='string' || !variants.some(v=>v.id===value)) return false;
   if(!permanentCatalogMode) return true;
   const match=connectedSku(value);
+  if(sharedCatalogMode) return !!match && match.product.id==='loop' && match.variant.id===value && !!connectedProduct('loop');
   return match?.product.id==='loop' && match.product.personalizable && match.product.templateRevision==='2' && match.variant.id===value;
 };
 /** A retained applied line can use the historical reader without enabling the
@@ -27,7 +28,7 @@ export function isAppliedLoopVariant(value: unknown, revision:unknown):value is 
   if(revision!=='2' || typeof value!=='string' || !variants.some(v=>v.id===value)) return false;
   const match=connectedSku(value);
   return match?.product.id==='loop' && match.variant.id===value && match.variant.sku===value
-    && (match.variant.retainedLoopV2FeeCents!==undefined || isVariantId(value));
+    && (match.variant.retainedLoopV2FeeCents!==undefined || (sharedCatalogMode ? match.variant.studioFormat==='surface-print-v1' : isVariantId(value)));
 }
 export const photos = ['01', '03', '04'].map(id => `/product/reference-asset-${id}.webp`);
 type ProductMedia = { photos: readonly string[]; model: string | null };

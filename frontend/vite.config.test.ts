@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUTH_PROXY_PATTERN, authProxy, catalogProxyPattern, frontendConfig, mediaProxyPattern, publicMediaProxyGate } from './vite.config';
+import { AUTH_PROXY_PATTERN, authProxy, catalogProxyPattern, frontendConfig, mediaProxyPattern, publicMediaProxyGate, publicCatalogProxyGate } from './vite.config';
 const config = frontendConfig('development');
 
 describe('fixed development transport configuration, not a runtime proxy proof', () => {
@@ -52,5 +52,17 @@ describe('fixed development transport configuration, not a runtime proxy proof',
     for (const url of [base+'original.jpg',base+'detail.jpg?role=original',base+'thumb.jpg/other',
       base.toUpperCase()+'thumb.jpg',base+'thumb.jpg\n','/api/local-catalog/private','/api/me'])
       expect(publicMediaProxyGate({method:'GET',url,headers:{}})).toBe(false);
+  });
+  it('shares the public catalog before matching the local account API, and never enables account writes in preview', () => {
+    const cfg=frontendConfig('shared-cart-local'), proxy=cfg.server.proxy;
+    expect(cfg.server.port).toBe(4317);
+    expect(Object.keys(proxy)).toEqual([catalogProxyPattern,mediaProxyPattern,AUTH_PROXY_PATTERN]);
+    expect(proxy[catalogProxyPattern]?.target).toBe('http://127.0.0.1:8081');
+    expect(proxy[AUTH_PROXY_PATTERN]?.target).toBe('http://127.0.0.1:8191');
+    expect(cfg.preview.proxy).toEqual({});
+    const req={method:'GET',headers:{cookie:'synthetic',authorization:'synthetic','proxy-authorization':'synthetic',accept:'application/json'}};
+    expect(publicCatalogProxyGate(req)).toBeUndefined();
+    expect(req.headers).toEqual({accept:'application/json'});
+    expect(publicCatalogProxyGate({method:'POST',headers:{}})).toBe(false);
   });
 });

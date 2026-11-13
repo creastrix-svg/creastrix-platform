@@ -91,6 +91,7 @@ final class LocalCartPreparation {
         return new LocalCartCommands.Receipt("PENDING",null);
     }
 
+    GuestCartMergePlanner.LineKey key(UUID owner,LocalCartCommands.Item item) { return resolve(owner,item).key(); }
     private Row resolve(UUID owner,LocalCartCommands.Item item) {
         if (item==null || item.sku()==null || item.sku().length()>200 || !SKU.matcher(item.sku()).matches()
                 || item.quantity()<=0 || (item.designId()==null)!=(item.designRevision()==null)
@@ -99,11 +100,12 @@ final class LocalCartPreparation {
         // credits a client price, arbitrary design label, browser handle or foreign owner's file.
         var result=db.query("""
             SELECT v.offer_id,v.id AS variant_id,?::bigint AS quantity,d.design_id,d.revision AS design_revision,
-                   d.canonical_bytes,d.template_revision,
+                   d.canonical_bytes,d.template_revision, t.configuration->>'format'='loop-studio-v1' AS surface_layout,
                    account_cart.verified_design_resources(d.owner_id,d.design_id,d.revision) AS resource_classes
             FROM account_cart.variant v
             LEFT JOIN account_cart.design_revision d ON d.owner_id=? AND d.design_id=? AND d.revision=?
                  AND (d.offer_id,d.variant_id)=(v.offer_id,v.id) AND octet_length(d.canonical_bytes)<=262144
+            LEFT JOIN account_cart.template_revision t ON (t.offer_id,t.revision)=(d.offer_id,d.template_revision)
             WHERE v.sku=?
             """,(r,n)->{
                 UUID design=r.getObject("design_id",UUID.class);

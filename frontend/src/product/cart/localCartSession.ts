@@ -5,11 +5,13 @@ import { bindAccountCartReader, type AccountCartAdmission } from './accountCartA
 import { accountCartHttp } from './accountCartHttp';
 import { guestCartTransfer, type TransferPhase } from './guestCartTransfer';
 import { sealGuestCart } from './guestCartBatch';
+import { createDirectCartAdditions, type DirectCartAdditions } from './directCartAdditions';
 
 /** One reader per verified document admission, not per React render or route. */
 export function createLocalCartSession(store: AppStore, auth: Pick<Authentication,'isCurrentOwner'>, fetcher: typeof fetch) {
   let active: AccountCartAdmission | null = null;
   let transfer: ReturnType<typeof guestCartTransfer>|null = null;
+  let direct:DirectCartAdditions|null=null;
   let state:TransferPhase = 'idle';
   const listeners = new Set<() => void>();
   const notify = () => { for (const listener of listeners) listener(); };
@@ -19,6 +21,7 @@ export function createLocalCartSession(store: AppStore, auth: Pick<Authenticatio
     const previous = active;
     active = null;
     transfer?.dispose(); transfer = null; state = 'idle';
+    direct?.dispose(); direct=null;
     previous?.dispose();
     if (now.phase === 'AUTHENTICATED' && now.owner && now.user) {
       const owner = now.owner, ownerId = now.user.id;
@@ -28,12 +31,14 @@ export function createLocalCartSession(store: AppStore, auth: Pick<Authenticatio
       }};
       try {
         const http = accountCartHttp(fetcher,guard);
-        const task = guestCartTransfer(fetcher,guard,next => { state = next; notify(); },()=>{
+        const refresh=()=>{
           if (!guard.owns()) return;
           // A pre-import GET may still be in flight. Retire its entire handle;
           // no old result can replace the post-receipt current-cart read.
-          active?.dispose(); active = bindAccountCartReader(store,transport,auth); notify();
-        });
+          active?.dispose(); active = bindAccountCartReader(store,http,auth,direct??undefined); notify();
+        };
+        direct=createDirectCartAdditions(fetcher,guard,refresh);
+        const task = guestCartTransfer(fetcher,guard,next => { state = next; notify(); },refresh);
         const transport = {
           ...http,
           async read(signal: AbortSignal, expectedTicket?: string) {
@@ -43,7 +48,7 @@ export function createLocalCartSession(store: AppStore, auth: Pick<Authenticatio
             return !signal.aborted && guard.owns() ? result : {kind:'denied' as const};
           },
         };
-        active = bindAccountCartReader(store, transport, auth);
+        active = bindAccountCartReader(store, transport, auth, direct);
         transfer = task;
         void task.run();
       }
@@ -63,7 +68,7 @@ export function createLocalCartSession(store: AppStore, auth: Pick<Authenticatio
     getTransferSnapshot:() => state,
     retryTransfer:() => { if (state === 'pending' || state === 'binding') void transfer?.run(); },
     subscribe(notify: () => void) { listeners.add(notify); return () => { listeners.delete(notify); }; },
-    dispose() { unsubscribe(); transfer?.dispose(); active?.dispose(); active = null; listeners.clear(); },
+    dispose() { unsubscribe(); transfer?.dispose(); direct?.dispose(); active?.dispose(); active = null; listeners.clear(); },
   };
 }
 export type LocalCartSession = ReturnType<typeof createLocalCartSession>;

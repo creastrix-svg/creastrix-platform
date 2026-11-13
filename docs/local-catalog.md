@@ -42,6 +42,15 @@ which products can serve the same purpose. V9 restricts offer links to the
 three supported detail route families: `/products/:slug`, `/collections/objects/:slug`
 and `/preview/items/:slug`. The same detail paths support reviews. Plain SKUs
 cannot use `design-<number>`, which identifies personalisation lines in the cart.
+V12–V13 bound SKU, product ID and variant ID to 200 ASCII slug characters.
+A SKU permanently identifies one product and variant, and that pair cannot receive
+a different SKU. Price, stock, name and photos can change. A seller can withdraw
+and later relist the original variant, but cannot give its SKU to another item:
+even a buyer opening an old page before their first purchase will not add a substitute.
+The identity ledger contains no buyer data and survives removal of a catalog row.
+The shared cart refuses to start against the older catalog; it checks the identity
+triggers and protocol bounds on the source at startup. Stop the cart before changing
+catalog schema or restoring a database snapshot. Hot schema rollback is not supported.
 Use `CREASTRIX_PG_BIN` if the PostgreSQL server binaries are not found.
 Use `bash backend/tools/local-catalog-db.sh psql` to inspect or edit **only the
 dedicated local catalog**, for example:
@@ -130,11 +139,15 @@ before replacing the entire feed. Deleting every seed today is not a supported
 way to switch this build to a different catalog.
 
 The endpoint is read-only. A displayed price is not a checkout quote; adding
-an item to the existing browser cart does not write to the database or
+an item to the guest browser cart on port 4174 does not write to the database or
 reserve anything. The seeded product rows and their variants are **local catalog
 data**, not a shortcut to exposing Ready-Made Product inventory, creating a
 Listing, or accepting a manufacturing order. The [domain specifications](domain/README.md)
 retain their existing approval status.
+
+The [shared local buyer storefront](engineering/account-cart-local-run.md#use-the-same-catalog-as-the-storefront)
+reads this same catalog and writes purchases to the separate local account cart.
+The catalog service itself has no buyer mutation endpoint.
 
 ## Publish a local seller photo
 

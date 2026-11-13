@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import com.creastrix.platform.accountcart.StudioDesign;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
@@ -18,13 +19,14 @@ import org.springframework.web.server.ResponseStatusException;
  * write credentials or private buyer assets. No browser name is an offer identity. */
 @RestController
 @Profile("account-cart-local")
+@ConditionalOnProperty(name="creastrix.test.shared-catalog", havingValue="false", matchIfMissing=true)
 final class PermanentCatalogController {
     private final JdbcTemplate jdbc;
     PermanentCatalogController(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     record Variant(String id, String sku, String label, int cents, int stock, String swatch,
                    List<String> photos, String model, String secondSwatch, String checkTone, Integer previousCents,
-                   String retainedStudioRevision) {}
+                   String retainedStudioRevision, boolean directAddSupported) {}
     record Offer(String id, String label, String currency, String templateRevision, String studioFormat,
                  int studioFeeCents, List<Variant> variants) {}
 
@@ -36,6 +38,7 @@ final class PermanentCatalogController {
                        v.sku, v.label AS variant_label, v.cents, v.stock, v.swatch,
                        p.photos, p.model, p.second_swatch, coalesce(p.check_tone,'dark') AS check_tone,
                        p.previous_cents, t.revision, retained.revision AS retained_studio_revision,
+                       EXISTS (SELECT FROM account_cart.direct_add_variant WHERE sku=v.sku) AS direct_add_supported,
                        CASE WHEN o.id='loop' AND t.revision=2 AND t.configuration = ?::jsonb
                            THEN 'loop-studio-v1' END AS studio_format
                   FROM account_cart.offer o JOIN account_cart.variant v ON v.offer_id = o.id
@@ -60,7 +63,7 @@ final class PermanentCatalogController {
                         rows.getInt("cents"), rows.getInt("stock"), rows.getString("swatch"),
                         photos == null ? List.of() : List.of((String[]) photos.getArray()), rows.getString("model"),
                         rows.getString("second_swatch"), rows.getString("check_tone"), (Integer) rows.getObject("previous_cents"),
-                        rows.getString("retained_studio_revision")));
+                        rows.getString("retained_studio_revision"),rows.getBoolean("direct_add_supported")));
             }
             return null;
         }, StudioDesign.TEMPLATE_V2, StudioDesign.TEMPLATE_V2);

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon, Spinner } from '../../Icon';
 import { useStudioCreative } from '../session/studioCreativeContext';
 import { builtinStudioFonts, standardStudioFonts, hasBundledStudioFont, studioFontFamily, StudioFontError, MAX_CUSTOM_FONTS } from '../design/studioFonts';
@@ -8,7 +8,8 @@ import { personalizationCopy } from '../personalizationCopy';
 import { useProductLocale } from '../../useProductLocale';
 import { studioZoneCopy } from '../studioZoneCopy';
 import { permanentCatalogMode } from '../../catalog/permanentCatalog';
-import { designFontHint, designLabels } from '../../cart/accountProductLabels';
+import { accountDesignNote, designFontHint, designLabels } from '../../cart/accountProductLabels';
+import {AccountPurchaseContext} from '../../cart/accountPurchaseContext';
 
 type Props = { value: StudioFontId; target: string; onChange: (font: StudioFontId) => void; allowedFonts?: readonly BuiltinStudioFont[]; allowCustomFonts?: boolean };
 export default function StudioFontTools({ allowedFonts = standardStudioFonts, allowCustomFonts = true, ...props }: Props) {
@@ -20,6 +21,7 @@ export default function StudioFontTools({ allowedFonts = standardStudioFonts, al
 
 function ConfiguredFontTools({ value, target, onChange, allowedFonts, allowCustomFonts }: Props & { allowedFonts: readonly BuiltinStudioFont[]; allowCustomFonts: boolean }) {
   const locale = useProductLocale(), e = studioExtensionCopy[locale], p = personalizationCopy[locale], session = useStudioCreative();
+  const account=useContext(AccountPurchaseContext);
   const [configuredFonts] = useState(() => [...allowedFonts]);
   const input = useRef<HTMLInputElement>(null), request = useRef<AbortController | null>(null);
   const change = useRef(onChange);
@@ -67,7 +69,7 @@ function ConfiguredFontTools({ value, target, onChange, allowedFonts, allowCusto
     {allowCustomFonts && offeredCustom.length > 0 && <div className="studio-custom-fonts">{offeredCustom.map(font => <button type="button" key={font.id} aria-pressed={value === font.id} disabled={pending} onClick={() => void choose(font.id)}><span style={{ fontFamily: font.family }}>Aa</span><small>{font.label}</small></button>)}</div>}
     {allowCustomFonts && <><input ref={input} className="product-sr-only" type="file" accept={permanentCatalogMode?'.ttf,.otf':'.ttf,.otf,.woff2'} aria-label={e.uploadFont} disabled={pending || session.customFonts.length >= MAX_CUSTOM_FONTS} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void choose(file); }} />
     <button type="button" className="studio-font-upload" disabled={pending || session.customFonts.length >= MAX_CUSTOM_FONTS} onClick={() => input.current?.click()}>{pending ? <Spinner /> : <Icon name="plus" />}{e.uploadFont}<small>{session.customFonts.length}/{MAX_CUSTOM_FONTS}</small></button>
-    <details className="studio-font-info"><summary>{e.customFont}<Icon name="help" /></summary><p>{permanentCatalogMode ? designLabels[locale][1] : e.fontPrivacy} {e.fontRights}</p></details></>}
+    <details className="studio-font-info"><summary>{e.customFont}<Icon name="help" /></summary><p>{account ? accountDesignNote[locale] : permanentCatalogMode ? designLabels[locale][1] : e.fontPrivacy} {e.fontRights}</p></details></>}
     <div className="studio-font-message" role="status">{message || (allowCustomFonts ? permanentCatalogMode ? 'TTF / OTF · ≤ 2 MB' : e.fontFormats : '')}</div>
   </fieldset>;
 }

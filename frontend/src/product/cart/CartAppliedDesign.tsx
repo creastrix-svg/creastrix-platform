@@ -1,35 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { firstLettering, type StudioObject } from '../studio/design/studioComposition';
-import { createStudioFontLibrary, type StudioFontId } from '../studio/design/studioFonts';
-import { loadNormalizedStudioImage, type StudioImage } from '../studio/design/studioImage';
+import { createStudioFontLibrary } from '../studio/design/studioFonts';
 import LetteringSketch from '../studio/preview/LetteringSketch';
-import { base64Bytes } from '../studio/session/designSnapshot';
+import {FlatSurfaceSketch} from '../studio/preview/FlatSurfaceSketch';
 import { useProductLocale } from '../useProductLocale';
 import type { VariantId } from '../fixtures/loop';
-import { appliedDesignLimit, fontName, readAppliedLoopDesign } from './appliedLoopDesign';
 import type { AccountCartAdmission } from './accountCartAdmission';
 import { accountProductLabels, designLabels } from './accountProductLabels';
 
-async function boundedJson(response:Response) {
-  if(!response.body || Number(response.headers.get('Content-Length'))>appliedDesignLimit) throw Error('DESIGN_UNAVAILABLE');
-  const reader=response.body.getReader(), decoder=new TextDecoder('utf-8',{fatal:true});
-  let size=0, raw='';
-  try {
-    for(;;) {
-      const chunk=await reader.read();
-      if(chunk.done) break;
-      size+=chunk.value.byteLength;
-      if(size>appliedDesignLimit) { await reader.cancel(); throw Error('DESIGN_UNAVAILABLE'); }
-      raw+=decoder.decode(chunk.value,{stream:true});
-    }
-    return JSON.parse(raw+decoder.decode());
-  } finally { reader.releaseLock(); }
-}
+import {readPrivateCartDesign} from './readPrivateCartDesign';
 
 // Account preview owns a fresh, short-lived font library. Private objects
 // never enter the guest editor, Redux, IndexedDB or any public catalog cache.
-export default function CartAppliedDesign({admission,lineId,variant,swatch,secondSwatch}:{
-  admission:AccountCartAdmission;lineId:string;variant:VariantId;swatch?:string;secondSwatch?:string;
+export default function CartAppliedDesign({admission,lineId,variant,sku=variant,swatch,secondSwatch,flat=false}:{
+  admission:AccountCartAdmission;lineId:string;variant:VariantId;sku?:string;swatch?:string;secondSwatch?:string;flat?:boolean;
 }) {
   const locale=useProductLocale(), label=designLabels[locale][0];
   const active=useRef<AbortController|null>(null), fonts=useRef<ReturnType<typeof createStudioFontLibrary>|null>(null);
@@ -43,34 +27,8 @@ export default function CartAppliedDesign({admission,lineId,variant,swatch,secon
     const current=()=>active.current===op && !op.signal.aborted && admission.access.ownsDisplay();
     setState('reading');
     try {
-      const response=await fetch('/api/account-cart/lines/'+encodeURIComponent(lineId)+'/design',{
-        method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error',headers:{Accept:'application/json'},signal,
-      });
-      if(!current() || response.status!==200 || response.redirected || response.headers.get('content-type')?.split(';')[0]!=='application/json')
-        throw Error('DESIGN_UNAVAILABLE');
-      const design=readAppliedLoopDesign(await boundedJson(response));
-      if(!current() || design.sku!==variant) throw Error('DESIGN_UNAVAILABLE');
-      const images=new Map<string,StudioImage>(), custom=new Map<string,StudioFontId>(), objects:StudioObject[]=[];
-      for(const obj of design.objects) {
-        if(!current() || signal.aborted) throw Error('DESIGN_UNAVAILABLE');
-        const id='studio-object-'+(1+objects.length), {size,x,y}=obj;
-        if(obj.kind==='image') {
-          let image=images.get(obj.data);
-          if(!image) {
-            const decoded=await loadNormalizedStudioImage(new File([base64Bytes(obj.data)],'preview.png',{type:'image/png'}),signal);
-            image={...decoded,src:'data:image/png;base64,'+obj.data};images.set(obj.data,image);
-          }
-          objects.push({id,kind:'image',fit:obj.fit,value:{size,x,y,image}});
-        } else {
-          let font:StudioFontId;
-          if(obj.font==='resource') {
-            font=custom.get(obj.data) ?? (await lib.loadCustom(new File([base64Bytes(obj.data)],fontName(obj.data)),{signal})).id;
-            custom.set(obj.data,font);
-          } else font=(await lib.loadBuiltin(obj.font,{signal})).id;
-          objects.push({id,kind:'text',value:{text:obj.text,color:obj.color,font,size,x,y}});
-        }
-      }
-      if(!current() || signal.aborted) throw Error('DESIGN_UNAVAILABLE');
+      const objects=await readPrivateCartDesign(admission,lineId,sku,lib,signal);
+      if(!current())throw Error('DESIGN_UNAVAILABLE');
       setState(objects);
     } catch {
       lib.dispose();
@@ -79,8 +37,9 @@ export default function CartAppliedDesign({admission,lineId,variant,swatch,secon
   }
   return <div data-applied-design>{Array.isArray(state)
     ? <div data-private-design-preview className="product-design-thumbnail">
-        <LetteringSketch variant={variant} colors={swatch && secondSwatch ? [swatch,secondSwatch] : [swatch??'#89918d']}
-          objects={state} value={firstLettering({objects:state,selectedId:null},variant)} label={label} detail/>
+        {flat ? <FlatSurfaceSketch fill={swatch??'#89918d'} objects={state} label={label}/>
+          : <LetteringSketch variant={variant} colors={swatch && secondSwatch ? [swatch,secondSwatch] : [swatch??'#89918d']}
+              objects={state} value={firstLettering({objects:state,selectedId:null},variant)} label={label} detail/>}
       </div>
     : <>{state==='failed' && <span role="status">{accountProductLabels[locale][2]} · </span>}
       <button type="button" className="product-text-button" disabled={state==='reading'} onClick={()=>void show()}>{label}</button></>}

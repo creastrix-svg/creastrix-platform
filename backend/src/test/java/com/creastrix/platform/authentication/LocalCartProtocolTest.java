@@ -93,6 +93,32 @@ class LocalCartProtocolTest {
         assertThat(LocalCartProtocol.route(new MockHttpServletRequest("POST",route+"/"))).isNull();
         assertThat(LocalCartProtocol.route(new MockHttpServletRequest("POST",route.replace("apply","status")))).isNull();
     }
+    @Test void aDirectCartClickAcceptsOnlySkuQuantityAndAnOptionalCompleteImmutableDesignReference() {
+        var id=UUID.randomUUID();
+        String path="/api/account-cart/additions/"+id;
+        assertThat(LocalCartProtocol.route(new MockHttpServletRequest("POST",path)))
+                .isEqualTo(new LocalCartProtocol.Route("add",id));
+        for(String method:List.of("GET","PUT","DELETE","HEAD"))
+            assertThat(LocalCartProtocol.route(new MockHttpServletRequest(method,path))).isNull();
+        for(String wrong:List.of(path+"/", path+"/apply","/api/account-cart/additions/not-an-id"))
+            assertThat(LocalCartProtocol.route(new MockHttpServletRequest("POST",wrong))).isNull();
+        var query=new MockHttpServletRequest("POST",path);query.setQueryString("anything");
+        assertThat(LocalCartProtocol.route(query)).isNull();
+        var mapper=JsonMapper.builder().build();
+        var data=mapper.createObjectNode().put("sku","tide-cobalt").put("quantity","2");
+        assertThat(LocalCartProtocol.addition(data)).isEqualTo(new LocalCartCommands.Addition("tide-cobalt",2));
+        var decorated=data.deepCopy().put("designId",id.toString()).put("designRevision","1");
+        assertThat(LocalCartProtocol.addition(decorated)).isEqualTo(new LocalCartCommands.Addition("tide-cobalt",2,id,1L));
+        for(var bad:List.of(decorated.deepCopy().putNull("designId"),decorated.deepCopy().putNull("designRevision"),
+                decorated.deepCopy().put("designRevision","0"),decorated.deepCopy().put("designId","not-an-id"),
+                decorated.deepCopy().put("design","arbitrary"),data.deepCopy().put("designRevision","1")))
+            assertThatThrownBy(()->LocalCartProtocol.addition(bad)).isInstanceOf(LocalCartCommands.InvalidBatch.class);
+        for(String extra:List.of("ownerId","price","designId"))
+            assertThatThrownBy(()->LocalCartProtocol.addition(data.deepCopy().put(extra,"x")))
+                    .isInstanceOf(LocalCartCommands.InvalidBatch.class);
+        assertThatThrownBy(()->LocalCartProtocol.addition(data.deepCopy().put("quantity",2))).isInstanceOf(LocalCartCommands.InvalidBatch.class);
+        assertThatThrownBy(()->LocalCartProtocol.addition(data.deepCopy().put("quantity","02"))).isInstanceOf(LocalCartCommands.InvalidBatch.class);
+    }
 
     @ParameterizedTest @ValueSource(strings={"0","01","-1","9223372036854775808"})
     void onlyPositiveRepresentableQuantitiesCanBePrepared(String quantity) {

@@ -94,6 +94,9 @@ class LocalCatalogHttpIntegrationTest {
         assertThat(chalk.get("stock").asInt()).isEqualTo(15);
         assertThat(chalk.get("name").get("de").asString()).isEqualTo("Kreide");
         assertThat(chalk.get("model").isString()).isTrue();
+        assertThat(chalk.get("studioFormat").asString()).isEqualTo("surface-print-v1");
+        assertThat(chalk.get("templateRevision").asString()).isEqualTo("2");
+        assertThat(chalk.get("retainedStudioRevision").asString()).isEqualTo("2");
 
         var tide = products.get(1);
         assertThat(tide.get("name").asString()).isEqualTo("Tide");
@@ -102,6 +105,8 @@ class LocalCatalogHttpIntegrationTest {
         assertThat(cup.get("sku").asString()).isEqualTo("tide-cobalt");
         assertThat(cup.get("cents").asInt()).isEqualTo(1800);
         assertThat(cup.get("model").isNull()).isTrue();
+        assertThat(cup.get("studioFormat").isNull()).isTrue();
+        assertThat(cup.get("templateRevision").isNull()).isTrue();
 
         assertThat(jdbc.update("UPDATE local_catalog.variant SET cents = 2050, stock = 7 WHERE sku = 'chalk'"))
                 .isEqualTo(1);
@@ -304,6 +309,60 @@ class LocalCatalogHttpIntegrationTest {
         assertThatThrownBy(() -> jdbc.update("UPDATE local_catalog.variant SET sku = 'design-1' WHERE sku = 'tide-cobalt'"))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .hasMessageContaining("sku_outside_design_line_namespace");
+    }
+
+    @Test
+    void publishedIdentityKeysFitTheCartProtocolBoundary() {
+        String limit="s".repeat(200), over=limit+"s";
+        assertThatThrownBy(()->insertProduct(over)).isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("product_id_fits_cart_protocol");
+        assertThat(insertProduct(limit)).isOne();
+        try {
+            assertThatThrownBy(()->insertVariant(limit,limit,over))
+                    .isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining("sku_fits_cart_protocol");
+            assertThatThrownBy(()->insertVariant(limit,over,limit))
+                    .isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining("variant_id_fits_cart_protocol");
+            assertThat(insertVariant(limit,limit,limit)).isOne();
+        } finally {
+            jdbc.update("DELETE FROM local_catalog.variant WHERE product_id=?",limit);
+            jdbc.update("DELETE FROM local_catalog.product WHERE id=?",limit);
+        }
+    }
+
+    private int insertProduct(String id) {
+        return jdbc.update("""
+            INSERT INTO local_catalog.product(id,name,href,personalizable,currency,design_fee_cents,display_order)
+            VALUES (?,'Boundary item','/preview/items/'||?,false,'EUR',0,120)
+            """,id,id);
+    }
+    private int insertVariant(String product,String variant,String sku) {
+        return jdbc.update("""
+            INSERT INTO local_catalog.variant(product_id,id,sku,cents,stock,colors,check_tone,name,photos,display_order)
+            SELECT ?,?,?,100,10,colors,check_tone,name,photos,0 FROM local_catalog.variant WHERE sku='tide-cobalt'
+            """,product,variant,sku);
+    }
+
+    @Test
+    void anUnpurchasedVariantCannotChangeIdentityEvenAfterRemoval() {
+        String first="original-tray", second="other-tray", variant="blue", sku="blue-tray-76";
+        try {
+            assertThat(insertProduct(first)).isOne();
+            assertThat(insertProduct(second)).isOne();
+            assertThat(insertVariant(first,variant,sku)).isOne();
+            assertThatThrownBy(()->jdbc.update("UPDATE local_catalog.variant SET product_id=? WHERE sku=?",second,sku))
+                    .isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining("cannot be reassigned");
+            assertThat(jdbc.update("DELETE FROM local_catalog.variant WHERE sku=?",sku)).isOne();
+            assertThatThrownBy(()->insertVariant(second,"other-blue",sku))
+                    .isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining("cannot be reassigned");
+            assertThatThrownBy(()->insertVariant(first,variant,"a-different-tray"))
+                    .isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining("cannot be reassigned");
+            assertThatThrownBy(()->jdbc.update("DELETE FROM local_catalog.variant_identity WHERE sku=?",sku))
+                    .isInstanceOf(DataIntegrityViolationException.class).hasMessageContaining("permanent");
+            assertThat(insertVariant(first,variant,sku)).isOne();
+        } finally {
+            jdbc.update("DELETE FROM local_catalog.variant WHERE product_id IN (?,?)",first,second);
+            jdbc.update("DELETE FROM local_catalog.product WHERE id IN (?,?)",first,second);
+        }
     }
 
     @Test

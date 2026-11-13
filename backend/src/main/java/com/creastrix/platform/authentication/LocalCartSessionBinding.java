@@ -13,7 +13,7 @@ import org.springframework.security.core.Authentication;
 /** Opt-in synthetic writer only. Servlet ownership authorises neither the database lane nor another user's batch. */
 final class LocalCartSessionBinding {
     /** Supplied exclusively by the loopback test-classpath runner, never by property binding. */
-    static final class SyntheticRuntime {}
+    record SyntheticRuntime(com.creastrix.platform.accountcart.catalog.SharedCatalogAuthority catalog) {}
     static final String EPOCH = LocalCartSessionBinding.class.getName()+".epoch";
     static final String GUEST_INTENT = LocalCartSessionBinding.class.getName()+".guestIntent";
     record GuestLogin(UUID intent, UUID continuation) {

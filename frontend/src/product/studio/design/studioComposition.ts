@@ -21,6 +21,7 @@ export type CompositionSession = Readonly<{
 }>;
 export type CompositionAction =
   | { type: 'restore'; state: CompositionSession }
+  | { type: 'openPurchased'; variant:LetteringTarget; objects:readonly StudioObject[] }
   | { type: 'add'; variant: LetteringTarget; kind: 'text' }
   | { type: 'add'; variant: LetteringTarget; kind: 'image'; image: StudioImage }
   | { type: 'replaceImage'; variant: LetteringTarget; id: string; image: StudioImage }
@@ -129,6 +130,12 @@ function normalizeObject(object: StudioObject, target: LetteringTarget): StudioO
 
 export function compositionReducer(state: CompositionSession, action: CompositionAction): CompositionSession {
   if (action.type === 'restore') return action.state;
+  if(action.type==='openPurchased'){
+    const objects=action.objects.map((object,index)=>({...object,id:'studio-object-'+(state.nextId+index)}));
+    const present={objects,selectedId:objects[0]?.id??null};
+    return {...state,nextId:state.nextId+objects.length,applied:{...state.applied,[action.variant]:present},
+      histories:{...state.histories,[action.variant]:{present,past:[],future:[],group:null}}};
+  }
   const history = compositionHistory(state, action.variant), document = history.present;
   const replace = (next: CompositionHistory): CompositionSession => ({ ...state, histories: { ...state.histories, [action.variant]: next } });
   const change = (next: CompositionDocument, group: string | null = null): CompositionSession => {

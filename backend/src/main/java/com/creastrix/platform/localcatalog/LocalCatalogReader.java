@@ -27,7 +27,8 @@ class LocalCatalogReader {
                    int designFeeCents, List<Variant> variants) {}
     record Variant(String id, String sku, int cents, Integer previousCents, int stock,
                    List<String> colors, String checkTone, Map<String, String> name,
-                   List<String> photos, String model) {}
+                   List<String> photos, String model, String studioFormat, String templateRevision,
+                   String retainedStudioRevision) {}
     record Rating(int count, BigDecimal average) {}
     record Entry(String id, String kind, String name, String href, Map<String, String> title,
                  Map<String, String> material, Map<String, String> description, String photo,
@@ -38,13 +39,17 @@ class LocalCatalogReader {
     private static final String READ_PRODUCTS = """
             SELECT p.id, p.name, p.href, p.personalizable, p.currency, p.design_fee_cents,
                    v.id AS variant_id, v.sku, v.cents, v.previous_cents, v.stock, v.colors,
-                   v.check_tone, v.name AS localized_name,
+                   v.check_tone, v.name AS localized_name,t.revision AS active_studio,r.revision AS retained_studio,
                    CASE WHEN cover.detail_url IS NULL THEN v.photos
                         ELSE ARRAY[cover.detail_url] || ARRAY(SELECT f.path FROM unnest(v.photos)
                             WITH ORDINALITY AS f(path,position) WHERE f.position>1 ORDER BY f.position) END AS photos, v.model
               FROM local_catalog.product p
               JOIN local_catalog.variant v ON v.product_id = p.id
               JOIN local_catalog.item_presentation i ON i.product_id = p.id
+              LEFT JOIN local_catalog.product_studio_template t ON p.personalizable AND t.product_id=p.id
+                   AND t.revision=p.active_studio_revision AND local_catalog.supported_surface(t.configuration,t.revision,v.id)
+              LEFT JOIN local_catalog.product_studio_template r ON r.product_id=p.id AND r.revision=2
+                   AND local_catalog.supported_surface(r.configuration,r.revision,v.id)
               LEFT JOIN local_catalog.published_photo cover ON (cover.product_id,cover.variant_id)=(p.id,v.id)
              WHERE p.kind = 'offer'
              ORDER BY p.display_order, p.id, v.display_order, v.id
@@ -118,7 +123,9 @@ class LocalCatalogReader {
                         rows.getInt("cents"), rows.getObject("previous_cents", Integer.class), rows.getInt("stock"),
                         strings(rows, "colors"), rows.getString("check_tone"),
                         labels(rows, "localized_name"),
-                        strings(rows, "photos"), rows.getString("model")));
+                        strings(rows, "photos"), rows.getString("model"),
+                        rows.getObject("active_studio")==null ? null : "surface-print-v1",
+                        rows.getString("active_studio"),rows.getString("retained_studio")));
             }
             return List.copyOf(products.values());
         });

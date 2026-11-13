@@ -1,6 +1,7 @@
 import type { AccountCartLines } from './accountCartAdmission';
 import type { AccountCartTransport } from './useAccountCartAccess';
 import { localCartCommands, tokenId, type Binding, type Guard } from './localCartCommands';
+import {isCatalogOfferHref} from '../routes';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const invalid = (): never => { throw new Error('INVALID_ACCOUNT_CART_READ'); };
@@ -23,9 +24,21 @@ function parse(v: unknown) {
     seen.add(lineId);
     if(line.swatch!==undefined && (typeof line.swatch!=='string' || !/^#[0-9a-f]{6}$/i.test(line.swatch))) return invalid();
     if(line.secondSwatch!=null && (!line.swatch || typeof line.secondSwatch!=='string' || !/^#[0-9a-f]{6}$/i.test(line.secondSwatch))) return invalid();
-    return { lineId, offerLabel: label(line.offerLabel), variantLabel: label(line.variantLabel),
-      designLabel: line.designLabel === null ? null : label(line.designLabel), quantity: positive(line.quantity),
+    if(line.href!=null && (typeof line.href!=='string' || !isCatalogOfferHref(line.href)))return invalid();
+    if((line.designId!=null)!==(line.designRevision!=null))return invalid();
+    const display={lineId,offerLabel:label(line.offerLabel),variantLabel:label(line.variantLabel),
+      designLabel:line.designLabel===null?null:label(line.designLabel),quantity:positive(line.quantity)};
+    // A historical pre-limit identity is not a valid navigation/write key. Its
+    // bounded labels and quantity still belong in the buyer's cart. Discard the
+    // oversize key rather than storing it or invalidating unrelated lines.
+    if([line.offerId,line.variantId,line.sku].some(v=>typeof v==='string' && v.length>200)){
+      return {...display,product:{listed:false,offerId:'',variantId:'',templateRevision:null}};
+    }
+    return { ...display,
       product: { offerId: slug(line.offerId), variantId: slug(line.variantId), listed: line.listed,
+        ...(Object.hasOwn(line,'href')?{href:line.href==null?null:String(line.href)}:{}),
+        ...(line.sku!=null?{sku:slug(line.sku)}:{}),...(line.studioFormat!=null?{studioFormat:slug(line.studioFormat)}:{}),
+        ...(line.designId!=null?{designId:id(line.designId),designRevision:positive(line.designRevision)}:{}),
         templateRevision: line.templateRevision === null ? null : positive(line.templateRevision),
         ...(typeof line.swatch==='string'?{swatch:line.swatch}:{}), ...(typeof line.secondSwatch==='string'?{secondSwatch:line.secondSwatch}:{}) } };
   }) };
@@ -85,6 +98,7 @@ export function accountCartHttp(fetcher: typeof fetch, guard?:Guard) {
           return {kind:'denied'};
         binding = {ownerId:ready.ownerId,namespace:tokenId(data.namespace),writeContext:tokenId(data.writeContext)};
         guestIntent = optionalIntent(data.guestIntent);
+        return { ...ready, binding };
       }
       return ready;
     },

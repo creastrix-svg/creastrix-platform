@@ -35,6 +35,7 @@ final class LocalCartProtocol {
     private static final String DESIGN=LocalCartProtocol.class.getName()+".design";
     private static final String UUID_PATH="([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
     private static final Pattern SAVE=Pattern.compile(PREFIX+"/designs/"+UUID_PATH);
+    private static final Pattern ADD=Pattern.compile(PREFIX+"/additions/"+UUID_PATH);
     private static final Pattern READ=Pattern.compile(PREFIX+"/lines/"+UUID_PATH+"/design");
     private static final Pattern PATH=Pattern.compile(PREFIX+"/imports/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/(prepare|apply|status|retire)");
     private static final JsonMapper JSON=JsonMapper.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
@@ -58,6 +59,8 @@ final class LocalCartProtocol {
         if(req.getQueryString()!=null) return null;
         var method=req.getMethod();
         if("POST".equals(method) && RECOVER.equals(req.getRequestURI())) return new Route("recover",null);
+        var add=ADD.matcher(req.getRequestURI());
+        if("POST".equals(method) && add.matches()) return new Route("add",UUID.fromString(add.group(1)));
         var save=SAVE.matcher(req.getRequestURI());
         if("POST".equals(method) && save.matches()) return new Route("saveDesign",UUID.fromString(save.group(1)));
         var read=READ.matcher(req.getRequestURI());
@@ -89,6 +92,23 @@ final class LocalCartProtocol {
         var ns=LocalCartSessionBinding.commandNamespace(req,slot);
         var result=commands.stageDesign(slot.claim,slot.sid,ns,route.batch,StudioDesign.parse(body(req,StudioDesign.MAX_WIRE)));
         return Map.of("designId",result.toString(),"designRevision","1");
+    }
+    @PostMapping(PREFIX+"/additions/{intent}")
+    Object add(HttpServletRequest req) throws IOException {
+        var selected=route(req);
+        if(selected==null || !selected.action.equals("add")) throw new LocalCartSessionBinding.Refusal();
+        var slot=LocalCartSessionBinding.pinned(req);
+        var namespace=LocalCartSessionBinding.commandNamespace(req,slot);
+        var receipt=commands.add(slot.claim,slot.sid,namespace,selected.batch,addition(body(req,512)));
+        return receipt.lineId()==null ? ReceiptView.of(receipt)
+                : Map.of("state",receipt.state(),"version",receipt.version().toString(),"lineId",receipt.lineId().toString());
+    }
+
+    static LocalCartCommands.Addition addition(JsonNode data) {
+        if(!data.isObject() || (data.size()!=2 && data.size()!=4)) throw new LocalCartCommands.InvalidBatch();
+        String sku=string(data,"sku"); long quantity=positive(string(data,"quantity"));
+        if(data.size()==2) return new LocalCartCommands.Addition(sku,quantity);
+        return new LocalCartCommands.Addition(sku,quantity,id(string(data,"designId")),positive(string(data,"designRevision")));
     }
     @GetMapping(PREFIX+"/lines/{id}/design")
     ResponseEntity<JsonNode> readDesign(HttpServletRequest request) {

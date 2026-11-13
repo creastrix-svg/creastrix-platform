@@ -4,6 +4,8 @@ import { isLoopV2Font, type LoopV2Font } from '../studio/design/loopV2Fonts';
 import { rasterDimensions, STUDIO_NORMALIZED_IMAGE_BYTES } from '../studio/design/studioImage';
 import type { ImageFit } from '../studio/design/studioComposition';
 import { base64Bytes } from '../studio/session/designSnapshot';
+import type { SavedDesign } from '../studio/session/designSnapshot';
+import { studioFontResource } from '../studio/design/studioFonts';
 
 // A versioned projection of one applied surface, not the persistence format of
 // the editor. Browser object IDs, filenames, library entries and history have
@@ -28,7 +30,7 @@ export type BuiltinFont = LoopV2Font;
 type Geometry = {size:number;x:number;y:number};
 type TextLayer = Geometry & {kind:'text';text:string;color:LetteringColor} & ({font:BuiltinFont}|{font:'resource';data:string});
 type ImageLayer = Geometry & {kind:'image';fit:ImageFit;data:string};
-export type AppliedLoopDesign = {sku:Finish;templateRevision:'2';zone:'surface';objects:(TextLayer|ImageLayer)[]};
+export type AppliedLoopDesign = {sku:string;templateRevision:'2';zone:'surface';objects:(TextLayer|ImageLayer)[]};
 
 export function normalizedSize(raw:string) {
   try {
@@ -47,7 +49,8 @@ export function fontName(raw:string) {
 export function readAppliedLoopDesign(raw:unknown):AppliedLoopDesign {
   const value=rec(raw);
   exact(value,['sku','templateRevision','zone','objects']);
-  if(!isLoopFinish(value.sku) || value.templateRevision!=='2' || value.zone!=='surface' || !Array.isArray(value.objects)
+  if(typeof value.sku!=='string' || value.sku.length>200 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.sku)
+      || value.templateRevision!=='2' || value.zone!=='surface' || !Array.isArray(value.objects)
       || !value.objects.length || value.objects.length>8) return unsupported();
   let resourceChars=0;
   const objects=value.objects.map((raw):TextLayer|ImageLayer=>{
@@ -75,6 +78,22 @@ export function readAppliedLoopDesign(raw:unknown):AppliedLoopDesign {
   if(resourceChars>appliedDesignLimit || !objects.some(o=>o.kind==='image'||o.text.trim())
       || new TextEncoder().encode(JSON.stringify(design)).length>appliedDesignLimit) return unsupported();
   return design;
+}
+
+/** The admitted editor hands over only the applied layers and bytes in use;
+ * uncommitted drafts, filenames, history and unrelated fonts stay out. */
+export function projectAccountDesign(sku:string,revision:string|undefined,design:SavedDesign) {
+  return readAppliedLoopDesign({sku,templateRevision:revision,zone:'surface',objects:design.objects.map(o=>{
+    if(o.kind==='image') {
+      const {image,size,x,y}=o.value;
+      if(!image.src.startsWith(prefix)) return unsupported();
+      const bytes=image.src.slice(prefix.length),{width,height}=normalizedSize(bytes);
+      if(image.aspect!==width/height)return unsupported();
+      return {kind:'image',fit:o.fit,size,x,y,data:bytes};
+    }
+    return {kind:'text',...o.value,...(o.value.font.startsWith('custom-')
+      ? {font:'resource',data:studioFontResource(o.value.font)} : {})};
+  })});
 }
 
 /** Resolve only the references actually used in the purchased layer array.

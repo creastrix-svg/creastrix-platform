@@ -6,6 +6,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 import com.creastrix.platform.CreastrixApplication;
+import com.creastrix.platform.accountcart.catalog.SharedCatalogAuthority;
 import com.creastrix.platform.support.OidcTestProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -30,13 +31,15 @@ public final class LocalAccountCartLauncher {
     private LocalAccountCartLauncher() { }
 
     public static void main(String[] args) {
-        boolean twoBuyers = args.length == 1 && "--two-buyers".equals(args[0]);
-        if ((!twoBuyers && args.length != 0) || System.getenv("CART_LOCAL_DB_PASSWORD") == null
+        var flags=java.util.List.of(args);
+        boolean twoBuyers=flags.contains("--two-buyers"),shared=flags.contains("--shared-catalog");
+        if (flags.size()!=(twoBuyers?1:0)+(shared?1:0) || System.getenv("CART_LOCAL_DB_PASSWORD") == null
                 || System.getenv("CART_LOCAL_DB_PASSWORD").isBlank()) {
             throw new IllegalArgumentException("Use the dedicated local account-cart launcher");
         }
         new SpringApplicationBuilder(SyntheticWiring.class, CreastrixApplication.class).run(
                 "--creastrix.test.two-buyers=" + twoBuyers,
+                "--creastrix.test.shared-catalog=" + shared,
                 "--spring.profiles.active=" + LocalAccountCartConfiguration.PROFILE,
                 "--spring.config.location=classpath:/application.yml",
                 "--server.address=127.0.0.1", "--server.port=8191", "--server.forward-headers-strategy=none",
@@ -64,8 +67,9 @@ public final class LocalAccountCartLauncher {
                     "SELECT account_cart_fixture.consume_next_buyer_b()", Boolean.class) ? b : a);
         }
 
-        @Bean LocalCartSessionBinding.SyntheticRuntime syntheticCartRuntime() {
-            return new LocalCartSessionBinding.SyntheticRuntime();
+        @Bean LocalCartSessionBinding.SyntheticRuntime syntheticCartRuntime(@Value("${creastrix.test.shared-catalog:false}") boolean shared) {
+            return new LocalCartSessionBinding.SyntheticRuntime(shared
+                    ? SharedCatalogAuthority.local(System.getenv("CART_CATALOG_LOOKUP_PASSWORD")) : null);
         }
         @Bean(destroyMethod = "close")
         OidcTestProvider cartSyntheticIssuer(Buyers buyers) {

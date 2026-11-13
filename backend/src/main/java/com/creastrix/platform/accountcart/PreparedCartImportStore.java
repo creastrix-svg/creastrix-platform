@@ -79,9 +79,11 @@ final class PreparedCartImportStore {
 
             var incoming = db.query("""
                 SELECT l.offer_id,l.variant_id,l.quantity,l.design_id,l.design_revision,d.canonical_bytes,d.template_revision,
+                  t.configuration->>'format'='loop-studio-v1' AS surface_layout,
                   account_cart.verified_design_resources(l.owner_id,l.design_id,l.design_revision) resource_classes
                 FROM account_cart.import_line l LEFT JOIN account_cart.design_revision d
                   ON (d.owner_id,d.design_id,d.revision)=(l.owner_id,l.design_id,l.design_revision)
+                LEFT JOIN account_cart.template_revision t ON (t.offer_id,t.revision)=(d.offer_id,d.template_revision)
                 WHERE l.owner_id=? AND l.batch_id=? ORDER BY l.position
                 """, (r,n) -> source(r), owner,batchId);
             if (db.queryForObject("""
@@ -96,9 +98,11 @@ final class PreparedCartImportStore {
             long before = versions.isEmpty() ? 0L : versions.getFirst();
             var current = db.query("""
                 SELECT l.id,l.created_at,l.offer_id,l.variant_id,l.quantity,l.design_id,l.design_revision,d.canonical_bytes,d.template_revision,
+                  t.configuration->>'format'='loop-studio-v1' AS surface_layout,
                   account_cart.verified_design_resources(l.owner_id,l.design_id,l.design_revision) resource_classes
                 FROM account_cart.cart_line l LEFT JOIN account_cart.design_revision d
                   ON (d.owner_id,d.design_id,d.revision)=(l.owner_id,l.design_id,l.design_revision)
+                LEFT JOIN account_cart.template_revision t ON (t.offer_id,t.revision)=(d.offer_id,d.template_revision)
                 WHERE l.owner_id=? ORDER BY l.id FOR UPDATE OF l
                 """, (r,n) -> new Current(r.getObject("id",UUID.class),r.getTimestamp("created_at").toInstant(),
                     source(r)), owner);
@@ -164,7 +168,7 @@ final class PreparedCartImportStore {
                 // only within this locked owner's namespace and its kind/comparison version.
                 var layout = row.getBytes("canonical_bytes");
                 long template = row.getLong("template_revision");
-                if(product.offer().equals("loop") && template==2) {
+                if(row.getBoolean("surface_layout")) {
                     layout=StudioDesign.comparisonLayout(layout);
                     if(layout==null) return new Source(product,null,row.getLong("quantity"),design,row.getObject("design_revision",Long.class));
                 }

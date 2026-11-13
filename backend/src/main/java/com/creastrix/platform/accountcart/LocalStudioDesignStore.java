@@ -24,10 +24,9 @@ final class LocalStudioDesignStore {
     private Catalog catalog(StudioDesign content) {
         return db.query("""
             SELECT v.offer_id,v.id FROM account_cart.variant v JOIN account_cart.template_revision t
-            ON t.offer_id=v.offer_id AND t.revision=? WHERE v.sku=? AND v.offer_id='loop' AND v.id=v.sku
-            AND t.revision=2 AND t.configuration=?::jsonb
-            AND (t.configuration->'variants') @> jsonb_build_array(v.id)
-            """,(r,n)->new Catalog(r.getString(1),r.getString(2)),content.template,content.sku,StudioDesign.TEMPLATE_V2)
+            ON t.offer_id=v.offer_id AND t.revision=? WHERE v.sku=?
+            AND account_cart.studio_v2(t.configuration,t.revision,v.id)
+            """,(r,n)->new Catalog(r.getString(1),r.getString(2)),content.template,content.sku)
                 .stream().findFirst().orElseThrow(InvalidBatch::new);
     }
     private List<Slot> slots(UUID owner,UUID id,boolean published) {
@@ -119,11 +118,11 @@ final class LocalStudioDesignStore {
             JOIN account_cart.variant v ON (v.offer_id,v.id)=(l.offer_id,l.variant_id)
             JOIN account_cart.design_revision d ON (d.owner_id,d.design_id,d.revision)=(l.owner_id,l.design_id,l.design_revision)
             JOIN account_cart.template_revision t ON (t.offer_id,t.revision)=(d.offer_id,d.template_revision)
-            WHERE l.owner_id=? AND l.id=? AND d.offer_id='loop' AND d.revision=1 AND d.layout_format=1
-               AND t.revision=2 AND t.configuration=?::jsonb AND (t.configuration->'variants') @> jsonb_build_array(v.id)
+            WHERE l.owner_id=? AND l.id=? AND d.revision=1 AND d.layout_format=1
+               AND account_cart.studio_v2(t.configuration,t.revision,v.id)
                AND octet_length(d.canonical_bytes)<=65536
             """,(r,n)->new Line(r.getObject(1,UUID.class),r.getString(2),r.getLong(3),r.getBytes(4),List.of()),
-                owner,line,StudioDesign.TEMPLATE_V2)
+                owner,line)
                 .stream().findFirst().map(l->new Line(l.design,l.sku,l.template,l.layout,slots(owner,l.design,true))).orElse(null);
     }
     ObjectNode restore(Line line) {

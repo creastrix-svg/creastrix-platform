@@ -24,3 +24,13 @@ export const designFontHint={
   fr:'Choisissez une police du studio ou un fichier TTF/OTF valide (2 Mo maximum).',
   it:'Scegli un font dello studio o un file TTF/OTF valido (fino a 2 MB).',
 } as const;
+
+export const accountDesignNote={
+  en:'Only the design you add to your cart is saved to your account, including its images and fonts.',
+  de:'Nur das Design, das du in den Warenkorb legst, wird mit seinen Bildern und Schriften in deinem Konto gespeichert.',
+  ru:'В аккаунте сохраняется только добавленный в корзину дизайн, вместе с его изображениями и шрифтами.',
+  pl:'Na koncie zapisujemy tylko projekt dodany do koszyka, wraz z jego obrazami i czcionkami.',
+  es:'Solo se guarda en tu cuenta el diseño que añades a la cesta, con sus imágenes y fuentes.',
+  fr:'Seule la création ajoutée au panier est enregistrée dans votre compte, avec ses images et ses polices.',
+  it:'Nel tuo account viene salvato solo il design aggiunto al carrello, con le sue immagini e i suoi caratteri.',
+} as const;

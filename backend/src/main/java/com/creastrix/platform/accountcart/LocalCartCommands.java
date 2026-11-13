@@ -5,12 +5,15 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.function.Function;
 import javax.sql.DataSource;
 
 import com.creastrix.platform.accountcart.assets.PrivateCartAssetStore;
+import com.creastrix.platform.accountcart.catalog.SharedCatalogAuthority;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -27,7 +30,13 @@ public final class LocalCartCommands {
         @Override public String toString() { return "LocalCartClaim[redacted]"; }
     }
     public record Item(String sku,UUID designId,Long designRevision,long quantity) {}
-    public record Receipt(String state,Long version) {}
+    public record Addition(String sku,long quantity,UUID designId,Long designRevision) {
+        public Addition(String sku,long quantity) { this(sku,quantity,null,null); }
+        Item item() { return new Item(sku,designId,designRevision,quantity); }
+    }
+    public record Receipt(String state,Long version,UUID lineId) {
+        public Receipt(String state,Long version) { this(state,version,null); }
+    }
     public enum Access { BOUND,PENDING }
     public enum BindResult { BOUND,RETRYABLE }
     public static final class Conflict extends RuntimeException { public Conflict() { super("CART_CONFLICT"); } }
@@ -36,6 +45,7 @@ public final class LocalCartCommands {
         public Unavailable() { super("CART_UNAVAILABLE"); }
     }
     private record Scope(long generation,UUID owner) {}
+    private record PreparedInput(Receipt receipt,List<Item> items,List<UUID> assets) {}
     private record Persisted(Claim claim,byte[] proof,String state) {
         @Override public String toString() { return "StoredCartClaim[redacted]"; }
     }
@@ -46,8 +56,14 @@ public final class LocalCartCommands {
     private final LocalCartPreparation batches;
     private final ExactResourceRegistrar registrar;
     private final LocalStudioDesignStore designs;
+    private final LocalCartAdditions additions;
+    private final SharedCatalogAuthority catalog;
 
     public LocalCartCommands(DataSource source,PrivateCartAssetStore files) {
+        this(source,files,null);
+    }
+    public LocalCartCommands(DataSource source,PrivateCartAssetStore files,SharedCatalogAuthority catalog) {
+        this.catalog=catalog;
         db=new JdbcTemplate(source);
         transaction=new TransactionTemplate(new DataSourceTransactionManager(source));
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -57,6 +73,7 @@ public final class LocalCartCommands {
         batches=new LocalCartPreparation(db);
         registrar=new ExactResourceRegistrar(source,files);
         designs=new LocalStudioDesignStore(db,files);
+        additions=new LocalCartAdditions(db,batches);
     }
 
     private static <T> T guarded(Supplier<T> operation) {
@@ -202,11 +219,24 @@ public final class LocalCartCommands {
         if (namespace==null || claim==null || !namespace.equals(claim.namespace())) throw new Conflict();
         if (!exact(scope(true),claim,sessionId,true).state().equals("BOUND")) throw new Conflict();
     }
+    private <T> T usingStageTarget(Claim claim,String sid,UUID ns,StudioDesign design,Supplier<T> work) {
+        if(catalog==null) return tx(()->{authority(claim,sid,ns); return work.get();});
+        return catalog.withVariant(design.sku,result->tx(()->{
+            authority(claim,sid,ns);
+            var item=result.orElseThrow(InvalidBatch::new);
+            // An applied guest design may be pinned to a previously offered format. Direct
+            // purchase admission checks that format is still active when the cart is credited.
+            if(!Objects.equals(item.retainedRevision(),design.template)) throw new InvalidBatch();
+            item.remember(db); return work.get();
+        }));
+    }
     public UUID stageDesign(Claim claim,String sessionId,UUID namespace,UUID stageId,StudioDesign design) {
         return guarded(()->{
-            var reservation=tx(()->{ authority(claim,sessionId,namespace); return designs.reserve(claim.owner(),stageId,design); });
+            var reservation=usingStageTarget(claim,sessionId,namespace,design,()->designs.reserve(claim.owner(),stageId,design));
             designs.ensureBytes(reservation,design);
-            return tx(()->{ authority(claim,sessionId,namespace); designs.publish(claim.owner(),stageId,design,reservation); return stageId; });
+            return usingStageTarget(claim,sessionId,namespace,design,()->{
+                designs.publish(claim.owner(),stageId,design,reservation); return stageId;
+            });
         });
     }
     public java.util.Optional<tools.jackson.databind.node.ObjectNode> lineDesign(Claim claim,String sessionId,UUID line) {
@@ -226,15 +256,70 @@ public final class LocalCartCommands {
         return guarded(()->{
             if (lines==null || lines.size()>1000 || lines.stream().anyMatch(Objects::isNull)) throw new InvalidBatch();
             var items=List.copyOf(lines);
+            for(var item:items) if(item.sku()==null || item.sku().length()>200 || !item.sku().matches("[a-z0-9]+(-[a-z0-9]+)*"))
+                throw new InvalidBatch();
             verifyAssets(claim,tx(()->{
                 authority(claim,sessionId,namespace);
                 return assetsFor(claim.owner(),items);
             }));
-            return tx(()->{ authority(claim,sessionId,namespace); return batches.prepare(claim.owner(),batchId,items); });
+            var skus=items.stream().map(Item::sku).distinct().toList();
+            Function<Map<String,SharedCatalogAuthority.Target>,Receipt> prepare=found->tx(()->{
+                authority(claim,sessionId,namespace);
+                retainGuestCatalog(skus,found,false);
+                return batches.prepare(claim.owner(),batchId,items);
+            });
+            return catalog==null?prepare.apply(Map.of()):catalog.withVariants(skus,prepare);
         });
+    }
+    private void retainGuestCatalog(List<String> skus,Map<String,SharedCatalogAuthority.Target> found,boolean alreadyPrepared) {
+        if(catalog==null) return;
+        for(String sku:skus) {
+            var target=found.get(sku);
+            if(target!=null) target.remember(db);
+            else if(!Boolean.TRUE.equals(db.queryForObject(
+                    "SELECT EXISTS(SELECT FROM account_cart.storefront_variant WHERE sku=?)",Boolean.class,sku))) {
+                // Unknown new sources may be refused before prepare. A frozen historical
+                // receipt stays pending until it can be resolved or its owner retires it.
+                if(alreadyPrepared) throw new Unavailable();
+                throw new InvalidBatch();
+            }
+        }
     }
     public Receipt status(Claim claim,String sessionId,UUID namespace,UUID batchId) {
         return guarded(()->tx(()->{ authority(claim,sessionId,namespace); return batches.status(claim.owner(),batchId); }));
+    }
+    public Receipt add(Claim claim,String sessionId,UUID namespace,UUID intent,Addition request) {
+        var receipt=guarded(()->{
+            var assets=new java.util.ArrayList<UUID>();
+            var previous=tx(()->{
+                authority(claim,sessionId,namespace);
+                LocalCartAdditions.validate(intent,request);
+                var decided=additions.previous(claim.owner(),intent,request);
+                if(decided!=null || request.designId()==null) return decided;
+                // A wrong owner, SKU or revision is a terminal decision for this intent.
+                // A transient failure to read or compare registered private bytes is not.
+                try { assets.addAll(assetsFor(claim.owner(),List.of(request.item()))); }
+                catch(InvalidBatch invalidSource) { return additions.reject(claim.owner(),intent,request); }
+                return null;
+            });
+            if(previous!=null) return previous;
+            verifyAssets(claim,assets);
+            Function<SharedCatalogAuthority.Target,Receipt> credit=source->tx(()->{
+                authority(claim,sessionId,namespace);
+                // Another transport copy could have completed while bytes were read.
+                var decided=additions.previous(claim.owner(),intent,request);
+                if(decided!=null) return decided;
+                if(source!=null) source.remember(db);
+                var target=catalog==null ? additions.fixtureTarget(request.sku())
+                        : source==null ? null : LocalCartAdditions.liveTarget(source);
+                return additions.add(claim.owner(),intent,request,target);
+            });
+            return catalog==null?credit.apply(null):catalog.withVariant(request.sku(),source->credit.apply(source.orElse(null)));
+        });
+        // A confirmed refusal is safe to show only AFTER its decision commits.
+        // A lost connection to COMMIT remains unavailable, never a terminal 422.
+        if (receipt.state().equals("REJECTED")) throw new InvalidBatch();
+        return receipt;
     }
     public Receipt retire(Claim claim,String sessionId,UUID namespace,UUID batchId) {
         return guarded(()->tx(()->{ authority(claim,sessionId,namespace); return batches.retire(claim.owner(),batchId); }));
@@ -244,18 +329,28 @@ public final class LocalCartCommands {
         if (batchId==null) throw new InvalidBatch();
         return guarded(()->{
             try {
-                verifyAssets(claim,tx(()->{
+                var prepared=tx(()->{
                     authority(claim,sessionId,namespace);
-                    if (!batches.status(claim.owner(),batchId).state().equals("PENDING")) return List.of();
+                    var receipt=batches.status(claim.owner(),batchId);
+                    if(receipt.state().equals("APPLIED")) return new PreparedInput(receipt,List.of(),List.of());
+                    if(!receipt.state().equals("PENDING")) throw new Conflict();
                     var items=db.query("""
                         SELECT v.sku,i.design_id,i.design_revision,i.quantity FROM account_cart.import_line i
                         JOIN account_cart.variant v ON (v.offer_id,v.id)=(i.offer_id,i.variant_id)
-                        WHERE i.owner_id=? AND i.batch_id=? AND i.design_id IS NOT NULL LIMIT 1001
-                        """,(r,n)->new Item(r.getString(1),r.getObject(2,UUID.class),r.getLong(3),r.getLong(4)),claim.owner(),batchId);
-                    return assetsFor(claim.owner(),items);
-                }));
+                        WHERE i.owner_id=? AND i.batch_id=? ORDER BY i.position LIMIT 1001
+                        """,(r,n)->new Item(r.getString(1),r.getObject(2,UUID.class),r.getObject(3,Long.class),r.getLong(4)),claim.owner(),batchId);
+                    return new PreparedInput(receipt,items,assetsFor(claim.owner(),items));
+                });
+                if(prepared.receipt().state().equals("APPLIED")) return prepared.receipt();
+                verifyAssets(claim,prepared.assets());
                 var a=new PreparedCartImportStore.Admission(LANE,claim.generation(),claim.owner(),claim.eligibilityGeneration());
-                var ack=imports.apply(a,batchId,ignored->authority(claim,sessionId,namespace));
+                var skus=prepared.items().stream().map(Item::sku).distinct().toList();
+                Function<Map<String,SharedCatalogAuthority.Target>,PreparedCartImportStore.Acknowledgement> apply=found->
+                    imports.apply(a,batchId,ignored->{
+                        authority(claim,sessionId,namespace);
+                        if(batches.status(claim.owner(),batchId).state().equals("PENDING")) retainGuestCatalog(skus,found,true);
+                    });
+                var ack=catalog==null?apply.apply(Map.of()):catalog.withVariants(skus,apply);
                 return new Receipt("APPLIED",ack.version());
             } catch (ArithmeticException invalidQuantity) { throw new InvalidBatch(); }
             catch (IllegalStateException refused) {
@@ -275,17 +370,18 @@ public final class LocalCartCommands {
         var touched=new HashSet<String>();
         for (var item:items) {
             if (item.designId()==null) continue;
-            if (item.sku()==null || item.sku().length()>128 || item.designRevision()==null) throw new InvalidBatch();
+            if (item.sku()==null || item.sku().length()>200 || item.designRevision()==null) throw new InvalidBatch();
             var found=db.query("""
-                SELECT d.offer_id,CASE WHEN d.offer_id='loop' THEN d.canonical_bytes END
+                SELECT t.configuration->>'format'='loop-studio-v1' AS surface_layout,
+                       CASE WHEN t.configuration->>'format'='loop-studio-v1' THEN d.canonical_bytes END
                   FROM account_cart.design_revision d JOIN account_cart.variant v
                 ON (v.offer_id,v.id)=(d.offer_id,d.variant_id)
                 JOIN account_cart.template_revision t ON (t.offer_id,t.revision)=(d.offer_id,d.template_revision)
                 WHERE v.sku=? AND d.owner_id=? AND d.design_id=? AND d.revision=? AND d.layout_format=1
-                AND (d.offer_id<>'loop' OR (t.revision=2 AND t.configuration=?::jsonb
-                    AND (t.configuration->'variants') @> jsonb_build_array(v.id) AND octet_length(d.canonical_bytes)<=65536))
-                """,(r,n)->!r.getString(1).equals("loop") || StudioDesign.supportedLayout(r.getBytes(2)),
-                    item.sku(),owner,item.designId(),item.designRevision(),StudioDesign.TEMPLATE_V2);
+                AND ((? AND (t.configuration->>'format') IS DISTINCT FROM 'loop-studio-v1')
+                     OR (account_cart.studio_v2(t.configuration,t.revision,v.id) AND octet_length(d.canonical_bytes)<=65536))
+                """,(r,n)->!r.getBoolean(1) || StudioDesign.supportedLayout(r.getBytes(2)),
+                    item.sku(),owner,item.designId(),item.designRevision(),catalog==null);
             if (!found.contains(true)) throw new InvalidBatch();
             result.addAll(db.queryForList("SELECT asset_id FROM account_cart.design_asset WHERE owner_id=? AND design_id=? AND revision=? LIMIT 257",
                     UUID.class,owner,item.designId(),item.designRevision()));
