@@ -9,6 +9,7 @@ import { Icon } from '../Icon';
 import type { StorefrontLocale } from '../locale';
 import { isCatalogPath } from '../routes';
 import { StorefrontOrigin } from '../storefrontOrigin';
+import { StorefrontHistoryBack } from '../storefrontHistoryBack';
 import Carousel, { LowerRecommendations } from './Carousel';
 import type { CarouselContent } from './carouselContent';
 
@@ -37,7 +38,7 @@ function FactRows({ rows }: { rows: TextPairs }) {
 /** Every purchasable offer fills the same card; only the studio entry is optional. */
 export default function ProductCardLayout<Id extends string>(props: ProductCardProps<Id>) {
   const { locale, name, subtitle, category, finishes, selected } = props;
-  const navigate = useNavigate(), origin = useContext(StorefrontOrigin);
+  const navigate = useNavigate(), historyBack = useContext(StorefrontHistoryBack), origin = useContext(StorefrontOrigin);
   const t = productCopy[locale];
   const rating = ratingForPath(useLocation().pathname);
   const [starPreview, setStarPreview] = useState(0);
@@ -51,10 +52,8 @@ export default function ProductCardLayout<Id extends string>(props: ProductCardP
     <div key={feature}><Icon name={(['cube', 'layers', 'spark'] as const)[index]} /><span>{feature}</span></div>
   )}</div>;
   return <>
-    <nav className="product-breadcrumb" aria-label={t.navigation}><Link to={browseOrigin ?? '/catalog'} onClick={event => {
-      if (!browseOrigin || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault(); navigate(-1);
-    }}>{fromSearch ? t.results : catalogCopy[locale].title}</Link><Icon name="chevron" /><Link to={category.href}>{category.label}</Link><Icon name="chevron" /><span aria-current="page">{name}</span></nav>
+    <nav className="product-breadcrumb" aria-label={t.navigation}><Link to={browseOrigin ?? '/catalog'}
+      onClick={event => historyBack(event, browseOrigin)}>{fromSearch ? t.results : catalogCopy[locale].title}</Link><Icon name="chevron" /><Link to={category.href}>{category.label}</Link><Icon name="chevron" /><span aria-current="page">{name}</span></nav>
     <div className="product-layout" data-personalizable={Boolean(props.personalization)}>
       {props.personalization ? props.gallery : <div className="product-media-column">{props.gallery}{features}</div>}
       <section className="product-information" data-product-variant={props.urlVariant} aria-label={t.choose}>

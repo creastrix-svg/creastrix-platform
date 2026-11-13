@@ -43,7 +43,14 @@ it.each(['hold command','lose stage acknowledgement','different buyer'] as const
   </MemoryRouter></Provider>;
   const component=render(tree(first.a,'Original'));
   try{
-    const save=screen.getByRole('button',{name:'Save design'});await waitFor(()=>expect(save).toBeEnabled());await user.click(save);
+    const save=screen.getByRole('button',{name:'Save design'});await waitFor(()=>expect(save).toBeEnabled());
+    if(mode==='lose stage acknowledgement')await user.click(save);
+    else{
+      // Repeated activation while the immutable command has no receipt yet is a no-op.
+      await user.dblClick(save);
+      expect(save).toBeDisabled();expect(save).toHaveAttribute('aria-busy','true');
+      expect(save).toHaveAccessibleName('Save design');expect(save.querySelector('.product-spinner')).toBeVisible();
+    }
     if(mode==='lose stage acknowledgement')await screen.findByRole('button',{name:'Try again'});
     else await waitFor(()=>expect(log).toHaveLength(2));
     component.rerender(tree(second.a,'Newer text'));

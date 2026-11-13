@@ -1,5 +1,6 @@
 import {useContext,useEffect,useEffectEvent,useRef,useState,type ReactNode} from 'react';
 import {Link} from 'react-router';
+import {Spinner} from '../Icon';
 import type {VariantId} from '../fixtures/loop';
 import type {AccountCartAdmission} from '../cart/accountCartAdmission';
 import {AccountPurchaseContext} from '../cart/accountPurchaseContext';
@@ -99,10 +100,10 @@ function SaveOwnedDesign({admission,doc,snapshot,enabled,original,onCreated}:Sav
       }else setPhase('retry');
     }finally{if(flight.current===op)flight.current=null;}
   }
-  return <div className="studio-library-actions"><button type="button" className="product-secondary"
+  return <div className="studio-library-actions"><button type="button" className="product-secondary" aria-busy={phase==='busy'||undefined}
     disabled={state.phase!=='ready'||!state.binding||phase==='busy'||phase==='conflict'||(!enabled&&phase!=='retry')||(!dirty&&(phase==='saved'||phase==='idle'))}
-    onClick={()=>void save()}>{phase==='busy'?t.saving:phase==='retry'?t.retry:t.save}</button>
-    <p role="status">{phase==='saved'&&!dirty ? <Link to="/account/designs">{t.saved}</Link>:
+    onClick={()=>void save()}><span className="design-save-label">{phase==='busy'&&<Spinner/>}{phase==='retry'?t.retry:t.save}</span></button>
+    <p role="status">{phase==='busy'?t.saving:phase==='saved'&&!dirty ? <Link to="/account/designs">{t.saved}</Link>:
       phase==='conflict'?<>{t.conflict} <Link to="/account/designs">{t.title}</Link></>:
       phase==='failed'||phase==='retry'?t.failed:null}</p>
     {state.phase==='reauth-required'?<CartSignInAgain admission={admission}/>:state.phase==='unavailable'||state.phase==='read-unavailable'
