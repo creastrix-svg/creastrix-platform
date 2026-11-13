@@ -78,9 +78,11 @@ function show(path: string, store = createAppStore('en')) {
 it('explains when the original quantity cannot be restored even with some stock left', () => {
   const store = createAppStore('en'), stock = variantById('coral').stock;
   store.dispatch(cartAdded({ variant: 'coral', quantity: 3, design: design('A') }));
-  store.dispatch(cartLineRemoved('design-1'));
-  store.dispatch(cartAdded({ variant: 'coral', quantity: stock - 1 }));
   show('/preview/cart', store);
+  act(()=>{
+    store.dispatch(cartLineRemoved('design-1'));
+    store.dispatch(cartAdded({ variant: 'coral', quantity: stock - 1 }));
+  });
   const removed = screen.getByRole('article', { name: /Your design 1/ });
   expect(within(removed).getByRole('button', { name: /^Restore/ })).toBeDisabled();
   expect(within(removed).getByText(productCopy.en.restoreLimited)).toHaveAttribute('role', 'status');
@@ -225,6 +227,9 @@ it.each(['cancel', 'save'])('keeps the product draft and AI brief unchanged afte
   await user.click(within(document.querySelector<HTMLElement>('.product-cart-line')!).getByRole('link', { name: /^Edit personalisation/ }));
   expect(screen.queryByRole('button', { name: 'AI' })).toBeNull();
   expect(screen.queryByRole('textbox', { name: 'Describe your idea' })).toBeNull();
+  const generator = screen.getByRole('button', { name: 'Create with AI' });
+  expect(generator).toBeDisabled();
+  expect(generator).toHaveAccessibleDescription('Not available yet');
   fireEvent.change(screen.getByRole('textbox', { name: 'Your text' }), { target: { value: 'EDIT' } });
   await user.click(outcome === 'save' ? screen.getByRole('button', { name: 'Save this cart design' }) : screen.getByRole('link', { name: 'Back to cart — discard edits' }));
   expect(store.getState().productDemo.cart[0].design).toEqual(design(outcome === 'save' ? 'EDIT' : 'CART'));

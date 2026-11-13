@@ -4,6 +4,7 @@ import StudioArtworkTools from './StudioArtworkTools';
 import { emptyImagePlacement } from '../design/studioImage';
 import type { ImagePlacement, StudioImage } from '../design/studioImage';
 import { useStudioImagePicker } from './useStudioImagePicker';
+import { StudioChooserContext } from '../session/studioChooserContext';
 import { studioExtensionCopy } from '../studioExtensionCopy';
 import { studioCompositionCopy } from '../design/studioCompositionCopy';
 import { studioArea, MAX_STUDIO_OBJECTS } from '../design/studioComposition';
@@ -51,6 +52,46 @@ function choose(file = source(), opener = addButton) {
   openNative.mockRestore();
   fireEvent.change(input(), { target: { files: [file] } });
 }
+
+it('never applies a selection without its opener and explains how to choose again', async () => {
+  const change=vi.fn();render(<PickerHarness publish={change}/>);
+  fireEvent.change(input(),{target:{files:[source()]}});await flush();
+  expect(screen.getByRole('status')).toHaveTextContent('chooseAgain');
+  expect(decode).not.toHaveBeenCalled();expect(change).not.toHaveBeenCalled();
+});
+
+it('reports chooser failure and recovers on the next deliberate click', async () => {
+  const change=vi.fn();render(<PickerHarness publish={change}/>);
+  const native=vi.spyOn(input(),'click').mockImplementationOnce(()=>{throw new DOMException('Unavailable','NotAllowedError');});
+  fireEvent.click(addButton());await flush();expect(screen.getByRole('status')).toHaveTextContent('chooseAgain');
+  native.mockRestore();decode.mockResolvedValue(bitmap());choose();await flush();
+  expect(change).toHaveBeenCalledOnce();expect(screen.getByRole('status')).toHaveTextContent('added');
+});
+
+it.each([true,false])('publishes a decoded picture only when its captured chooser admission confirms: %s',async same=>{
+  const check=deferred<boolean>(),ready=vi.fn(()=>check.promise),open=vi.fn((signal:AbortSignal)=>signal.aborted?null:ready),publish=vi.fn();
+  decode.mockResolvedValue(bitmap());
+  render(<StudioChooserContext.Provider value={{open}}><PickerHarness publish={publish}/></StudioChooserContext.Provider>);
+  choose();await flush();expect(ready).toHaveBeenCalledOnce();expect(open).toHaveBeenCalledOnce();
+  const signal=open.mock.calls[0][0];expect(signal.aborted).toBe(false);expect(publish).not.toHaveBeenCalled();
+  await act(async()=>check.resolve(same));
+  expect(publish).toHaveBeenCalledTimes(same?1:0);expect(signal.aborted).toBe(true);
+});
+
+it('does not open a chooser when the private editor cannot bind the intent',async()=>{
+  const publish=vi.fn();render(<StudioChooserContext.Provider value={{open:()=>null}}><PickerHarness publish={publish}/></StudioChooserContext.Provider>);
+  const native=vi.spyOn(input(),'click');fireEvent.click(addButton());await flush();
+  expect(native).not.toHaveBeenCalled();expect(screen.getByRole('status')).toHaveTextContent('chooseAgain');
+});
+
+it('does not show an invalid-file message to another admission or decode the file',async()=>{
+  const check=deferred<boolean>(),publish=vi.fn();render(<StudioChooserContext.Provider value={{open:()=>()=>check.promise}}>
+    <PickerHarness publish={publish}/></StudioChooserContext.Provider>);
+  choose(new File(['not a supported raster'],'unknown.txt',{type:'text/plain'}));await flush();
+  expect(screen.getByRole('status')).not.toHaveTextContent('type');await act(async()=>check.resolve(false));
+  expect(screen.getByRole('status')).not.toHaveTextContent('type');expect(publish).not.toHaveBeenCalled();
+  expect(decode).not.toHaveBeenCalled();
+});
 
 it('decodes a local file, disables duplicate upload while pending, and enables controls immediately on completion', async () => {
   const pending = deferred<ImageBitmap>(), decoded = bitmap(), change = vi.fn(); decode.mockReturnValue(pending.promise);

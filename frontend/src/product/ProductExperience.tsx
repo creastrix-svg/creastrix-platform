@@ -16,6 +16,7 @@ import { useAppearance } from './appearance';
 import StorefrontNavigation from './StorefrontNavigation';
 import CartView from './cart/CartView';
 import AccountCartView from './cart/AccountCartView';
+import {AccountCartBadge} from './cart/AccountCartBadge';
 import { GuestCartActionsEnabled } from './cart/guestCartActions';
 import { AccountPurchaseContext } from './cart/accountPurchaseContext';
 import type { AccountCartAdmission } from './cart/accountCartAdmission';
@@ -44,17 +45,21 @@ import { catalogReady, connectedProduct, entryForPath } from './catalog/localCat
 import ConnectedProductPage from './detail/ConnectedProductPage';
 import { permanentCatalogMode, sharedCatalogMode } from './catalog/permanentCatalog';
 import { AccountStudio } from './studio/session/AccountStudio';
+import AccountDesignsRoute from './designs/AccountDesignsRoute';
+import {designLibraryPath} from './routes';
 
-export default function ProductExperience({ accountCart }: { accountCart?: AccountCartAdmission } = {}) {
-  const cartPage = useMatch('/preview/cart'), checkoutPage = useMatch('/preview/checkout');
+export default function ProductExperience({ accountCart,studioKey }: { accountCart?: AccountCartAdmission;studioKey?:string } = {}) {
+  const cartPage = useMatch('/preview/cart'), checkoutPage = useMatch('/preview/checkout'), designLibrary=useMatch(designLibraryPath);
   // Guest IndexedDB restore may expose removed/unlisted rows and its own retry
   // action. It is not part of reading or recovering an admitted account cart.
   if (accountCart && sharedCatalogMode) {
     const {userId,owner}=accountCart;
-    return <AccountStudio key={[userId,owner.document,owner.epoch,owner.request,owner.revision].join(':')}>
-      {cartPage || checkoutPage ? <Storefront accountCart={accountCart}/> : <ConnectedCatalog><Storefront accountCart={accountCart}/></ConnectedCatalog>}
+    return <AccountStudio key={studioKey??[userId,owner.document,owner.epoch,owner.request,owner.revision].join(':')}>
+      {cartPage || checkoutPage || designLibrary ? <Storefront accountCart={accountCart}/> : <ConnectedCatalog><Storefront accountCart={accountCart}/></ConnectedCatalog>}
     </AccountStudio>;
   }
+  // A cold guest deep link must redirect before mounting catalog-backed navigation.
+  if(sharedCatalogMode&&designLibrary)return <AccountDesignsRoute/>;
   if (accountCart && (cartPage || checkoutPage)) return <Storefront accountCart={accountCart} />;
   if (accountCart && permanentCatalogMode) return <ConnectedCatalog><Storefront accountCart={accountCart} /></ConnectedCatalog>;
   return <ConnectedCatalog><PersistentStudio showGuestCartNotices={!accountCart} browsingHome={<Storefront cartReady={false} accountCart={accountCart} />}><Storefront accountCart={accountCart} /></PersistentStudio></ConnectedCatalog>;
@@ -113,7 +118,7 @@ function Storefront({ cartReady = true, accountCart }: { cartReady?: boolean; ac
       <header ref={header} className="product-header product-width">
         <Link to="/" className="product-logo" aria-label={t.home}><img src="/brand/creastrix-logo-horizontal-black.svg" alt="Creastrix" width="174" height="44" /></Link>
         <SearchControl />
-        <div className="product-header-actions"><Link to="/account" className="product-icon-button" aria-label={t.account}><Icon name="user" /></Link><Link to="/preview/saved" className="product-icon-button" aria-label={demo.favorites.length ? t.favorites + ' · ' + demo.favorites.length : t.favorites}><Icon name="heart" />{demo.favorites.length > 0 && <span className="product-count">{demo.favorites.length}</span>}</Link>{accountCart ? <Link className="product-icon-button" aria-label={t.cart} to="/preview/cart"><Icon name="bag" /></Link> : <HeaderCart ready={cartReady} />}</div>
+        <div className="product-header-actions"><Link to="/account" className="product-icon-button" aria-label={t.account}><Icon name="user" /></Link><Link to="/preview/saved" className="product-icon-button" aria-label={demo.favorites.length ? t.favorites + ' · ' + demo.favorites.length : t.favorites}><Icon name="heart" />{demo.favorites.length > 0 && <span className="product-count">{demo.favorites.length}</span>}</Link>{accountCart ? sharedCatalogMode ? <AccountCartBadge admission={accountCart} label={t.cart}/> : <Link className="product-icon-button" aria-label={t.cart} to="/preview/cart"><Icon name="bag" /></Link> : <HeaderCart ready={cartReady} />}</div>
       </header>
       {demo.favoritesMemoryOnly && <p role="status" className="product-width">{t.favoritesMemoryOnly}</p>}
       <StorefrontNavigation appearance={appearance} onAppearance={setAppearance} />
@@ -130,6 +135,7 @@ function Storefront({ cartReady = true, accountCart }: { cartReady?: boolean; ac
         <Route path="/products/loop" element={<LoopRoute account={!!accountCart} />} /><Route path="/products/loop/reviews" element={<ReviewsView />} /><Route path="/products/loop/reviews/new" element={<ReviewFormView />} />
         <Route path="/products/loop/personalize" element={<LoopRoute studio account={!!accountCart} />} />
         <Route path="/preview/cart" element={accountCart ? <AccountCartView admission={accountCart} /> : <CartView />} />
+        {sharedCatalogMode && <Route path={designLibraryPath} element={<AccountDesignsRoute admission={accountCart}/>}/>}
         <Route path="/preview/checkout" element={accountCart ? <Link to="/preview/cart">{t.viewCart}</Link> : <CheckoutView />} /><Route path="/preview/saved" element={<FavoritesView />} />
         <Route path="/preview/search" element={<SearchResultsView />} /><Route path="/catalog" element={<CatalogView />} /><Route path="/preview/collection" element={<CatalogView />} />
         <Route path="/preview/items/:id" element={<CollectionItemRoute offline="concept" />} /><Route path="/preview/info/:topic" element={<InfoView />} /><Route path="/preview/studio" element={<InfoView studio />} />

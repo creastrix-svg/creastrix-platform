@@ -1,4 +1,6 @@
 export const editionCollectionPath = '/collections/objects';
+export const designLibraryPath='/account/designs';
+export const isDesignLibraryPath=(path:string)=>path.replace(/\/+$/,'').toLowerCase()===designLibraryPath;
 export const tideOfferPath = editionCollectionPath + '/tide';
 
 // These are the only routable detail locations that a catalog offer may advertise.

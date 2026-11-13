@@ -16,6 +16,8 @@ export type StudioZone = Readonly<{
   id: StudioZoneId;
   operation: StudioOperation;
   tools: readonly StudioTool[];
+  /** Display-only affordance, not permission to generate or store AI content. */
+  showAiGeneration?: boolean;
   fonts: readonly BuiltinStudioFont[];
   allowCustomFonts: boolean;
   inkColors: readonly LetteringColor[];
@@ -42,7 +44,7 @@ export const studioProducts: Readonly<Record<StudioProductId, StudioProduct>> = 
     id: 'loop', get name() { return loopName(); }, readyMade: true,
     get enabled() { return connectedProduct('loop')?.personalizable ?? !permanentCatalogMode; },
     zones: [{
-      id: 'surface', operation: 'print', tools: permanentCatalogMode ? ['text','image'] : ['text', 'image', 'ai'],
+      id: 'surface', operation: 'print', tools: permanentCatalogMode ? ['text','image'] : ['text', 'image', 'ai'], showAiGeneration: true,
       fonts: permanentCatalogMode ? loopV2Fonts : standardStudioFonts, allowCustomFonts: true,
       inkColors: ['#ffffff', '#20251f', '#b68a45'], allowPosition: true,
       textLimits: { maxCharacters: 32, maxLines: 2, minSize: 18, maxSize: 32 },
@@ -51,7 +53,7 @@ export const studioProducts: Readonly<Record<StudioProductId, StudioProduct>> = 
   lamp: {
     id: 'lamp', name: 'Luma', readyMade: false, enabled: true,
     zones: [{
-      id: 'panel', operation: 'cut', tools: ['pattern', 'text', 'image', 'ai'],
+      id: 'panel', operation: 'cut', tools: ['pattern', 'text', 'image', 'ai'], showAiGeneration: true,
       fonts: ['stencil'], allowCustomFonts: false, inkColors: [], allowPosition: true, visualComposition: true,
       textLimits: { maxCharacters: 14, maxLines: 1, minSize: 18, maxSize: 28 },
     }, {

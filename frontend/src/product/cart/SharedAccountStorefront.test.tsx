@@ -9,6 +9,7 @@ import {sameOwner} from '../../authBoundary';
 import {loadLocalCatalog} from '../catalog/localCatalog';
 import {productCopy} from '../copy';
 import {personalizationCopy} from '../studio/personalizationCopy';
+import {studioExtensionCopy} from '../studio/studioExtensionCopy';
 import {createLocalCartSession} from './localCartSession';
 import LocalAccountStorefront from './LocalAccountStorefront';
 import type {AppliedLoopDesign} from './appliedLoopDesign';
@@ -31,15 +32,17 @@ const alternate={...product,id:'azur',name:'Azur Print',href:'/collections/objec
   variants:[{...product.variants[0],id:'satin',sku:'custom-satin'}]};
 const archived={...alternate,id:'archived',name:'Retired studio',href:'/products/archived',
   variants:[{...alternate.variants[0],id:'silver',sku:'archived-silver',studioFormat:null,templateRevision:null}]};
+const catalog={products:[product,alternate,archived],entries:[entry,
+  ...[alternate,archived].map((p,i)=>({...entry,id:p.id,name:p.name,href:p.href,editionOrder:i+3,homeOrder:i+3}))],recommendations:[]};
 beforeAll(async()=>{
-  const fetcher=vi.spyOn(window,'fetch').mockResolvedValue(Response.json({products:[product,alternate,archived],entries:[entry,
-    ...[alternate,archived].map((p,i)=>({...entry,id:p.id,name:p.name,href:p.href,editionOrder:i+3,homeOrder:i+3}))],recommendations:[]}));
+  const fetcher=vi.spyOn(window,'fetch').mockResolvedValue(Response.json(catalog));
   try{await loadLocalCatalog();}finally{fetcher.mockRestore();}
 });
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();sessionStorage.clear();outbox.clear();});
 it('opens a saved cart line with a retired template as unavailable, never as a plain sale or a new design',async()=>{
   const a=crypto.randomUUID(),namespace=crypto.randomUUID(),writeContext=crypto.randomUUID(),lineId=crypto.randomUUID(),t=productCopy.en;
   const read=vi.spyOn(window,'fetch').mockImplementation(async(path,init)=>{
+    if(path==='/api/local-catalog/products')return Response.json(catalog);
     if(path!=='/api/account-cart' || init?.method!=='GET')throw Error('Unexpected request');
     return Response.json({kind:'ready',ownerId:a,namespace,writeContext,guestIntent:null,cart:[{
       lineId,offerId:archived.id,variantId:'silver',sku:'archived-silver',offerLabel:archived.name,variantLabel:'Silver',href:archived.href,
@@ -57,7 +60,7 @@ it('opens a saved cart line with a retired template as unavailable, never as a p
     expect(screen.queryByRole('button',{name:t.add})).not.toBeInTheDocument();
     expect(screen.queryByRole('link',{name:t.personalButton})).not.toBeInTheDocument();
     expect(screen.getByRole('link',{name:t.viewCart})).toHaveAttribute('href','/preview/cart');
-    expect(read.mock.calls.every(([url,init])=>url==='/api/account-cart'&&init?.method==='GET')).toBe(true);
+    expect(read.mock.calls.every(([url,init])=>['/api/account-cart','/api/local-catalog/products'].includes(String(url))&&init?.method==='GET')).toBe(true);
   }finally{view.unmount();session.dispose();}
 });
 it.each([false,true])('applies, buys, and reopens server artwork without extra writes (new unrecognised product = %s)',async(generic)=>{
@@ -70,6 +73,7 @@ it.each([false,true])('applies, buys, and reopens server artwork without extra w
   vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue({measureText:(text:string)=>({width:text.length*10})} as unknown as CanvasRenderingContext2D);
   const fetcher=vi.spyOn(window,'fetch').mockImplementation(async(input,init={})=>{
     const path=String(input);
+    if(path==='/api/local-catalog/products')return Response.json(catalog);
     if(path.startsWith('/fonts/Nunito.ttf?'))return new Response(readFileSync('public/fonts/Nunito.ttf'));
     if(path==='/api/account-cart')return Response.json({kind:'ready',ownerId:a,namespace,writeContext,guestIntent:null,cart:added?[{
       lineId,offerId:offer.id,offerLabel:offer.name,variantId:variant.id,variantLabel:'Blue',sku,href:offer.href,
@@ -99,6 +103,14 @@ it.each([false,true])('applies, buys, and reopens server artwork without extra w
   }
   let close=show(generic?offer.href+'?variant='+variant.id+'&personalize=surface':'/products/loop/personalize?variant=cobalt');
   try{
+    const copy=studioExtensionCopy.en;
+    const ai=await screen.findByRole('button',{name:copy.createWithAi});
+    expect(ai).toBeDisabled();
+    expect(ai).toHaveAccessibleDescription(copy.generationUnavailable);
+    expect(within(ai).getByText(copy.generationUnavailable)).toBeVisible();
+    await user.click(ai);
+    expect(screen.queryByRole('textbox',{name:copy.aiPrompt})).toBeNull();
+    expect(posts).toBe(0);
     await user.type(await screen.findByRole('textbox',{name:p.textLabel}),'My Loop');
     const apply=screen.getByRole('button',{name:p.apply});await waitFor(()=>expect(apply).toBeEnabled());await user.click(apply);
     await user.click(screen.getByRole('link',{name:p.back}));
@@ -107,7 +119,7 @@ it.each([false,true])('applies, buys, and reopens server artwork without extra w
     await waitFor(()=>expect(added).toBe(true));
     expect(saved?.objects).toEqual([expect.objectContaining({kind:'text',text:'My Loop',font:'rounded'})]);
     close();close=show('/preview/cart');
-    const cartRow=await screen.findByText(offer.name,{selector:'li a'});
+    const cartRow=await screen.findByText(offer.name,{selector:'article h2 a'});
     expect(cartRow).toHaveAttribute('href',offer.href+'?variant='+variant.id+'&accountLine='+lineId);
     await user.click(cartRow);
     if(generic){

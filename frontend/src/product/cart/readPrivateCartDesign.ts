@@ -1,7 +1,7 @@
 import { createStudioFontLibrary, type StudioFontId, type LoadedStudioFont } from '../studio/design/studioFonts';
 import { loadNormalizedStudioImage, type StudioImage } from '../studio/design/studioImage';
 import { base64Bytes } from '../studio/session/designSnapshot';
-import { appliedDesignLimit, fontName, readAppliedLoopDesign } from './appliedLoopDesign';
+import { appliedDesignLimit, fontName, readAppliedLoopDesign,type AppliedLoopDesign } from './appliedLoopDesign';
 import type { AccountCartAdmission } from './accountCartAdmission';
 import type {StudioObject} from '../studio/design/studioComposition';
 
@@ -35,6 +35,10 @@ export async function readPrivateCartDesign(admission:AccountCartAdmission,lineI
     throw Error('DESIGN_UNAVAILABLE');
   const design=readAppliedLoopDesign(await boundedJson(response));
   if(!current() || design.sku!==sku) throw Error('DESIGN_UNAVAILABLE');
+  return decodePrivateLayers(design,lib,signal,current,loadedFonts);
+}
+export async function decodePrivateLayers(design:AppliedLoopDesign,lib:ReturnType<typeof createStudioFontLibrary>,
+  signal:AbortSignal,current:()=>boolean,loadedFonts?:LoadedStudioFont[]){
   const images=new Map<string,StudioImage>(), custom=new Map<string,StudioFontId>(), objects:StudioObject[]=[];
   for(const obj of design.objects) {
     if(!current() || signal.aborted) throw Error('DESIGN_UNAVAILABLE');
@@ -52,7 +56,7 @@ export async function readPrivateCartDesign(admission:AccountCartAdmission,lineI
         const existing=custom.get(obj.data);
         if(existing)font=existing;
         else {
-          const loaded=await lib.loadCustom(new File([base64Bytes(obj.data)],fontName(obj.data)),{signal});
+          const loaded=lib.findCustom(obj.data)??await lib.loadCustom(new File([base64Bytes(obj.data)],fontName(obj.data)),{signal});
           font=loaded.id;loadedFonts?.push(loaded);
         }
         custom.set(obj.data,font);

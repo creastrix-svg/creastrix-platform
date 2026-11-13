@@ -3,14 +3,16 @@ import { MAX_STUDIO_OBJECTS } from '../design/studioComposition';
 import type { StudioObject } from '../design/studioComposition';
 import { studioCompositionCopy } from '../design/studioCompositionCopy';
 import { useProductLocale } from '../../useProductLocale';
+import { useId } from 'react';
+import { studioExtensionCopy } from '../studioExtensionCopy';
 
-export default function StudioObjectTools({ objects, selectedId, onSelect, onAdd, onDelete, onReorder, canAddText, canAddImage, imagePending = false, imageHintId }: {
+export default function StudioObjectTools({ objects, selectedId, onSelect, onAdd, onDelete, onReorder, canAddText, canAddImage, showAiGeneration = false, imagePending = false, imageHintId }: {
   objects: readonly StudioObject[]; selectedId: string | null;
   onSelect: (id: string) => void; onAdd: (kind: 'text' | 'image') => void;
   onDelete: () => void; onReorder: (direction: -1 | 1) => void;
-  canAddText: boolean; canAddImage: boolean; imagePending?: boolean; imageHintId?: string;
+  canAddText: boolean; canAddImage: boolean; showAiGeneration?: boolean; imagePending?: boolean; imageHintId?: string;
 }) {
-  const c = studioCompositionCopy[useProductLocale()];
+  const language = useProductLocale(), c = studioCompositionCopy[language], e = studioExtensionCopy[language], aiStatusId = useId();
   const selectedIndex = objects.findIndex(object => object.id === selectedId), full = objects.length >= MAX_STUDIO_OBJECTS;
   return <section className="studio-object-tools" aria-label={c.objects}>
     <div className="studio-object-heading"><h2>{c.objects}</h2><span>{objects.length} / {MAX_STUDIO_OBJECTS}</span></div>
@@ -24,6 +26,9 @@ export default function StudioObjectTools({ objects, selectedId, onSelect, onAdd
     <div className="studio-object-add">
       {canAddText && <button type="button" className="product-secondary" disabled={full} onClick={() => onAdd('text')}><Icon name="layers" />{c.addText}</button>}
       {canAddImage && <button type="button" className="product-secondary" disabled={full || imagePending} aria-describedby={imageHintId} onClick={() => onAdd('image')}><Icon name="image" />{c.addImage}</button>}
+      {showAiGeneration && canAddImage && <button type="button" className="product-secondary studio-ai-generation" disabled aria-label={e.createWithAi} aria-describedby={aiStatusId}>
+        <Icon name="spark" /><span>{e.createWithAi}<small id={aiStatusId}>{e.generationUnavailable}</small></span>
+      </button>}
     </div>
     <div className="studio-object-actions">
       <button type="button" disabled={selectedIndex <= 0} onClick={() => onReorder(-1)}>{c.backward}</button>

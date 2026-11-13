@@ -9,6 +9,11 @@ import { languageSelected } from './store';
 import { isStorefrontPath } from './product/routes';
 import type { LocalCartSession } from './product/cart/localCartSession';
 import GuestCartTransferNotice from './product/cart/GuestCartTransferNotice';
+import CartUndoVisitScope from './product/cart/CartUndoVisitScope';
+import {sharedCatalogMode} from './product/catalog/permanentCatalog';
+import {designLibraryCopy} from './product/designs/designLibraryCopy';
+import {bindGuestDesignLogin} from './product/designs/guestDesignHandoff';
+import {designLibraryPath,isDesignLibraryPath} from './product/routes';
 
 const ProductExperience = lazy(() => import('./product/ProductExperience'));
 const LocalAccountStorefront = lazy(() => import('./product/cart/LocalAccountStorefront'));
@@ -63,7 +68,9 @@ function Login({cartSession}:{cartSession?:LocalCartSession}) {
       HTMLFormElement.prototype.submit.call(form);
     }, cartSession ? async current=>{
       const live=()=>form.isConnected && current();
-      sealed=await cartSession.sealBeforeLogin(live);
+      const draft=sharedCatalogMode?new URLSearchParams(search).get('design'):null;
+      sealed=draft?await cartSession.sealBeforeLogin(live,await bindGuestDesignLogin(draft,live))
+        :await cartSession.sealBeforeLogin(live);
       if (!live()) throw new Error('AUTH_FORM_UNAVAILABLE');
     } : undefined);
   }
@@ -89,8 +96,9 @@ function Login({cartSession}:{cartSession?:LocalCartSession}) {
   </div>;
 }
 
-function Account() {
+function Account({designs=false}:{designs?:boolean}) {
   const t = useCopy();
+  const library=designLibraryCopy[useAppSelector(s=>s.ui.language)];
   const { phase, user } = useAppSelector(state => state.authentication);
   return <>
     <section className="page-intro"><p className="eyebrow">{t.accountEyebrow}</p><h1>{t.accountTitle}</h1><p className="lead">{t.accountLead}</p></section>
@@ -98,6 +106,7 @@ function Account() {
     {phase === 'AUTHENTICATED' && user && <div className="account-grid" data-private-account>
       <section className="panel profile"><h2>{t.profile}</h2>
         <dl><div><dt>{t.userId}</dt><dd>{user.id}</dd></div><div><dt>{t.access}</dt><dd>{t.activeAccess}</dd></div></dl>
+        {designs&&<Link className="text-link" to={designLibraryPath}>{library.title}<span aria-hidden="true">→</span></Link>}
       </section>
       <section className="panel workspace"><span className="empty-mark" aria-hidden="true">+</span><h2>{t.workspaceTitle}</h2><p>{t.workspaceBody}</p><p>{t.workspaceChoice}</p><p className="small workspace-note">{t.workspaceBoundary}</p></section>
     </div>}
@@ -119,7 +128,7 @@ export default function App({ cartSession }: { cartSession?: LocalCartSession } 
   const dispatch = useAppDispatch();
   const t = copy[language];
   const { pathname } = useLocation();
-  const storefront = isStorefrontPath(pathname);
+  const storefront = isStorefrontPath(pathname)||(sharedCatalogMode&&!!cartSession&&isDesignLibraryPath(pathname));
   const previousPath = useRef(pathname);
   const main = useRef<HTMLElement>(null);
   const currentPath = pathname.replace(/\/+$/, '').toLowerCase() || '/';
@@ -138,7 +147,10 @@ export default function App({ cartSession }: { cartSession?: LocalCartSession } 
     if (auth.phase === 'AUTHENTICATED' && auth.owner && auth.user) runtime?.reveal(auth.owner);
   }, [auth, runtime]);
 
-  if (storefront) return <Suspense fallback={<p role="status">Creastrix…</p>}>{cartSession ? <><GuestCartTransferNotice session={cartSession} /><LocalAccountStorefront session={cartSession} /></> : <ProductExperience />}</Suspense>;
+  if (storefront) {
+    const page=<Suspense fallback={<p role="status">Creastrix…</p>}>{cartSession ? <><GuestCartTransferNotice session={cartSession} /><LocalAccountStorefront session={cartSession} /></> : <ProductExperience />}</Suspense>;
+    return <CartUndoVisitScope open={currentPath==='/preview/cart'}>{page}</CartUndoVisitScope>;
+  }
 
   return <div className="shell">
     <a className="skip-link" href="#main">{t.skip}</a>
@@ -151,7 +163,7 @@ export default function App({ cartSession }: { cartSession?: LocalCartSession } 
       </div>
     </header>
     <div className="demo-strip"><span className="badge">{t.pilotLabel}</span><span>{t.pilotBoundary}</span></div>
-    <main id="main" ref={main} tabIndex={-1}><Routes><Route path="/login" element={<Login cartSession={cartSession} />} /><Route path="/confirm-email" element={<ConfirmEmail />} /><Route path="/account" element={<><Account />{cartSession && <GuestCartTransferNotice session={cartSession} />}</>} /><Route path="*" element={<NotFound />} /></Routes></main>
+    <main id="main" ref={main} tabIndex={-1}><Routes><Route path="/login" element={<Login cartSession={cartSession} />} /><Route path="/confirm-email" element={<ConfirmEmail />} /><Route path="/account" element={<><Account designs={sharedCatalogMode&&!!cartSession}/>{cartSession && <GuestCartTransferNotice session={cartSession} />}</>} /><Route path="*" element={<NotFound />} /></Routes></main>
     <footer><span>{t.footer}</span><span>{t.footerNote}</span></footer>
   </div>;
 }

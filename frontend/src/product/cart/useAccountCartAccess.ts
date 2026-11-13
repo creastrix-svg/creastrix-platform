@@ -2,9 +2,10 @@ import { useMemo, useSyncExternalStore } from 'react';
 import type { Binding } from './localCartCommands';
 
 type CartRead<T> =
-  | { kind: 'ready'; ownerId: string; cart: T; binding?: Binding }
+  | { kind: 'ready'; ownerId: string; cart: T; binding?: Binding;version?:string;guestIntent?:string }
   | { kind: 'pending'; ownerId: string; ticket: string }
   | { kind: 'read-unavailable' }
+  | { kind: 'reauth-required' }
   | { kind: 'denied' };
 
 /** The adapter must validate wire data, enforce deadlines and bind both calls to
@@ -17,8 +18,8 @@ export interface AccountCartTransport<T> {
 }
 
 export type AccountCartState<T> =
-  | { phase: 'inactive' | 'opening' | 'recovering' | 'unavailable' | 'read-unavailable' | 'blocked' }
-  | { phase: 'ready'; cart: T; binding?: Binding };
+  | { phase: 'inactive' | 'opening' | 'recovering' | 'unavailable' | 'read-unavailable' | 'reauth-required' | 'blocked' }
+  | { phase: 'ready'; cart: T; binding?: Binding;version?:string;guestIntent?:string };
 
 const inactive = { phase: 'inactive' } as const;
 const opening = { phase: 'opening' } as const;
@@ -38,6 +39,7 @@ export function createAccountCartAccess<T>(
   let started = false;
   const lifetime = new AbortController();
   const listeners = new Set<() => void>();
+  let latestRead=0;
 
   function set(next: AccountCartState<T>) {
     state = next;
@@ -61,17 +63,23 @@ export function createAccountCartAccess<T>(
   }
   async function read(mode: 'initial' | 'refresh' | 'reconcile'): Promise<void> {
     if (!current()) return;
+    const request=++latestRead;
     try {
       const result = await transport.read(lifetime.signal, ticket);
-      if (!current()) return;
+      if (!current() || request!==latestRead) return;
       if (result.kind === 'read-unavailable') {
         retryReadMode = mode === 'reconcile' ? 'reconcile' : 'refresh';
         return set({ phase: 'read-unavailable' });
       }
+      if (result.kind === 'reauth-required') {
+        ticket=undefined;
+        return set({phase:'reauth-required'});
+      }
       if (result.kind === 'denied' || result.ownerId !== ownerId) return stop();
       if (result.kind === 'ready') {
         ticket = undefined;
-        set({ phase: 'ready', cart: result.cart, ...(result.binding ? {binding:result.binding} : {}) });
+        set({ phase:'ready',cart:result.cart,...(result.version!==undefined?{version:result.version}:{}),...(result.binding?{binding:result.binding}:{}),
+          ...(result.guestIntent?{guestIntent:result.guestIntent}:{}) });
       } else if (result.kind === 'pending' && mode === 'initial' && result.ticket) {
         ticket = result.ticket;
         await recover();
@@ -80,7 +88,7 @@ export function createAccountCartAccess<T>(
         // new explicit click may resubmit it; reconciliation itself is a GET.
         set({ phase: 'unavailable' });
       } else stop(); // A recovery acknowledgement cannot lead into a second automatic bind.
-    } catch { stop(); }
+    } catch { if(request===latestRead)stop(); }
   }
   async function recover() {
     const pending = ticket;
@@ -109,6 +117,9 @@ export function createAccountCartAccess<T>(
       return true;
     },
     retry() { if (state.phase === 'unavailable') void recover(); },
+    // Keep the last confirmed rows mounted during an edit and reconcile only
+    // with an owner-verified GET. A later GET wins even if an older one is slow.
+    refreshRows() { return state.phase==='ready' && current()?read('refresh'):Promise.resolve(); },
     retryRead() {
       if (state.phase !== 'read-unavailable' || !current()) return;
       // Take the slot synchronously; a second click or mount cannot repeat it.

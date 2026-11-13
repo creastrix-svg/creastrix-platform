@@ -20,7 +20,7 @@ const loaded = (id: BuiltinStudioFont): LoadedStudioFont => ({ id, family: fonts
 const load = vi.fn((id: BuiltinStudioFont, options?: { signal?: AbortSignal }) => { void options; return Promise.resolve(loaded(id)); });
 beforeEach(() => {
   load.mockReset().mockImplementation(id => Promise.resolve(loaded(id)));
-  vi.spyOn(fonts, 'createStudioFontLibrary').mockReturnValue({ loadBuiltin: load, loadCustom: vi.fn(), dispose: vi.fn() });
+  vi.spyOn(fonts, 'createStudioFontLibrary').mockReturnValue({ findCustom:vi.fn(),loadBuiltin: load, loadCustom: vi.fn(), dispose: vi.fn() });
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => ({ font: '', measureText(this: { font: string }, text: string) { return { width: text.length * parseFloat(this.font) * .6 }; } }) as unknown as CanvasRenderingContext2D);
 });
 function show(product = 'lamp') {
@@ -125,5 +125,6 @@ describe('configured cutting and engraving text', () => {
     expect(screen.queryByRole('button', { name:'Aa ' + p.mono })).toBeNull();
     expect(screen.queryByRole('button', { name: e.aiTab })).toBeNull();
     expect(screen.queryByLabelText(e.uploadFont)).toBeNull();
+    expect(screen.queryByRole('button', { name: e.createWithAi })).toBeNull();
   });
 });

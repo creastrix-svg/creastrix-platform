@@ -12,6 +12,7 @@ import { productCopy } from '../copy';
 import { cartAdded } from '../demoStore';
 import LocalAccountStorefront from './LocalAccountStorefront';
 import { createLocalCartSession } from './localCartSession';
+import {AuthenticationContext,type Authentication} from '../../authentication';
 
 vi.hoisted(() => vi.stubEnv('MODE', 'account-cart-local'));
 vi.mock('@google/model-viewer', () => ({}));
@@ -52,11 +53,13 @@ function fakeApi() {
   const qty = new Map<string,number>(), receipts = new Map<string,{amount:number;version:string}>();
   const calls:{path:string;method:string;init:RequestInit;actor:string}[] = [];
   const controls:{delay?:Promise<void>;holdCsrf?:Promise<void>;dropNextAck?:boolean;loseBeforeCommit?:boolean;
-    withdrawn?:boolean;denyRead?:boolean;context?:string} = {};
+    withdrawn?:boolean;denyRead?:boolean;expired?:boolean;offline?:boolean;context?:string} = {};
   const fetchFor = (actor:string) => vi.fn<typeof fetch>(async (input, init = {}) => {
     const path=String(input), method=init.method ?? 'GET';
     calls.push({path,method,init,actor});
     if(path==='/api/account-cart' && method==='GET') {
+      if(controls.expired)return Response.json({error:'request_not_completed'},{status:409});
+      if(controls.offline)return Response.json({error:'request_not_completed'},{status:503});
       if(controls.denyRead) return Response.json({error:'denied'}, {status:403});
       const count=qty.get(actor) ?? 0;
       return Response.json({kind:'ready',ownerId:actor,namespace,writeContext:controls.context??writeContext,guestIntent:null,cart:count?[
@@ -87,7 +90,7 @@ function fakeApi() {
   return {qty,calls,receipts,controls,fetchFor, posts:()=>calls.filter(c=>c.method==='POST')};
 }
 type Api=ReturnType<typeof fakeApi>;
-function visit(api:Api, actor=a, route=tide) {
+function visit(api:Api, actor=a, route=tide,recover?:()=>Promise<void>) {
   const store=createAppStore('en');
   const owner={document:crypto.randomUUID(),epoch:1,request:1,revision:crypto.randomUUID()};
   store.dispatch(authenticationStarted({owner,phase:'CHECKING',notice:'NONE'}));
@@ -97,7 +100,7 @@ function visit(api:Api, actor=a, route=tide) {
   const guest=store.getState().productDemo.cart;
   const session=createLocalCartSession(store,{isCurrentOwner:other=>sameOwner(other,owner)},api.fetchFor(actor));
   const root=render(<StrictMode><Provider store={store}><MemoryRouter initialEntries={[route]}>
-    <LocalAccountStorefront session={session}/>
+    <AuthenticationContext.Provider value={recover?{recover} as Authentication:null}><LocalAccountStorefront session={session}/></AuthenticationContext.Provider>
   </MemoryRouter></Provider></StrictMode>);
   return {phase:()=>session.getSnapshot()?.access.getSnapshot().phase,
     leaveIdentity:()=>store.dispatch(authenticationStarted({owner:{...owner,epoch:owner.epoch+1,revision:crypto.randomUUID()},phase:'CHECKING',notice:'NONE'})),
@@ -133,6 +136,34 @@ it('credits a signed-in purchase only once, reads server totals, and never posts
     expect(new Set(api.posts().map(r=>r.path)).size).toBe(2);
     cold.guestUntouched();
   } finally {cold.close();}
+});
+
+it.each([tide,cart])('offers intentional fresh sign-in, never a purchase or guest fallback, on a refused cart context at %s',async route=>{
+  const api=fakeApi();api.controls.expired=true;const recover=vi.fn(async()=>{});
+  const page=visit(api,a,route,recover);
+  try{
+    const button=await screen.findByRole('button',{name:'Sign in again'});expect(button).toBeEnabled();
+    expect(screen.queryByRole('button',{name:copy.add})).not.toBeInTheDocument();
+    expect(recover).not.toHaveBeenCalled();expect(api.posts()).toEqual([]);
+    if(route===tide){
+      const plus=screen.getByRole('button',{name:copy.increase}),minus=screen.getByRole('button',{name:copy.decrease});
+      await userEvent.click(plus);await userEvent.click(plus);await userEvent.click(minus);
+      expect(screen.getByRole('textbox',{name:copy.quantity})).toHaveValue('2');
+      expect(api.posts()).toEqual([]);
+    }
+    await userEvent.click(button);expect(recover).toHaveBeenCalledOnce();expect(api.posts()).toEqual([]);page.guestUntouched();
+  }finally{page.close();}
+});
+it('recovers an unavailable cart on the product card by GET, then waits for a separate add click',async()=>{
+  const api=fakeApi();api.controls.offline=true;const page=visit(api);
+  try{
+    const retry=await screen.findByRole('button',{name:'Retry cart access'});
+    await userEvent.click(screen.getByRole('button',{name:copy.increase}));
+    expect(screen.getByRole('textbox',{name:copy.quantity})).toHaveValue('2');
+    api.controls.offline=false;
+    await userEvent.click(retry);const add=await enabledAdd();expect(api.posts()).toEqual([]);
+    await userEvent.click(add);expect(await shownQuantity(2)).toBeVisible();expect(api.posts()).toHaveLength(1);page.guestUntouched();
+  }finally{page.close();}
 });
 
 it('retries an uncertain original action by explicit gesture after remount, even when its commit used all stock',async()=>{

@@ -51,14 +51,14 @@ export default function ProductPurchasePanel(props: Props) {
 
 /** Pure presentation. Guest and account callers have separate state and command paths. */
 export function PurchaseControls({ locale, stock, remaining, requested, inCart, unitCents, onQuantity, onAdd, exhaustedLabel, returnTo,
-  locked=false,frozenQuantity,feedback=null }: Omit<Props,'inCart'> & {inCart:number|string;locked?:boolean;frozenQuantity?:number;feedback?:React.ReactNode}) {
+  locked=false,quantityLocked=locked,frozenQuantity,feedback=null,accessAction }: Omit<Props,'inCart'> & {inCart:number|string;locked?:boolean;quantityLocked?:boolean;frozenQuantity?:number;feedback?:React.ReactNode;accessAction?:React.ReactNode}) {
   remaining = Math.max(0, remaining);
   const t = productCopy[locale], amount = frozenQuantity??Math.min(requested, remaining);
   return <>
     <section className="product-purchase" aria-label={t.add}>
       <div className="product-stock"><strong>{t.stock}: {stock}</strong>{remaining < stock && <span>{remaining === 0 ? exhaustedLabel : `${t.available}: ${remaining}`}</span>}</div>
-      <div className="product-buy-row"><QuantityInput t={t} value={amount} max={remaining} disabled={locked || remaining === 0} onChange={onQuantity} onEmpty={() => onQuantity(1)} />
-        <button type="button" className="product-primary" disabled={locked || remaining === 0} onClick={() => onAdd(amount)}><Icon name="bag" />{t.add}</button></div>
+      <div className="product-buy-row"><QuantityInput t={t} value={amount} max={remaining} disabled={quantityLocked || remaining === 0} onChange={onQuantity} onEmpty={() => onQuantity(1)} />
+        {accessAction??<button type="button" className="product-primary" disabled={locked || remaining === 0} onClick={() => onAdd(amount)}><Icon name="bag" />{t.add}</button>}</div>
       <div className="product-subtotal"><span>{t.subtotal} · {amount} × {money(unitCents, locale)}</span><strong>{money(unitCents * amount, locale)}</strong></div>
     </section>
     <div className="product-buy-feedback" role="status">{feedback}{String(inCart)!=='0' && <><Icon name="check" /><span>{t.alreadyInCart.replace('{n}', String(inCart))}</span><Link to="/preview/cart" state={returnTo ? { cartReturnTo: returnTo } : undefined}>{t.viewCart}</Link></>}</div>

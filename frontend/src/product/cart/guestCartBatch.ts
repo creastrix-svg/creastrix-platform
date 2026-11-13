@@ -188,13 +188,14 @@ function heldCart(intent:string,lines:unknown[],d:Record<string,unknown>) {
 /** Only the guest login form can detach current. Never put the UUID of an
  * older orphan into a new login. If the form or callback dies after commit,
  * the next buyer starts with a separate editable guest partition. */
-export async function sealGuestCart(stillCurrent:()=>boolean):Promise<string|null> {
+export async function sealGuestCart(stillCurrent:()=>boolean,designLoginIntent?:string):Promise<string|null> {
+  if(designLoginIntent!==undefined && !uuid.test(designLoginIntent))return fail('UNPROVEN');
   const result=await run(null,stillCurrent,'readwrite','current',(raw,_pending,store)=>{
     if(raw===undefined) {
       // Fence an unsaved edit in another document whose CAS baseline is null.
       // An empty sign-in still must not leave that old baseline publishable.
       store.put(emptyGuestPartition(),'current');
-      return {intent:null,changed:true};
+      return {intent:designLoginIntent??null,changed:true};
     }
     if(typeof raw!=='string') return fail('UNSUPPORTED');
     const eligible=isolateLegacyCart(raw,store,MAX_LOCAL_DESIGN_CHARS);
@@ -209,9 +210,9 @@ export async function sealGuestCart(stillCurrent:()=>boolean):Promise<string|nul
         if(empty.length>MAX_LOCAL_DESIGN_CHARS) return fail('UNSUPPORTED');
         store.put(empty,'current');
       }
-      return {intent:null,changed:true};
+      return {intent:designLoginIntent??null,changed:true};
     }
-    const intent=crypto.randomUUID();
+    const intent=designLoginIntent??crypto.randomUUID();
     const held=heldCart(intent,lines,data);
     const next=emptyGuestPartition();
     if(next.length>MAX_LOCAL_DESIGN_CHARS) return fail('UNSUPPORTED');

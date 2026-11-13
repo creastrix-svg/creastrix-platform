@@ -26,6 +26,13 @@ beforeEach(() => {
   vi.stubGlobal('FontFace', class { async load() { return this; } });
 });
 afterEach(() => { for (const fonts of libraries.splice(0)) fonts.dispose(); vi.unstubAllGlobals(); });
+it('keeps the saved drawable PNG when a second canvas encoding gives an empty URL',async()=>{
+  const src=png(), saved=readDesign({objects:[{id:'studio-object-1',kind:'image',fit:'contain',
+    value:{x:240,y:278,size:80,image:{src,aspect:1}}}]});
+  vi.mocked(HTMLCanvasElement.prototype.toDataURL).mockReturnValue('data:,');
+  const doc=await loadDesign(saved);
+  expect(doc.objects[0].value).toMatchObject({image:{src,aspect:1}});
+});
 it('restores current/applied designs for every zone, but no undo history; new IDs exceed restored IDs', async () => {
   const state = initialStudioComposition();
   const doc = { selectedId: 'studio-object-70', objects: [{ id: 'studio-object-70', kind: 'text' as const, value: { ...defaultLettering('lamp-panel'), text: 'PANEL' } }] };

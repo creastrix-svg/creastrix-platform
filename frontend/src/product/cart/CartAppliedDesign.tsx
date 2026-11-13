@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { firstLettering, type StudioObject } from '../studio/design/studioComposition';
 import { createStudioFontLibrary } from '../studio/design/studioFonts';
 import LetteringSketch from '../studio/preview/LetteringSketch';
@@ -12,8 +12,9 @@ import {readPrivateCartDesign} from './readPrivateCartDesign';
 
 // Account preview owns a fresh, short-lived font library. Private objects
 // never enter the guest editor, Redux, IndexedDB or any public catalog cache.
-export default function CartAppliedDesign({admission,lineId,variant,sku=variant,swatch,secondSwatch,flat=false}:{
+export default function CartAppliedDesign({admission,lineId,variant,sku=variant,swatch,secondSwatch,flat=false,children}:{
   admission:AccountCartAdmission;lineId:string;variant:VariantId;sku?:string;swatch?:string;secondSwatch?:string;flat?:boolean;
+  children?:(preview:ReactNode,control:ReactNode)=>ReactNode;
 }) {
   const locale=useProductLocale(), label=designLabels[locale][0];
   const active=useRef<AbortController|null>(null), fonts=useRef<ReturnType<typeof createStudioFontLibrary>|null>(null);
@@ -35,13 +36,12 @@ export default function CartAppliedDesign({admission,lineId,variant,sku=variant,
       if(current()) { active.current=null;setState('failed'); }
     }
   }
-  return <div data-applied-design>{Array.isArray(state)
-    ? <div data-private-design-preview className="product-design-thumbnail">
+  const preview=Array.isArray(state) ? <div data-private-design-preview className="product-design-thumbnail">
         {flat ? <FlatSurfaceSketch fill={swatch??'#89918d'} objects={state} label={label}/>
           : <LetteringSketch variant={variant} colors={swatch && secondSwatch ? [swatch,secondSwatch] : [swatch??'#89918d']}
               objects={state} value={firstLettering({objects:state,selectedId:null},variant)} label={label} detail/>}
-      </div>
-    : <>{state==='failed' && <span role="status">{accountProductLabels[locale][2]} · </span>}
-      <button type="button" className="product-text-button" disabled={state==='reading'} onClick={()=>void show()}>{label}</button></>}
-  </div>;
+      </div> : null;
+  const control=preview?null:<>{state==='failed' && <span role="status">{accountProductLabels[locale][2]} · </span>}
+      <button type="button" className="product-text-button" disabled={state==='reading'} onClick={()=>void show()}>{label}</button></>;
+  return children?children(preview,control):<div data-applied-design>{preview??control}</div>;
 }

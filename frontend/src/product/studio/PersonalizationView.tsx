@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import { isVariantId, variantById } from '../fixtures/loop';
 import { readCartSku } from '../fixtures/cartSkus';
-import type {CatalogProduct,CatalogVariant} from '../catalog/localCatalog';
+import {connectedSku,type CatalogProduct,type CatalogVariant} from '../catalog/localCatalog';
 import {FlatSurfaceSketch} from './preview/FlatSurfaceSketch';
 import { money } from '../productDisplay';
 import { loopPrice, loopDesignFee } from '../loopPricing';
@@ -33,7 +33,11 @@ import { useDesignDocument } from './session/useDesignDocument';
 import { studioCartCopy } from '../cart/studioCartCopy';
 import { GuestCartActionsEnabled } from '../cart/guestCartActions';
 import { ReadOnlyCartNotice } from '../detail/ProductPurchasePanel';
-import { permanentCatalogMode } from '../catalog/permanentCatalog';
+import { permanentCatalogMode,sharedCatalogMode } from '../catalog/permanentCatalog';
+import {LoadLibraryStudio,MissingLibraryDesign,SaveLibraryDesign} from '../designs/LibraryStudio';
+import {editorScope,isLibraryId} from '../designs/designLibraryApi';
+import GuestDesignSave from '../designs/GuestDesignSave';
+import {projectAccountDesign} from '../cart/appliedLoopDesign';
 import { accountDesignNote, designFontHint, designLabels } from '../cart/accountProductLabels';
 import {AccountPurchaseContext} from '../cart/accountPurchaseContext';
 import { isLoopV2Font, loopV2Fonts } from './design/loopV2Fonts';
@@ -97,13 +101,15 @@ export default function PersonalizationView() {
   const initialProduct = products.length === 1 && products[0] === 'lamp' ? 'lamp' : 'loop';
   if(initialProduct==='loop' && permanentCatalogMode && !readCartSku(variant).acceptsDesign)return <NotFoundView/>;
   const editing = params.getAll('edit');
+  if(params.has('savedDesign') && (editing.length || products.length && initialProduct!=='loop' || values.length!==1 ||
+    params.has('accountLine')||params.has('cartLine')))return <MissingLibraryDesign/>;
   if (editing.length) {
     if (!guestActions) return <ReadOnlyCartNotice />;
     const validTarget = editing.length === 1 && (values.length === 0 || (values.length === 1 && isVariantId(values[0])))
       && (products.length === 0 || (products.length === 1 && products[0] === 'loop'));
     return <CartEditor key={editing[0]} id={validTarget ? editing[0] : ''} expectedVariant={values[0]} />;
   }
-  return <Studio key={variant + initialProduct} variant={variant} initialProduct={initialProduct} />;
+  return <StudioEntry key={variant + initialProduct} variant={variant} initialProduct={initialProduct} />;
 }
 
 function CartEditor({ id, expectedVariant }: { id: string; expectedVariant?: string }) {
@@ -131,10 +137,30 @@ function CartEditorSession({ line, document }: { line: CartLine<VariantId>; docu
 
 type PublishedSurface={offer:CatalogProduct;finish:CatalogVariant};
 export function PublishedSurfaceEditor({offer,finish}:PublishedSurface){
-  return <Studio variant="cobalt" initialProduct="loop" surface={{offer,finish}}/>;
+  return <StudioEntry key={finish.sku} variant="cobalt" initialProduct="loop" surface={{offer,finish}}/>;
 }
-function Studio({ variant, initialProduct, onSave,surface }: { variant: VariantId; initialProduct: StudioProductId;
-  onSave?: (objects: readonly StudioObject[]) => void;surface?:PublishedSurface }) {
+type StudioEntryProps={variant:VariantId;initialProduct:StudioProductId;surface?:PublishedSurface};
+function StudioEntry(props:StudioEntryProps){
+  const admission=useContext(AccountPurchaseContext),[params,setParams]=useSearchParams();
+  const [createdHere,setCreatedHere]=useState<{id:string;scope:string}>();
+  const ids=params.getAll('savedDesign'),sku=props.surface?.finish.sku??props.variant;
+  const item=props.surface??(()=>{const ref=connectedSku(sku);return ref&&{offer:ref.product,finish:ref.variant};})();
+  const created=(id:string)=>{
+    if(!admission)return;
+    setCreatedHere({id,scope:editorScope(admission)});const next=new URLSearchParams(params);next.set('savedDesign',id);next.set('variant',item?.finish.id??props.variant);
+    setParams(next,{replace:true,preventScrollReset:true});
+  };
+  if(ids.length){
+    if(!sharedCatalogMode||!admission||ids.length!==1||!isLibraryId(ids[0])||!item||!item.offer.personalizable
+      ||params.getAll('variant').length!==1||params.get('variant')!==item.finish.id||params.has('accountLine')||item.finish.studioFormat!=='surface-print-v1'||item.finish.templateRevision!=='2')
+      return <MissingLibraryDesign/>;
+    if(createdHere?.id!==ids[0]||createdHere.scope!==editorScope(admission))return <LoadLibraryStudio key={ids[0]} id={ids[0]} admission={admission} slot={props.variant}
+      sku={sku} variantId={item.finish.id} offerId={item.offer.id}>{version=><Studio {...props} original={{id:ids[0],version}}/>}</LoadLibraryStudio>;
+  }
+  return <Studio {...props} onCreated={created}/>;
+}
+function Studio({ variant, initialProduct, onSave,surface,original:libraryItem,onCreated }: StudioEntryProps & {
+  onSave?: (objects: readonly StudioObject[]) => void;original?:{id:string;version:string};onCreated?:(id:string)=>void }) {
   const language = useProductLocale(), p = personalizationCopy[language], t = productCopy[language], color = surface?.finish??variantById(variant);
   const e = studioExtensionCopy[language], z = studioZoneCopy[language], creative = useStudioCreative();
   const example = initialProduct;
@@ -241,10 +267,19 @@ function Studio({ variant, initialProduct, onSave,surface }: { variant: VariantI
   // complete draft is stored only when the user edits; rendering has no writes.
   const hasContent = baseDocument.objects.some(object => object.kind === 'text' ? !!object.value.text.trim() : !!object.value.image);
   const valid = available && (hasContent || example === 'lamp') && !wholeIssue;
+  const dbVariant=surface?.finish??(sharedCatalogMode && example==='loop'?connectedSku(variant)?.variant:undefined);
+  const libraryEligible=sharedCatalogMode && !onSave && example==='loop' && dbVariant?.studioFormat==='surface-print-v1' && dbVariant.templateRevision==='2';
+  const snapshotForLibrary=()=>{
+    if(!valid||!libraryEligible||!dbVariant)throw Error('DESIGN_LIBRARY_INVALID');
+    const saved=saveDesign({...baseDocument,objects:baseInspected.objects});
+    if(!saved)throw Error('DESIGN_LIBRARY_INVALID');
+    return projectAccountDesign(dbVariant.sku,dbVariant.templateRevision,saved);
+  };
   const priceCopy = loopPricingCopy[language];
   // Only an intentionally empty cart draft may convert the line to a plain SKU;
   // a failed validation or an image still being loaded must never remove a design.
-  const clearingLine = !!onSave && available && !hasContent && !wholeIssue && imageStatus !== 'pending';
+  const resolvingImage = imageStatus === 'choosing' || imageStatus === 'pending';
+  const clearingLine = !!onSave && available && !hasContent && !wholeIssue && !resolvingImage;
   const quote = example === 'loop' && (valid || clearingLine || (!onSave && !hasContent)) ? surface
     ? {baseCents:surface.finish.cents,feeCents:valid?surface.offer.designFeeCents:0,unitCents:surface.finish.cents+(valid?surface.offer.designFeeCents:0)}
     : loopPrice(variant, valid) : undefined;
@@ -281,7 +316,8 @@ function Studio({ variant, initialProduct, onSave,surface }: { variant: VariantI
     setAppliedMessage(false);
   };
   const pendingImage = imageStatus === 'pending';
-  const imageError = imageStatus === 'size' ? e.imageTooLarge : imageStatus === 'type' ? e.imageType : imageStatus === 'decode' ? e.imageError : '';
+  const imageError = ({size:e.imageTooLarge,dimensions:e.imageDimensions,empty:e.imageEmptyFile,type:e.imageType,
+    decode:e.imageError,chooseAgain:e.imageChooseAgain,added:'',replaced:'',idle:'',pending:'',choosing:''})[imageStatus];
   const pickImage = (mode: 'add' | 'replace') => {
     if (!zone || !canUseStudioTool(profile, zone.id, 'image') || pendingImage) return;
     if (mode === 'add' ? document.objects.length >= MAX_STUDIO_OBJECTS : selected?.kind !== 'image') return;
@@ -294,6 +330,10 @@ function Studio({ variant, initialProduct, onSave,surface }: { variant: VariantI
   };
   const chooseTool = (next: StudioTool) => {
     if (!zone || !canUseStudioTool(profile, zone.id, next) || onSave && next === 'ai') return;
+    if (next === 'image' && !document.objects.some(item=>item.kind==='image')) {
+      pickImage('add');
+      return;
+    }
     if (tool === next && (next !== 'text' || selected?.kind === 'text')) return;
     if (next === 'text' || next === 'image') {
       const object = selected?.kind === next ? selected : document.objects.find(item => item.kind === next);
@@ -343,6 +383,7 @@ function Studio({ variant, initialProduct, onSave,surface }: { variant: VariantI
     setAppliedMessage(false);
   }
   function apply() {
+    if (resolvingImage) return;
     if (clearingLine && onSave) { onSave([]); return; }
     if (!valid) { input.current?.focus(); return; }
     if (onSave) { onSave(baseInspected.objects); return; }
@@ -371,13 +412,13 @@ function Studio({ variant, initialProduct, onSave,surface }: { variant: VariantI
         {profile.zones.length > 1 ? <div className="studio-zone-picker" role="group" aria-label={z.zoneLabel}>{profile.zones.map(item => <button type="button" key={item.id} aria-pressed={zone.id === item.id} onClick={() => chooseZone(item.id)}><Icon name={item.id === 'panel' ? 'layers' : 'cube'} /><span>{z.zoneNames[item.id]}<small>{z.operations[item.operation]}</small></span>{zone.id === item.id && <Icon name="check" />}</button>)}</div> : <div className="studio-single-zone"><Icon name="layers" /><strong>{z.zoneNames[zone.id]}</strong><span>{z.operations[zone.operation]}</span></div>}
         <p className="studio-zone-hint">{z.zoneHints[zone.id]}</p>
         {zone.visualComposition && <p className="studio-pattern-note">{c.panelPreview}</p>}
-        <StudioObjectTools objects={document.objects} selectedId={document.selectedId} onSelect={selectObject} canAddText={zone.tools.includes('text')} canAddImage={zone.tools.includes('image')} imagePending={pendingImage} imageHintId={id + '-image-hint'} onAdd={kind => { if (kind === 'image') { pickImage('add'); return; } leaveZone(); setSelectedTool('text'); dispatch({ type: 'add', variant: target, kind: 'text' }); }} onDelete={() => { if (selected) { leaveZone(); dispatch({ type: 'delete', variant: target, id: selected.id }); } }} onReorder={direction => { if (selected) { endGroup(); dispatch({ type: 'reorder', variant: target, id: selected.id, direction }); setAppliedMessage(false); } }} />
+        <StudioObjectTools objects={document.objects} selectedId={document.selectedId} onSelect={selectObject} canAddText={zone.tools.includes('text')} canAddImage={zone.tools.includes('image')} showAiGeneration={zone.showAiGeneration} imagePending={pendingImage} imageHintId={id + '-image-hint'} onAdd={kind => { if (kind === 'image') { pickImage('add'); return; } leaveZone(); setSelectedTool('text'); dispatch({ type: 'add', variant: target, kind: 'text' }); }} onDelete={() => { if (selected) { leaveZone(); dispatch({ type: 'delete', variant: target, id: selected.id }); } }} onReorder={direction => { if (selected) { endGroup(); dispatch({ type: 'reorder', variant: target, id: selected.id, direction }); setAppliedMessage(false); } }} />
         {canUseStudioTool(profile, zone.id, 'image') && <div className="studio-image-feedback">
-          <input hidden type="file" ref={imageInput} accept="image/png,image/jpeg,image/webp" aria-label={e.uploadImage} disabled={pendingImage} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void acceptImageFile(file); }} />
+          <input hidden type="file" ref={imageInput} accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" aria-label={e.uploadImage} disabled={pendingImage} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void acceptImageFile(file); }} />
           <p id={id + '-image-hint'}>{e.imageFormats}. {privateStudio ? accountDesignNote[language] : permanentCatalogMode ? designLabels[language][1] : e.imageLocalOnly}</p>
           <div className="studio-upload-message" role={imageError ? 'alert' : 'status'}>{imageError || (pendingImage ? c.loadingImage : imageStatus === 'added' ? e.imageLoaded : imageStatus === 'replaced' ? e.imageReplaced : '')}</div>
         </div>}
-        {zone.tools.length > 1 && <div className="studio-tool-tabs" role="group" aria-label={p.eyebrow}>{zone.tools.filter(tab => !onSave || tab !== 'ai').map(tab => <button type="button" key={tab} disabled={tab === 'image' && !document.objects.some(object => object.kind === 'image')} aria-pressed={tool === tab} onClick={() => chooseTool(tab)}><Icon name={toolIcon(tab)} />{toolLabel(tab)}</button>)}</div>}
+        {zone.tools.length > 1 && <div className="studio-tool-tabs" role="group" aria-label={p.eyebrow}>{zone.tools.filter(tab => !onSave || tab !== 'ai').map(tab => <button type="button" key={tab} disabled={tab === 'image' && !document.objects.some(object => object.kind === 'image') && (pendingImage || document.objects.length >= MAX_STUDIO_OBJECTS)} aria-pressed={tool === tab} onClick={() => chooseTool(tab)}><Icon name={toolIcon(tab)} />{toolLabel(tab)}</button>)}</div>}
         <div className="studio-panel-heading"><h2>{tool === 'text' ? cutText ? z.cutTextLabel : p.textLabel : tool ? toolLabel(tool) : ''}</h2><div className="studio-history"><button type="button" className="product-icon-button" aria-label={p.undo} title={p.undo} disabled={!history.past.length} onClick={() => { leaveZone(); dispatch({ type: 'undo', variant: target }); }}><Icon name="rotateLeft" /></button><button type="button" className="product-icon-button" aria-label={p.redo} title={p.redo} disabled={!history.future.length} onClick={() => { leaveZone(); dispatch({ type: 'redo', variant: target }); }}><Icon name="rotateRight" /></button></div></div>
         <button type="button" className="studio-mobile-preview" onClick={() => setExpanded(true)} aria-label={p.preview}>{surface ? <FlatSurfaceSketch label={p.preview} fill={color.colors[0]} objects={baseInspected.objects}/> : example === 'lamp' ? <LampZoneSketch value={basePreview} panelText={panelPreview} baseObjects={baseInspected.objects} panelObjects={panelInspected.objects} draft={lampDraft} zone={zone.id === 'panel' ? 'panel' : 'base'} label={p.preview} /> : <LetteringSketch variant={variant} {...loopPreviewContent(shown, baseInspected.objects, firstArtwork(baseDocument), compare)} label={p.preview} />}<span>{p.preview}<Icon name="expand" /></span></button>
         {surface && expanded && <Modal title={p.preview} closeLabel={t.close} onClose={()=>setExpanded(false)}>{flat}</Modal>}
@@ -405,7 +446,9 @@ function Studio({ variant, initialProduct, onSave,surface }: { variant: VariantI
             {quote && <div><span>{priceCopy.unitTotal}</span><strong>{money(quote.unitCents, language)}</strong></div>}
             <small>{quote?.feeCents ? <>{priceCopy.base}: {money(quote.baseCents, language)} · {priceCopy.fee(money(quote.feeCents, language))}</> : clearingLine ? e.withoutDesign : priceCopy.from(money(surface?.offer.designFeeCents??loopDesignFee(), language))}</small>
           </div>}
-          <button type="button" className="product-primary" disabled={(!valid && !clearingLine) || !dirty} onClick={apply}><Icon name={applied && !dirty ? 'check' : 'spark'} />{clearingLine ? e.removeDesign : onSave ? cartCopy.save : applied && !dirty ? p.applied : p.apply}<Icon name="arrow" /></button>
+          <button type="button" className="product-primary" disabled={resolvingImage || (!valid && !clearingLine) || !dirty} onClick={apply}><Icon name={applied && !dirty ? 'check' : 'spark'} />{clearingLine ? e.removeDesign : onSave ? cartCopy.save : applied && !dirty ? p.applied : p.apply}<Icon name="arrow" /></button>
+          {libraryEligible && (privateStudio ? <SaveLibraryDesign admission={privateStudio} doc={baseDocument} original={libraryItem} onCreated={onCreated}
+            enabled={valid&&!resolvingImage} snapshot={snapshotForLibrary}/> : <GuestDesignSave sku={dbVariant.sku} enabled={valid&&!resolvingImage} snapshot={snapshotForLibrary}/>)}
           <div className="studio-apply-status" role="status">{appliedMessage ? <><Icon name="check" />{example === 'lamp' ? e.artworkApplied : p.completed}</> : clearingLine ? p.changes : !valid ? wholeIssue || (zone.tools.includes('image') ? p.textRequired : p.textOnlyRequired) : applied && !dirty ? p.applied : p.changes}</div>
           {tool === 'text' && <div className="studio-panel-bottom"><button type="button" className="product-text-button" disabled={sameLettering(value, defaultLettering(target))} onClick={() => setResetOpen(true)}>{p.reset}</button></div>}
         </div>

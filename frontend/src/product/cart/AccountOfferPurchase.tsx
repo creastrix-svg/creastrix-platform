@@ -13,15 +13,22 @@ import {projectAccountDesign} from './appliedLoopDesign';
 import {accountProductLabels} from './accountProductLabels';
 
 import {directAdditionCopy as labels} from './directAdditionCopy';
+import {CartSignInAgain} from './CartAccessAction';
+import {useCartAccessLabels} from './cartAccessLabels';
 
 export function AccountOfferPurchase({admission,writer,offerId,variant,returnTo,design,unitCents=variant.cents}:{
   admission:AccountCartAdmission;writer:DirectCartAdditions;offerId:string;variant:CatalogVariant;returnTo:string;
   design?:SavedDesign;unitCents?:number;
 }) {
   const locale=useProductLocale(), t=productCopy[locale], l=labels[locale];
-  const {state}=useAccountCartAccess(admission.access);
+  const {state,retry:retryBinding,retryRead}=useAccountCartAccess(admission.access);
+  const [,signInHint,retryAccess]=useCartAccessLabels();
   const binding=state.phase==='ready'?state.binding:undefined;
-  const [quantity,setQuantity]=useState(1);
+  const [quantity,setQuantity]=useState(()=>admission.quantityDraft?.get(variant.sku)??1);
+  function selectQuantity(next:number){
+    admission.quantityDraft?.set(variant.sku,next);
+    setQuantity(next);
+  }
   // null means a design exists but cannot be represented. Never substitute
   // an undecorated product, even if the plain variant is available.
   const projection=useMemo(()=>{
@@ -39,11 +46,15 @@ export function AccountOfferPurchase({admission,writer,offerId,variant,returnTo,
   const status=useSyncExternalStore(writer.subscribe,writer.getSnapshot,writer.getSnapshot);
   useLayoutEffect(()=>{if(binding)writer.open(binding,variant.sku);},[binding,writer,variant.sku]);
   if(state.phase!=='ready'||!binding||binding.ownerId!==admission.userId) {
+    const attempt=state.phase==='unavailable'?retryBinding:state.phase==='read-unavailable'?retryRead:null;
     return <PurchaseControls locale={locale} stock={variant.stock} remaining={variant.stock} requested={quantity}
-      inCart={0} unitCents={unitCents} locked onQuantity={()=>{}} onAdd={()=>{}} exhaustedLabel={t.allInCart}
-      feedback={<><span>{state.phase==='opening'?l[0]:l[1]}</span><Link to="/preview/cart">{t.viewCart}</Link></>}/>;
+      inCart={0} unitCents={unitCents} locked quantityLocked={false} onQuantity={selectQuantity} onAdd={()=>{}} exhaustedLabel={t.allInCart}
+      accessAction={state.phase==='reauth-required'?<CartSignInAgain admission={admission}/>:attempt?
+        <button type="button" className="product-primary" onClick={attempt}>{retryAccess}</button>:undefined}
+      feedback={<><span>{state.phase==='reauth-required'?signInHint:state.phase==='opening'||state.phase==='recovering'?l[0]:l[1]}</span>
+        {state.phase!=='reauth-required'&&<Link to="/preview/cart">{t.viewCart}</Link>}</>}/>;
   }
-  const matching=state.cart.filter(line=>line.product?.offerId===offerId && line.product.variantId===variant.id);
+  const matching=state.cart.filter(line=>!line.removed && line.product?.offerId===offerId && line.product.variantId===variant.id);
   const total=matching.reduce((sum,line)=>sum+BigInt(line.quantity),0n);
   const plain=matching.reduce((sum,line)=>sum+(line.designLabel===null?BigInt(line.quantity):0n),0n);
   const exact=projection ? matching.find(line=>hashed?.source===projection && line.lineId===writer.lineFor(binding,variant.sku,hashed.digest))?.quantity??'0' : String(design?0:plain);
@@ -54,9 +65,9 @@ export function AccountOfferPurchase({admission,writer,offerId,variant,returnTo,
     if((replay || projection!==null) && admission.access.ownsDisplay()
         && await writer.submit(binding,variant.sku,amount,replay,projection??undefined))setQuantity(1);
   };
-  return <PurchaseControls locale={locale} stock={variant.stock} remaining={remaining} requested={quantity} onQuantity={setQuantity}
+  return <PurchaseControls locale={locale} stock={variant.stock} remaining={remaining} requested={quantity} onQuantity={selectQuantity}
     inCart={exact} unitCents={unitCents} onAdd={amount=>void add(amount,false)} exhaustedLabel={t.allInCart}
-    locked={projection===null || (phase!=='ready'&&phase!=='rejected')} frozenQuantity={retry||phase==='sending'?status.quantity:undefined}
+    locked={projection===null || (phase!=='ready'&&phase!=='rejected')} quantityLocked={retry||phase==='sending'} frozenQuantity={retry||phase==='sending'?status.quantity:undefined}
     returnTo={returnTo} feedback={<>
       {phase==='sending' && <span>{l[2]}</span>}
       {phase==='rejected' && <span>{l[5]}</span>}

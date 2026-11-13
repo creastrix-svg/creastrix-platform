@@ -6,6 +6,14 @@ import type {AppliedLoopDesign} from './appliedLoopDesign';
  * at most on the next use. A committed write, not a request-success event,
  * is what permits the sender to start network I/O. */
 export function pendingDesignFile(key:string,action:'put'|'get'|'remove',design?:AppliedLoopDesign):Promise<AppliedLoopDesign|undefined> {
+  return temporaryFile(key,action,design);
+}
+/** Guest library pointers live per tab, but tabs may be duplicated. The
+ * browser-wide read/write transaction binds the file to exactly one login. */
+export function guestLibraryFile(id:string,action:'put'|'reserve'|'readBound'|'discard',login?:string,design?:AppliedLoopDesign){
+  return temporaryFile('guest-library:'+id,action,design,login);
+}
+function temporaryFile(key:string,action:'put'|'get'|'remove'|'reserve'|'readBound'|'discard',design?:AppliedLoopDesign,login?:string):Promise<AppliedLoopDesign|undefined>{
   return new Promise((resolve,reject)=>{
     const now=Date.now(), req=indexedDB.open('creastrix-local-account-cart-outbox',1);
     let done=false, db:IDBDatabase|undefined, tx:IDBTransaction|undefined, result:AppliedLoopDesign|undefined;
@@ -22,7 +30,16 @@ export function pendingDesignFile(key:string,action:'put'|'get'|'remove',design?
         expired.onsuccess=()=>{const cursor=expired.result;if(cursor){files.delete(cursor.primaryKey);cursor.continue();}};
         if(action==='put')files.put({design,expires:now+86400000},key);
         else if(action==='remove')files.delete(key);
-        else {const read=files.get(key);read.onsuccess=()=>{if(read.result?.expires>now)result=read.result.design;};}
+        else {const read=files.get(key);read.onsuccess=()=>{
+          const file=read.result;
+          if(!(file?.expires>now))return;
+          if(action==='reserve'){
+            if(file.login!==undefined||!login)return;
+            files.put({...file,login},key);result=file.design;
+          }else if(action==='discard'){
+            if(file.login===login)files.delete(key);
+          }else if(action==='get'||(login&&file.login===login))result=file.design;
+        };}
       } catch {finish(false);}
     };
   });

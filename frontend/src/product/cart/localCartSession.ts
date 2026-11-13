@@ -6,10 +6,16 @@ import { accountCartHttp } from './accountCartHttp';
 import { guestCartTransfer, type TransferPhase } from './guestCartTransfer';
 import { sealGuestCart } from './guestCartBatch';
 import { createDirectCartAdditions, type DirectCartAdditions } from './directCartAdditions';
+import {localCartCommands} from './localCartCommands';
+import {sharedCatalogMode} from '../catalog/permanentCatalog';
+import {createStudioChooserContinuity} from '../studio/session/studioChooserContinuity';
+import {createAccountQuantityDrafts} from './accountQuantityDrafts';
 
 /** One reader per verified document admission, not per React render or route. */
 export function createLocalCartSession(store: AppStore, auth: Pick<Authentication,'isCurrentOwner'>, fetcher: typeof fetch) {
   let active: AccountCartAdmission | null = null;
+  const chooser=createStudioChooserContinuity(()=>store.getState().authentication,auth.isCurrentOwner);
+  const quantities=createAccountQuantityDrafts();
   let transfer: ReturnType<typeof guestCartTransfer>|null = null;
   let direct:DirectCartAdditions|null=null;
   let state:TransferPhase = 'idle';
@@ -17,6 +23,8 @@ export function createLocalCartSession(store: AppStore, auth: Pick<Authenticatio
   const notify = () => { for (const listener of listeners) listener(); };
   const synchronize = () => {
     const now = store.getState().authentication;
+    quantities.observe(now);
+    chooser.transition(now,active);
     if (active && now.phase === 'AUTHENTICATED' && sameOwner(now.owner, active.owner) && now.user?.id === active.userId) return;
     const previous = active;
     active = null;
@@ -31,11 +39,14 @@ export function createLocalCartSession(store: AppStore, auth: Pick<Authenticatio
       }};
       try {
         const http = accountCartHttp(fetcher,guard);
-        const refresh=()=>{
+        const edit=sharedCatalogMode?localCartCommands(fetcher,guard).editLine:undefined;
+        const quantityDraft=quantities.bind(owner,guard.owns);
+        const refresh=(creditedSku?:string)=>{
           if (!guard.owns()) return;
+          if(creditedSku)quantityDraft.set(creditedSku,1);
           // A pre-import GET may still be in flight. Retire its entire handle;
           // no old result can replace the post-receipt current-cart read.
-          active?.dispose(); active = bindAccountCartReader(store,http,auth,direct??undefined); notify();
+          active?.dispose(); active = bindAccountCartReader(store,http,auth,direct??undefined,edit,quantityDraft); notify();
         };
         direct=createDirectCartAdditions(fetcher,guard,refresh);
         const task = guestCartTransfer(fetcher,guard,next => { state = next; notify(); },refresh);
@@ -48,7 +59,7 @@ export function createLocalCartSession(store: AppStore, auth: Pick<Authenticatio
             return !signal.aborted && guard.owns() ? result : {kind:'denied' as const};
           },
         };
-        active = bindAccountCartReader(store, transport, auth, direct);
+        active = bindAccountCartReader(store, transport, auth, direct,edit,quantityDraft);
         transfer = task;
         void task.run();
       }
@@ -63,12 +74,13 @@ export function createLocalCartSession(store: AppStore, auth: Pick<Authenticatio
   const unsubscribe = store.subscribe(synchronize);
   synchronize();
   return {
+    studioChooser:chooser,
     sealBeforeLogin:sealGuestCart,
     getSnapshot: () => active,
     getTransferSnapshot:() => state,
     retryTransfer:() => { if (state === 'pending' || state === 'binding') void transfer?.run(); },
     subscribe(notify: () => void) { listeners.add(notify); return () => { listeners.delete(notify); }; },
-    dispose() { unsubscribe(); transfer?.dispose(); direct?.dispose(); active?.dispose(); active = null; listeners.clear(); },
+    dispose() { quantities.clear();chooser.dispose();unsubscribe(); transfer?.dispose(); direct?.dispose(); active?.dispose(); active = null; listeners.clear(); },
   };
 }
 export type LocalCartSession = ReturnType<typeof createLocalCartSession>;

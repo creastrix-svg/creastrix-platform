@@ -11,6 +11,9 @@ import { isLoopFinish } from './appliedLoopDesign';
 import CartAppliedDesign from './CartAppliedDesign';
 import { permanentCatalogMode, sharedCatalogMode } from '../catalog/permanentCatalog';
 import { PendingDirectAdditions } from './PendingDirectAdditions';
+import {AccountCartItems} from './AccountCartItems';
+import {CartSignInAgain} from './CartAccessAction';
+import {useCartAccessLabels} from './cartAccessLabels';
 
 // Pending or denied access is not an empty cart. Only a confirmed read can display lines.
 const messages = {
@@ -27,9 +30,13 @@ export default function AccountCartView({ admission }: { admission: AccountCartA
   const auth = useAppSelector(state => state.authentication);
   const locale = useProductLocale(), t = productCopy[locale];
   const [opening, unavailable, retryLabel, retryReadLabel] = messages[locale];
+  const [,signInHint]=useCartAccessLabels();
   const matches = auth.phase === 'AUTHENTICATED' && auth.user?.id === admission.userId
     && sameOwner(auth.owner, admission.owner);
   const { state, retry, retryRead } = useAccountCartAccess(matches ? admission.access : null);
+  if(sharedCatalogMode && state.phase==='ready')return <AccountCartItems key={admission.owner.revision}
+    admission={admission} cart={state.cart} version={state.version} binding={state.binding}
+    extra={admission.directAdditions && state.binding && <PendingDirectAdditions admission={admission} writer={admission.directAdditions} binding={state.binding}/>}/>;
   return <section className="product-preview-page cart-view">
     <h1>{t.cart}</h1>
     {state.phase === 'ready' ? <div data-private-account>
@@ -52,7 +59,8 @@ export default function AccountCartView({ admission }: { admission: AccountCartA
               : <CartSourceImage key={line.lineId + ':' + line.product.templateRevision} admission={admission} lineId={line.lineId}/>}</>}
         </li>)}</ul>}
     </div> : <>
-      <p role="status">{state.phase === 'opening' || state.phase === 'recovering' ? opening : unavailable}</p>
+      <p role="status">{state.phase==='reauth-required'?signInHint:state.phase === 'opening' || state.phase === 'recovering' ? opening : unavailable}</p>
+      {state.phase==='reauth-required'&&<CartSignInAgain admission={admission}/>}
       {state.phase === 'unavailable' && <button className="product-secondary" type="button" onClick={retry}>{retryLabel}</button>}
       {state.phase === 'read-unavailable' && <button className="product-secondary" type="button" onClick={retryRead}>{retryReadLabel}</button>}
     </>}

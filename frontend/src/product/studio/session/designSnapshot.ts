@@ -6,7 +6,6 @@ import { cleanLetteringText } from '../design/personalization';
 import type { StudioImage } from '../design/studioImage';
 import { isStudioFontId, studioFontResource } from '../design/studioFonts';
 import type { StudioFontId } from '../design/studioFonts';
-import { permanentCatalogMode } from '../../catalog/permanentCatalog';
 import { transferableLoopFont } from '../design/studioFonts';
 
 type SavedPicture = { src: string; aspect: number };
@@ -101,7 +100,7 @@ export async function loadDesign(design: SavedDesign, cache = new Map<string, St
       const pixels = await loadNormalizedStudioImage(new File([base64Bytes(saved.src.split(',')[1])], 'preview.png', { type: 'image/png' }), signal);
       // Canvas encoding is not stable across reloads. Keep the guest's original
       // normalized file as the transfer identity; the decoded pixels are for preview.
-      image = permanentCatalogMode ? {...pixels,src:saved.src} : pixels;
+      image = {...pixels,src:saved.src};
       cache.set(saved.src, image);
     }
     if (Math.abs(image.aspect - saved.aspect) > .01) throw new Error('STUDIO_STORAGE_ASPECT');

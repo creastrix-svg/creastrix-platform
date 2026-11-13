@@ -147,6 +147,14 @@ const slice = createSlice({
       state.cart.splice(index, 1); reconcilePurchase(state, line.variant);
       state.cartChange = { revision, kind: 'removed', variant: line.variant, ...(line.id ? { id: line.id } : {}) };
     },
+    cartUndoExpired(state,{payload:through}:PayloadAction<number>){
+      // This is presentation cleanup; active quantities and persistence revisions do not change.
+      const expired=Object.keys(state.cartRemoved).filter(id=>(state.cartRemoved[id]?.revision??Infinity)<=through);
+      if(!expired.length)return;
+      for(const id of expired)delete state.cartRemoved[id];
+      const active=new Set(state.cart.map(cartLineId));
+      state.cartOrder=state.cartOrder.filter(id=>active.has(id)||!!state.cartRemoved[id]);
+    },
     cartLineRestored(state, { payload }: PayloadAction<{ variant: CartSku; revision: number; id?: string }>) {
       if (!isCartSku(payload.variant) || !Number.isSafeInteger(payload.revision) || payload.revision < 1) return;
       const id = cartLineId(payload), removed = state.cartRemoved[id], revision = nextCartRevision(state);
@@ -221,7 +229,7 @@ const slice = createSlice({
     },
   },
 });
-export const { favoriteStorageReported, favoritesRead, favoriteToggled, favoriteRemoved, cartAdded, cartQuantityChanged, cartLineRemoved, cartLineRestored, cartRemovedLineDismissed, cartDesignChanged, cartLineDesignCleared, cartHydrated, productLocaleSelected, productVariantSelected, purchaseQuantityChanged, productDescriptionChanged, productMediaModeSelected } = slice.actions;
+export const { favoriteStorageReported, favoritesRead, favoriteToggled, favoriteRemoved, cartAdded, cartQuantityChanged, cartLineRemoved, cartUndoExpired, cartLineRestored, cartRemovedLineDismissed, cartDesignChanged, cartLineDesignCleared, cartHydrated, productLocaleSelected, productVariantSelected, purchaseQuantityChanged, productDescriptionChanged, productMediaModeSelected } = slice.actions;
 export default slice.reducer;
 export const cartCount = (state: ProductDemoState) => state.cart.reduce((sum, line) => sum + line.quantity, 0);
 export const cartLinePrice = (line: Pick<CartLine, 'variant' | 'design'>) => {

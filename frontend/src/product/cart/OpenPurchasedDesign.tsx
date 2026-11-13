@@ -18,7 +18,7 @@ export function OpenPurchasedDesign({admission,variant,variantId=variant,sku,lin
 }){
   const {state}=useAccountCartAccess(admission.access);
   const row=state.phase==='ready'?state.cart.find(line=>line.lineId===lineId):undefined;
-  const allowed=!!row && row.product?.sku===sku && row.product.variantId===variantId && row.product.href===href
+  const allowed=!!row && !row.removed && row.product?.sku===sku && row.product.variantId===variantId && row.product.href===href
     && row.product.listed && row.product.studioFormat==='surface-print-v1' && row.product.templateRevision==='2'
     && !!row.product.designId && !!row.product.designRevision;
   const lang=useProductLocale(),labels=studioCartCopy[lang];

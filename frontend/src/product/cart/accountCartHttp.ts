@@ -18,7 +18,8 @@ function parse(v: unknown) {
   const body = record(v);
   if (body.kind !== 'ready' || !Array.isArray(body.cart) || body.cart.length > 1000) return invalid();
   const seen = new Set<string>();
-  return { kind: 'ready' as const, ownerId: id(body.ownerId), cart: body.cart.map(value => {
+  const version=body.version===undefined?undefined:body.version==='0'?'0':positive(body.version);
+  return { kind: 'ready' as const, ownerId: id(body.ownerId),...(version!==undefined?{version}:{}), cart: body.cart.map(value => {
     const line = record(value), lineId = id(line.lineId);
     if (seen.has(lineId) || typeof line.listed !== 'boolean' || (line.designLabel === null) !== (line.templateRevision === null)) return invalid();
     seen.add(lineId);
@@ -26,8 +27,10 @@ function parse(v: unknown) {
     if(line.secondSwatch!=null && (!line.swatch || typeof line.secondSwatch!=='string' || !/^#[0-9a-f]{6}$/i.test(line.secondSwatch))) return invalid();
     if(line.href!=null && (typeof line.href!=='string' || !isCatalogOfferHref(line.href)))return invalid();
     if((line.designId!=null)!==(line.designRevision!=null))return invalid();
+    if(line.removed!==undefined && typeof line.removed!=='boolean' || version!==undefined && typeof line.removed!=='boolean')return invalid();
     const display={lineId,offerLabel:label(line.offerLabel),variantLabel:label(line.variantLabel),
-      designLabel:line.designLabel===null?null:label(line.designLabel),quantity:positive(line.quantity)};
+      designLabel:line.designLabel===null?null:label(line.designLabel),quantity:positive(line.quantity),
+      ...(typeof line.removed==='boolean'?{removed:line.removed}:{})};
     // A historical pre-limit identity is not a valid navigation/write key. Its
     // bounded labels and quantity still belong in the buyer's cart. Discard the
     // oversize key rather than storing it or invalidating unrelated lines.
@@ -84,6 +87,9 @@ export function accountCartHttp(fetcher: typeof fetch, guard?:Guard) {
       if (signal.aborted || (guard && !guard.owns())) return {kind:'denied'};
       const data = record(JSON.parse(body));
       if (response.status === 409) {
+        // A real account session can outlive its local shopping lane. This
+        // refusal carries no binding ticket and never authorizes automatic recovery.
+        if(guard && Object.keys(data).length===1 && data.error==='request_not_completed')return {kind:'reauth-required'};
         if (guard && data.kind === 'pending' && data.ownerId === guard.ownerId
             && (expectedTicket === undefined || expectedTicket === data.ticket)) {
           const ticket=tokenId(data.ticket);
@@ -98,7 +104,7 @@ export function accountCartHttp(fetcher: typeof fetch, guard?:Guard) {
           return {kind:'denied'};
         binding = {ownerId:ready.ownerId,namespace:tokenId(data.namespace),writeContext:tokenId(data.writeContext)};
         guestIntent = optionalIntent(data.guestIntent);
-        return { ...ready, binding };
+        return { ...ready, binding,...(guestIntent?{guestIntent}:{}) };
       }
       return ready;
     },

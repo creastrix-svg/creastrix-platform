@@ -26,11 +26,11 @@ export const designFontHint={
 } as const;
 
 export const accountDesignNote={
-  en:'Only the design you add to your cart is saved to your account, including its images and fonts.',
-  de:'Nur das Design, das du in den Warenkorb legst, wird mit seinen Bildern und Schriften in deinem Konto gespeichert.',
-  ru:'В аккаунте сохраняется только добавленный в корзину дизайн, вместе с его изображениями и шрифтами.',
-  pl:'Na koncie zapisujemy tylko projekt dodany do koszyka, wraz z jego obrazami i czcionkami.',
-  es:'Solo se guarda en tu cuenta el diseño que añades a la cesta, con sus imágenes y fuentes.',
-  fr:'Seule la création ajoutée au panier est enregistrée dans votre compte, avec ses images et ses polices.',
-  it:'Nel tuo account viene salvato solo il design aggiunto al carrello, con le sue immagini e i suoi caratteri.',
+  en:'Your images and fonts stay private. Save a design to use it later; adding it to your cart keeps a separate snapshot.',
+  de:'Deine Bilder und Schriften bleiben privat. Speichere das Design für später; der Warenkorb behält eine separate Fassung.',
+  ru:'Ваши рисунки и шрифты приватны. Дизайн можно сохранить на потом; в корзине останется отдельная версия.',
+  pl:'Twoje obrazy i czcionki pozostają prywatne. Zapisz projekt na później; w koszyku pozostanie osobna wersja.',
+  es:'Tus imágenes y fuentes son privadas. Guarda el diseño para más tarde; la cesta conserva una versión independiente.',
+  fr:'Vos images et polices restent privées. Enregistrez la création pour plus tard ; le panier conserve une version indépendante.',
+  it:'Le tue immagini e i tuoi caratteri restano privati. Salva il design per dopo; nel carrello rimane una versione separata.',
 } as const;

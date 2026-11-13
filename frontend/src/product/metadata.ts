@@ -12,6 +12,8 @@ import { checkoutCopy } from './checkout/checkoutCopy';
 import { personalizationCopy } from './studio/personalizationCopy';
 import { studioZoneCopy } from './studio/studioZoneCopy';
 import { catalogCopy } from './browse/catalogCopy';
+import {designLibraryCopy} from './designs/designLibraryCopy';
+import {isDesignLibraryPath} from './routes';
 import { homeCopy } from './home/homeCopy';
 import { isCatalogOfferHref, isCatalogPath, isTideOfferPath, tideOfferPath, tideReviewRoute } from './routes';
 import { editionCollectionPath, editionCopy, editionItem } from './fixtures/editionCatalog';
@@ -26,6 +28,7 @@ export function useProductMetadata(t: ProductCopy, locale: StorefrontLocale, acc
   const info = { help: [t.help, t.helpBody], delivery: [t.delivery, t.deliveryBody], returns: [t.returns, t.returnsBody], contact: [t.contact, t.contactBody], about: [t.about, t.aboutInfo], legal: [t.legal, t.legalBody] };
   let title = t.notFound, description = t.notFoundBody;
   if (pathname === '/') { title = homeCopy[locale].title; description = homeCopy[locale].description; }
+  else if(isDesignLibraryPath(pathname)){title=designLibraryCopy[locale].title;description='';}
   else if (pathname === editionCollectionPath) { title = editionCopy[locale].title; description = editionCopy[locale].intro; }
   else if (entry?.kind === 'offer') { title = entry.name + ' · ' + entry.title[locale]; description = entry.description[locale]; }
   else if (reviewed?.kind === 'offer') {

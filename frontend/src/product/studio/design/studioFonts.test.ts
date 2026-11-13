@@ -91,6 +91,13 @@ describe('bounded in-memory studio fonts', () => {
     expect(remove).toHaveBeenCalledWith(faces[0]);
   });
 
+  it('reuses a restored private font in the same editor, never across owners', async () => {
+    const first=library(),other=library(),loaded=await first.loadCustom(file());
+    const bytes=loaded.resource!.data;
+    expect(first.findCustom(bytes)).toEqual(loaded);expect(other.findCustom(bytes)).toBeUndefined();
+    first.dispose();expect(first.findCustom(bytes)).toBeUndefined();expect(other.findCustom(bytes)).toBeUndefined();
+  });
+
   it('uses fixed same-origin built-in URLs, caches successful loads and keeps exact ownership between sessions', async () => {
     const first = library(), second = library();
     const loaded = await first.loadBuiltin('rounded');

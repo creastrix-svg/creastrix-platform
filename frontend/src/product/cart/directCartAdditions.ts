@@ -20,7 +20,7 @@ export async function purchaseDesignDigest(applied:AppliedLoopDesign){
 /** Each user gesture creates an intent in this tab, not in the guest cart. Do not store
  * a session ticket or CSRF token. A remount/read only *offers* retry; only a new click
  * can submit, with the original payload and a currently admitted account binding. */
-export function createDirectCartAdditions(fetcher:typeof fetch,guard:Guard,refresh:()=>void,
+export function createDirectCartAdditions(fetcher:typeof fetch,guard:Guard,refresh:(creditedSku?:string)=>void,
   getStorage:()=>Storage=()=>window.sessionStorage,
   eligible:(sku:string)=>boolean=sku=>connectedSku(sku)?.variant.directAddSupported===true,
   files:typeof pendingDesignFile=pendingDesignFile) {
@@ -160,8 +160,11 @@ export function createDirectCartAdditions(fetcher:typeof fetch,guard:Guard,refre
         expected=null;
         set({scope,phase:result==='applied'||typeof result==='object'?'ready':'rejected'});
       } catch {set({scope,phase:'storage'});}
-      refresh(); // Only an authoritative GET may change the displayed units.
-      return result==='applied'||typeof result==='object';
+      const credited=result==='applied'||typeof result==='object';
+      // Reset only the acknowledged SKU, even if its card has already unmounted.
+      // Uncertain delivery or rejection must preserve the buyer's selection.
+      refresh(credited?sku:undefined);
+      return credited;
     } finally {busy=false;}
   }
   function retryExisting(b:Binding,intent:Intent) {

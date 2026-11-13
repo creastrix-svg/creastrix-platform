@@ -132,6 +132,14 @@ export function createStudioFontLibrary() {
   }
 
   return {
+    /** Reopening a saved design can reference a font already registered in this
+     * exact editor. Reuse its runtime ID; never borrow a face from another owner. */
+    findCustom(data:string):LoadedStudioFont|undefined {
+      for(const [id,entry] of owned){
+        const resource=customResources.get(id);
+        if(resource?.data===data)return {...entry.value,resource};
+      }
+    },
     async loadBuiltin(id: BuiltinStudioFont, options: Options = {}): Promise<LoadedStudioFont> {
       if (options.signal?.aborted) throw new StudioFontError('cancelled');
       const asset = fontAssets[id];

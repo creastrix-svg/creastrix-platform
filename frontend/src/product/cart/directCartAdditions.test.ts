@@ -29,6 +29,7 @@ it('keeps conflicts and malformed receipts uncertain and reuses exact intent onl
   await reentry.submit(binding,product,1,true);
   expect(requests).toHaveLength(3);expect(requests.every(v=>v.id===requests[0].id&&v.quantity==='2')).toBe(true);
   expect(refresh).toHaveBeenCalledTimes(3);expect(sessionStorage.length).toBe(0);
+  expect(refresh.mock.calls.filter(([creditedSku])=>creditedSku)).toEqual([[product]]);
 });
 it('a definite rejection clears that intent, reads current cart and allows only a new click to create another intent',async()=>{
   const {actions,requests,refresh}=setup([reject(422),ok]);

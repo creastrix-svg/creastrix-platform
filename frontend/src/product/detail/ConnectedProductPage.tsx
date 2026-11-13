@@ -26,6 +26,7 @@ import {PublishedSurfaceEditor} from '../studio/PersonalizationView';
 import {saveDesign,visibleDesign,type SavedDesign} from '../studio/session/designSnapshot';
 import {OpenPurchasedDesign} from '../cart/OpenPurchasedDesign';
 import {PurchasedDesignUnavailable} from '../cart/PurchasedDesignUnavailable';
+import {MissingLibraryDesign} from '../designs/LibraryStudio';
 
 /** Both historical URL families resolve through catalog identity; neither the
  * layout nor the purchase action needs a new component for the next item. */
@@ -35,8 +36,14 @@ export default function ConnectedProductPage() {
   const [params, setParams] = useSearchParams();
   const offer = entry && connectedOffer(entry.id);
   const opening=sharedCatalogMode && params.has('accountLine');
+  const saved=params.has('savedDesign');
+  if(saved && (!sharedCatalogMode||!account||!offer?.personalizable||params.has('accountLine')||params.has('cartLine')||
+    params.getAll('variant').length!==1||params.getAll('personalize').length!==1||params.get('personalize')!=='surface'))
+    return <MissingLibraryDesign/>;
   if (!entry || entry.kind !== 'offer' || !offer) return opening?<PurchasedDesignUnavailable/>:<NotFoundView/>;
   const variant = offer.variants.find(v => v.id === params.get('variant')) ?? offer.variants[0];
+  if(saved && (variant?.id!==params.get('variant')||variant?.studioFormat!=='surface-print-v1'||variant?.templateRevision!=='2'))
+    return <MissingLibraryDesign/>;
   if (!variant || !isCartSku(variant.sku)) return opening?<PurchasedDesignUnavailable/>:<NotFoundView/>;
   if(opening && (!account || params.getAll('variant').length!==1 || params.get('variant')!==variant.id ||
       variant.studioFormat!=='surface-print-v1'||variant.templateRevision!=='2'))return <PurchasedDesignUnavailable/>;
