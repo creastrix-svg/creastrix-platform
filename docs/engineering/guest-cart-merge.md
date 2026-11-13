@@ -1,6 +1,8 @@
 # Merging a guest cart at sign-in
 
-**Scope: buyer rules, not a shipped feature.** The owner has selected three
+**Original design proposal.** Implementation-baseline statements below describe
+the starting point. For the supported subset in today's synthetic local
+storefront, see the [runbook](account-cart-local-run.md). The owner selected three
 rules: add quantities for the same variant and design, keep different designs
 separate, and never count the same guest contribution twice. The behaviour
 below is a proposed contract for implementing those rules. It does not approve

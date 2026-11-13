@@ -1,6 +1,6 @@
 # Creastrix frontend
 
-The buyer storefront and the local account pilot are two journeys in one React application. The storefront works without a server or sign-in. Connected login requires a separately configured local backend; it does not save the guest cart to an account.
+The React storefront can run offline, with a local catalog, or with a local catalog and test buyer accounts. The separate owner-only Cognito sign-in does not write carts or designs.
 
 ## Local use
 
@@ -24,6 +24,8 @@ Open [the built storefront](http://localhost:4173/). The preview serves `dist/`,
 
 To run the existing catalog and product cards against PostgreSQL instead,
 use the separate [connected local catalog](../docs/local-catalog.md) mode.
+
+For the signed-in buying journey, follow the [local account cart runbook](../docs/engineering/account-cart-local-run.md), then run `npm run dev:shared-cart` and open `http://localhost:4317`. This mode supports guest cart import and **My designs** for synthetic local buyers.
 
 ## Find a feature
 

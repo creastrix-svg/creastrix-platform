@@ -192,7 +192,9 @@ stock, line subtotals and distinct product-line/unit counts. Continue shopping
 replaces the cart's top Back link and keeps the existing product-return preference
 and scroll contract, including a visit to the checkout prototype. Shared memory-only presentation slots
 keep deleted rows in place, with disabled zero quantity/subtotal and a readable
-muted appearance. Each row has an independent, one-use Restore for its previous
+muted appearance only during the current visit to the cart. Refreshing or leaving
+and returning clears those undo slots, not the active items. Each removed row
+has an independent, one-use Restore for its previous
 quantity; unrelated edits/removals do not invalidate it. Explicit re-add of the
 same variant uses the new quantity and retires only its old restore token, without
 duplicates, merging or exceeding stock. Removed rows never enter active totals,

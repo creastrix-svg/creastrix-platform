@@ -67,6 +67,32 @@ verified immutable version owned by this buyer and compatible with the offer
 and variant. A plain line and a personalised line stay distinct. This decision
 is limited to the local synthetic sign-in and does not authorise orders or payments.
 
+In the same local storefront the owner authorised editing an existing account
+cart row. Quantity sets an absolute number. **Remove** immediately excludes the
+row from the subtotal and stock demand. **Restore** is offered only during that
+visit to the full cart, for the former quantity and design, subject to current
+availability. Refreshing or leaving and reopening the cart shows only active
+rows. The separate **×** can dismiss the removed row sooner. Neither action deletes the buyer's
+saved design or uploaded files. These actions are not a new guest import.
+
+### My designs (local buyer library)
+
+The owner authorised a private design library for the same local shared catalog
+and synthetic buyer admission. **Save design** records the studio composition as
+an account entry without applying it or writing cart units. Each entry points
+to an immutable version with its private image/font references. Subsequent edits
+advance the entry's version; a stale editor cannot silently replace a newer
+version. Copy creates a separate entry. Deleting an entry removes it from the
+library, not from an existing cart, and does not promise physical deletion of
+the underlying bytes. No automatic file collector is enabled by this change.
+
+The guest flow stages only the particular draft the buyer explicitly chose.
+One browser-wide transaction reserves that temporary draft for one login,
+even if the login tab was duplicated. Only the tab with the matching completed
+login can offer to save it. A second explicit action confirms the save; neither
+login nor opening the account silently adopts a draft or purchases a product.
+This is separate from guest cart import, staff permissions and real Cognito.
+
 For this single-instance test profile the server assigns one shared write
 context for switchable test sign-ins. A new sign-in or logout retires the
 previous generation. Every import mutation must serialize its original

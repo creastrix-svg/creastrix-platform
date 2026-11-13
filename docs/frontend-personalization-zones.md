@@ -74,8 +74,14 @@ snapshots. Applying the lamp validates both areas, including any hidden draft.
 Arbitrary uploaded pictures are not silently treated as safe cut geometry. AI is
 offered only where explicitly configured, independently of the operation; a text-only
 area does not gain AI automatically. AI descriptions stay local:
-there is no connected generator or Python manufacturing service. The AI tool
-states that availability and does not offer prepared examples as generated results.
+there is no connected generator or Python manufacturing service. Where the
+product studio advertises AI (the supported print surface or Luma's front panel),
+**Create with AI** is visibly disabled next to the layer actions, with a short
+availability note. A catalog-backed flat surface uses this same display-only
+notice: it does not declare that the seller enabled an AI operation. The local
+example's separate idea tab can hold a private
+brief; neither the brief nor the disabled button grants a catalog tool, creates
+artwork or sends a request. Text-only zones and Luma's base omit the AI action.
 
 Each area supports up to eight independently selectable text/image objects in an
 ordered composition. Add, edit, delete, reposition, resize and layer-order changes
@@ -88,6 +94,18 @@ restores independent size/position controls. Every text object is validated befo
 Apply, including unselected objects and hidden areas. Apply snapshots the whole
 ordered composition, not only the selected object. File/font results belong to the
 exact selected object and are discarded when that ownership is superseded.
+
+For a first picture, either **Add picture** or the picture tab opens the file
+chooser. A failed replacement keeps the current picture. The inline message
+distinguishes an unsupported format, an empty or damaged file, and a byte or
+pixel limit. Apply waits for a pending selection or decode.
+
+In the local account storefront, returning focus from the native image chooser
+still performs the ordinary identity check. The studio is hidden and inert
+until it finishes. Only the original buyer (or a still-anonymous guest) in the
+same visible document, route and login revision may receive that file. This
+one-shot handoff is in memory; it does not preserve old network authority,
+submit a purchase or transfer a file to a new session.
 
 The owner's 2026-11-04 choice includes visual composition on Luma's panel. Its
 explicit visual-only capability does not authorize arbitrary image-to-cut conversion,
@@ -109,7 +127,8 @@ fonts, fit and transforms. Plain and differently personalised variants have sepa
 lines; adding an equal design increments its own line. A line has a stable local ID;
 editing it uses a detached draft and updates only that line on explicit Save.
 Cancel/back leaves the cart and product drafts unchanged. The AI brief is not part
-of a cart design, so its control is absent from the line editor. Product briefs remain
+of a cart design, so its editable input is absent from the line editor. The
+disabled generation button remains visible in the same configured zones. Product briefs remain
 unchanged. Stock capacity is shared by every design of the same colour. Remove/undo,
 minicart and checkout summaries use the same exact line identity. A visible Loop
 design adds a flat €5 per physical item to the variant's current fixture price,
@@ -117,7 +136,7 @@ not per layer or per cart line. An empty design costs nothing extra. Applying a
 draft changes the product preview, not previously added cart lines. These local
 amounts are illustrative, not a production quote or an accepted order.
 
-Current product drafts, applied previews, active cart lines, local pictures and
+In the standalone frontend preview, current product drafts, applied previews, active cart lines, local pictures and
 custom fonts are stored in one versioned IndexedDB snapshot in this browser/origin.
 Reload waits for validation and decoding before exposing editing. Luma's two areas
 and motif are retained too; Luma is still not a purchasable catalog item. Undo history,
@@ -136,7 +155,13 @@ not silently overwritten. This is not cross-tab merging; save conflict requires
 keeping the current tab open and reconciling deliberately. Browser eviction or
 clearing site data can still remove local work. No server durability is promised.
 
-There is no account save, manufacturing export, production quote or commercial
+The standalone preview does not offer account saves. In the separate local
+shared-catalog storefront, **Save design** keeps an editable copy under
+**Account → My designs**. Saving and applying are independent: editing or
+deleting a saved design never changes an item already in the cart. See the
+[local account walkthrough](engineering/account-cart-local-run.md).
+
+There is no manufacturing export, production quote or commercial
 order in this scope. The integrated frontend preview does not implement domain cart/order
 contracts or approve the DRAFT Personalization specification.
 The buyer-facing layout uses concise editing labels and one collapsed explanation

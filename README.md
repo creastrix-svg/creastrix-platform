@@ -24,11 +24,11 @@ Open [the homepage](http://localhost:4173/) or [the catalog](http://localhost:41
 | Area | Implemented | Boundary |
 | --- | --- | --- |
 | Shopping | Homepage, catalog, local search, product pages, variants, media, saved products, cart and checkout preview | The connected catalog reads all 39 local items, illustrative ratings, prices and recommendations from PostgreSQL. The offline preview uses fixtures. Checkout is not an order. |
-| Personalisation | A product can offer configured zones, text and artwork with visual previews. Applied designs can become separate cart lines. | Drafts and cart lines are saved in the browser, not in an account. Neither a visual preview nor an AI idea field is a manufacturing service. |
+| Personalisation | A product can offer configured zones, text and artwork with visual previews. Applied designs can become separate cart lines. | The offline preview saves in the browser. In the local buyer storefront, **My designs** is private to the account; editing a design leaves existing cart lines unchanged. |
 | Accounts | A local, owner-only account pilot uses hosted Cognito sign-in, email confirmation/recovery and the backend session. | Cognito registration alone does not grant access. No email-based account merging or public rollout. |
-| Backend | User, organization, workspace, ready-made inventory and scoped staff-policy foundations; a separate local read-only catalog profile. | No account cart, order system, live staff console or payments. |
+| Backend | User, organization, workspace, ready-made inventory and staff-policy foundations. The local buyer storefront uses the catalog and a separate PostgreSQL account cart with guest import. | Only synthetic local buyers can write carts and save designs. The Cognito pilot does not enable commerce writes, orders or payments. |
 
-The buyer interface is integrated through [PR #45](https://github.com/creastrix-svg/creastrix-platform/pull/45). Sample products illustrate different capabilities; they are not platform entities or permanent navigation sections.
+To try the signed-in shopping journey, follow the [local buyer storefront runbook](docs/engineering/account-cart-local-run.md). Sample products illustrate different capabilities; they are not platform entities or permanent navigation sections.
 
 <a id="repository-guide"></a>
 <a id="architecture-and-technology"></a>

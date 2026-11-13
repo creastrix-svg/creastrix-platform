@@ -1,9 +1,10 @@
 # Guest cart import: server contract
 
-**Proposed; not implemented.** This defines the server behaviour behind the
-[buyer merge rules](guest-cart-merge.md). The catalog is currently a separate
-[read-only service](../local-catalog.md). There is no account-cart endpoint,
-write authority, migration or production rollout in this change.
+**Original server proposal.** This defines the contract behind the
+[buyer merge rules](guest-cart-merge.md). Implementation-baseline statements
+below describe the starting point. The [local buyer storefront](account-cart-local-run.md)
+now implements a bounded subset against a [separate catalog](../local-catalog.md).
+It does not enable account-cart writes for hosted Cognito or public buyers.
 
 ## What makes two cart lines the same?
 

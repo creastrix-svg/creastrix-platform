@@ -31,8 +31,9 @@ The importer does not
 import unrelated drafts. An unsupported format, missing resource or legacy design
 without its pinned template keeps the **whole batch** from being credited. The
 application never converts an unsupported design into a plain line. Adding a
-product after sign-in is a separate purchase action, not another import. Account cart edits,
-checkout, file collection and writes for real users are not enabled. None of the local results clear the
+product after sign-in is a separate purchase action, not another import. The
+shared storefront also supports editing existing account rows, as described below.
+Checkout, file collection and writes for real users are not enabled. None of the local results clear the
 [business write gate](account-cart-import.md) for a public deployment.
 
 ## Start on loopback
@@ -71,6 +72,33 @@ Opening that line returns to the saved design rather than the plain product.
 If the seller no longer offers the template, that link does not offer a plain
 replacement. A compatible surface on a new product can use the flat editor
 without requiring a product-specific 3D model.
+
+For the personal library, save directly in the studio using **Save design**.
+The confirmation leaves the studio open. Go to **Account → My designs** to see
+your work after closing the page. Open a saved entry, **Apply design**, go back
+to its product and explicitly **Add to cart**. Edit the library entry and
+save again: the existing cart line's design and quantity do not change.
+The library also offers preview, independent copies and deletion. Unsupported
+or withdrawn offers are not silently replaced with an undecorated item.
+
+A guest choosing **Save design** sees an account prompt without leaving the
+studio. Cancel returns to editing; only **Sign in** prepares the draft for the
+sign-in flow. Registration is unavailable with the local synthetic issuer.
+The library link is shown only to signed-in buyers. In **My designs**, confirm the save into the signed-in
+account. Ordinary guest drafts are not transferred by logging in, and any
+unsent or expired handoff is not proof of ownership. The library APIs exist
+only in the dedicated local shared writer; default, live Cognito and public
+order flows are unchanged. See [storage and retention limits](account-cart-activation.md#my-designs-local-buyer-library).
+
+On **Your cart**, the quantity control, line subtotal and summary use the same
+layout as the guest cart. Change the quantity and refresh: it is read back from
+the account, not from browser storage. **Remove** crosses the line out of the
+total without losing its saved design. While the cart stays open, **Restore**
+on the dimmed row restores the previous quantity if it is still available; **×**
+dismisses only that removed row. After leaving the cart or refreshing, the
+removed row and its undo control are no longer displayed. If another tab changed the cart, read its latest
+state before submitting a new decision. Retrying an action whose response was
+lost does not apply it twice.
 
 ### Earlier isolated fixture
 
