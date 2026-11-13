@@ -35,7 +35,7 @@ class LocalAccountCartController {
     static final PathPatternRequestMatcher PUBLIC_CATALOG = PathPatternRequestMatcher.withDefaults()
             .matcher(HttpMethod.GET, "/api/account-catalog/products");
 
-    record CartView(String kind, UUID ownerId, UUID namespace, UUID writeContext,UUID guestIntent,List<PermanentCartReader.Line> cart) { }
+    record CartView(String kind, UUID ownerId, UUID namespace, UUID writeContext,UUID guestIntent,String version,List<PermanentCartReader.Line> cart) { }
     record Pending(String kind,UUID ownerId,UUID ticket,UUID guestIntent) {}
     private record Artwork(UUID owner, UUID line, byte[] bytes) { }
     private final PermanentCartReader reader;
@@ -69,9 +69,10 @@ class LocalAccountCartController {
         if(binding.commands.inspect(slot.claim,slot.sid)==LocalCartCommands.Access.PENDING) {
             request.setAttribute(RESULT,new Pending("pending",ownerId,slot.claim.ticket(),slot.guestIntent));
         } else {
-            var lines=reader.lines(ownerId);
+            var current=reader.snapshot(ownerId);
             if(binding.commands.inspect(slot.claim,slot.sid)==LocalCartCommands.Access.BOUND)
-                lines.ifPresent(items -> request.setAttribute(RESULT,new CartView("ready",ownerId,slot.claim.namespace(),slot.claim.ticket(),slot.guestIntent,items)));
+                current.ifPresent(cart -> request.setAttribute(RESULT,new CartView("ready",ownerId,slot.claim.namespace(),slot.claim.ticket(),
+                        slot.guestIntent,Long.toString(cart.version()),cart.lines())));
         }
     }
 

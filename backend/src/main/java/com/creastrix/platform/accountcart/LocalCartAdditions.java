@@ -74,7 +74,7 @@ final class LocalCartAdditions {
         // this cart only: adding a product never reserves or decrements merchant stock.
         if (!Boolean.TRUE.equals(db.queryForObject("""
                 SELECT coalesce(sum(quantity),0) + ? <= ? FROM account_cart.cart_line
-                 WHERE owner_id=? AND offer_id=? AND variant_id=?
+                 WHERE owner_id=? AND offer_id=? AND variant_id=? AND NOT removed
                 """,Boolean.class,request.quantity(),variant.stock(),owner,variant.offer(),variant.variant())))
             return reject(owner,intent,request);
 
@@ -94,7 +94,7 @@ final class LocalCartAdditions {
                   FROM account_cart.cart_line l LEFT JOIN account_cart.design_revision d
                     ON (d.owner_id,d.design_id,d.revision)=(l.owner_id,l.design_id,l.design_revision)
                   LEFT JOIN account_cart.template_revision t ON (t.offer_id,t.revision)=(d.offer_id,d.template_revision)
-                 WHERE l.owner_id=? AND l.offer_id=? AND l.variant_id=? AND ((l.design_id IS NULL)=?)
+                 WHERE l.owner_id=? AND l.offer_id=? AND l.variant_id=? AND NOT l.removed AND ((l.design_id IS NULL)=?)
                  ORDER BY l.id LIMIT ? FOR UPDATE OF l
                 """,(r,n)->{
                     var match=PreparedCartImportStore.resolvedKey(r);
@@ -103,9 +103,7 @@ final class LocalCartAdditions {
                 },owner,variant.offer(),variant.variant(),request.designId()==null,PermanentCartReader.MAX_READ_LINES+1);
         if(candidates.size()>PermanentCartReader.MAX_READ_LINES) throw new Conflict();
         var plan=GuestCartMergePlanner.plan(candidates,List.of(new Units(key,request.quantity())));
-        long retained=db.queryForObject("SELECT count(*) FROM account_cart.cart_line WHERE owner_id=?",Long.class,owner)
-                +plan.insertions().size()-plan.replacements().stream().mapToLong(c->c.redundantIds().size()).sum();
-        if (retained>PermanentCartReader.MAX_READ_LINES) throw new Conflict();
+        if (!CartLineCapacity.makeRoom(db,owner,plan)) throw new Conflict();
         // The original owner lock serializes first-cart creation. A rejected click
         // above must leave even a previously absent cart absent.
         if (versions.isEmpty()) db.update("INSERT INTO account_cart.cart(owner_id) VALUES (?)",owner);

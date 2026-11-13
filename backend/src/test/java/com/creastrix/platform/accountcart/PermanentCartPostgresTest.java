@@ -415,6 +415,23 @@ class PermanentCartPostgresTest {
         return batch;
     }
 
+    @Test void aGuestImportCanReclaimOnlyTheRemovedCapacityItNeeds() {
+        var admission=owner();UUID who=admission.owner();
+        sql.update("INSERT INTO account_cart.cart(owner_id) VALUES (?)",who);
+        String existing=testVariant();
+        addLegacyLines(who,existing,1000);
+        sql.update("UPDATE account_cart.cart_line SET removed=true WHERE owner_id=? AND id IN (SELECT id FROM account_cart.cart_line WHERE owner_id=? ORDER BY id LIMIT 2)",who,who);
+        // Existing plain duplicates would coalesce only for a matching imported variant.
+        UUID batch=prepareVariants(who,List.of("blue"));
+        assertThat(imports.apply(admission,batch).version()).isEqualTo(1);
+        var result=reader.lines(who).orElseThrow();
+        assertThat(result).hasSize(1000);
+        assertThat(result).filteredOn(PermanentCartReader.Line::removed).hasSize(1);
+        assertThat(result).filteredOn(l->!l.removed() && l.variantId().equals(existing)).hasSize(998);
+        assertThat(imports.apply(admission,batch).version()).isEqualTo(1);
+        assertThat(reader.lines(who).orElseThrow()).isEqualTo(result);
+    }
+
     @Test void lineLimitAppliesBeforeReceiptAndRowsButNeverRechecksAnAlreadyCommittedBatchAgainstNewCartState() {
         var admission=owner(); UUID who=admission.owner();
         sql.update("INSERT INTO account_cart.cart(owner_id) VALUES (?)",who);

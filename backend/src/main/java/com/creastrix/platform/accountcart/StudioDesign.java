@@ -197,6 +197,18 @@ public final class StudioDesign {
     static ObjectNode restore(String sku,long revision,byte[] layout,List<Resource> resources) throws IOException {
         return decode(sku,revision,layout,resources.iterator(),null);
     }
+    /** Bounded private display metadata, never a filename or source image/font. */
+    static String caption(byte[] layout) {
+        try {
+            for(var row:decode("",2,layout,null,null).get("objects")) {
+                if(row.has("text")) {
+                    String text=row.get("text").asString().replaceAll("(?U)[\\s\\p{Cc}]+"," ").strip();
+                    if(!text.isEmpty())return text.substring(0,text.offsetByCodePoints(0,Math.min(32,text.codePointCount(0,text.length()))));
+                }
+            }
+            return null;
+        } catch(IOException invalid) {throw new InvalidBatch();}
+    }
     // Prepare cannot bypass current support by directly naming a legacy saved design UUID.
     // Resource verification is a separate, mandatory step of prepare/apply, outside the DB locks.
     static boolean supportedLayout(byte[] layout) {

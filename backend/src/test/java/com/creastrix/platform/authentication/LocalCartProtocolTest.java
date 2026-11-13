@@ -120,6 +120,61 @@ class LocalCartProtocolTest {
         assertThatThrownBy(()->LocalCartProtocol.addition(data.deepCopy().put("quantity","02"))).isInstanceOf(LocalCartCommands.InvalidBatch.class);
     }
 
+    @Test void lineEditsUseOnlyTheOriginalLineAndVersion() {
+        UUID line=UUID.randomUUID(),intent=UUID.randomUUID();
+        String route="/api/account-cart/edits/"+intent;
+        assertThat(LocalCartProtocol.route(new MockHttpServletRequest("POST",route))).isEqualTo(new LocalCartProtocol.Route("edit",intent));
+        assertThat(LocalCartProtocol.route(new MockHttpServletRequest("GET",route))).isNull();
+        var body=JsonMapper.builder().build().createObjectNode().put("lineId",line.toString()).put("expectedVersion","0").put("action","remove");
+        assertThat(LocalCartProtocol.edit(body)).isEqualTo(new LocalCartCommands.Edit(line,LocalCartCommands.EditAction.REMOVE,0,null));
+        assertThat(LocalCartProtocol.edit(body.deepCopy().put("action","quantity").put("quantity","2")).quantity()).isEqualTo(2);
+        for(var bad:List.of(body.deepCopy().put("ownerId",line.toString()),body.deepCopy().put("quantity","0"),
+            body.deepCopy().put("action","anything"),body.deepCopy().put("action","quantity"),
+            body.deepCopy().put("expectedVersion","01"),body.deepCopy().put("expectedVersion",0),
+            body.deepCopy().put("action","quantity").put("quantity","0")))
+            assertThatThrownBy(()->LocalCartProtocol.edit(bad)).isInstanceOf(LocalCartCommands.InvalidBatch.class);
+    }
+    @Test void libraryHasExplicitBoundedPathsAndDoesNotAcceptCallerSuppliedOwners() {
+        UUID id=UUID.randomUUID(),design=UUID.randomUUID(),intent=UUID.randomUUID();
+        String shelf="/api/account-cart/library",change=shelf+"/commands/"+intent;
+        assertThat(LocalCartProtocol.route(new MockHttpServletRequest("GET",shelf))).isEqualTo(new LocalCartProtocol.Route("library",null));
+        assertThat(LocalCartProtocol.route(new MockHttpServletRequest("GET",shelf+"/"+id))).isEqualTo(new LocalCartProtocol.Route("openSaved",id));
+        assertThat(LocalCartProtocol.route(new MockHttpServletRequest("POST",change))).isEqualTo(new LocalCartProtocol.Route("changeLibrary",intent));
+        for(String path:List.of(change, shelf+"/",shelf+"/"+id+"/",shelf+"/NOT-AN-ID"))
+            assertThat(LocalCartProtocol.route(new MockHttpServletRequest("GET",path))).isNull();
+        assertThat(LocalCartProtocol.route(new MockHttpServletRequest("POST",shelf+"/"+id))).isNull();
+        var throughQuery=new MockHttpServletRequest("GET",shelf);throughQuery.setQueryString("owner="+id);
+        assertThat(LocalCartProtocol.route(throughQuery)).isNull();
+        var data=JsonMapper.builder().build().createObjectNode().put("id",id.toString()).put("expectedVersion","0")
+                .put("action","save").put("designId",design.toString());
+        assertThat(LocalCartProtocol.libraryChange(data).designId()).isEqualTo(design);
+        for(var malformed:List.of(data.deepCopy().put("owner",id.toString()),data.deepCopy().put("action","copy"),
+                data.deepCopy().put("expectedVersion",2),data.deepCopy().put("expectedVersion","01"),
+                data.deepCopy().put("action","move"),data.deepCopy().put("designId","none")))
+            assertThatThrownBy(()->LocalCartProtocol.libraryChange(malformed)).isInstanceOf(LocalCartCommands.InvalidBatch.class);
+    }
+
+    @Test void privateLibraryReadsEchoOnlyTheServerAdmittedBuyer() {
+        var c=new Callback();c.select();c.complete();
+        var key=UUID.randomUUID();var bytes=JsonMapper.builder().build().createObjectNode().put("version",1);
+        var item=new com.creastrix.platform.accountcart.SavedDesignLibrary.Item(key,"1","sku","offer","variant","label","colour",null);
+        when(c.commands.library(c.claim,c.session.getId())).thenReturn(List.of(item));
+        when(c.commands.openSaved(c.claim,c.session.getId(),key)).thenReturn(java.util.Optional.of(
+            new com.creastrix.platform.accountcart.SavedDesignLibrary.Opened(item,bytes)));
+        for(String path:List.of("/api/account-cart/library","/api/account-cart/library/"+key)) {
+            var request=new MockHttpServletRequest("GET",path);request.setSession(c.session);
+            var route=LocalCartProtocol.route(request);
+            assertThatThrownBy(()->LocalCartProtocol.stage(c.binding,route,request,UUID.randomUUID()))
+                .isInstanceOf(LocalCartSessionBinding.Refusal.class);
+            LocalCartProtocol.stage(c.binding,route,request,c.buyer);
+            var staged=java.util.Collections.list(request.getAttributeNames()).stream().map(request::getAttribute)
+                .filter(x->x instanceof LocalCartProtocol.LibraryView || x instanceof LocalCartProtocol.SavedView).findFirst().orElseThrow();
+            var response=JsonMapper.builder().build().valueToTree(staged);
+            assertThat(response.get("ownerId").asString()).isEqualTo(c.buyer.toString());
+            assertThat(response.has("design")).isEqualTo(path.endsWith(key.toString()));
+        }
+    }
+
     @ParameterizedTest @ValueSource(strings={"0","01","-1","9223372036854775808"})
     void onlyPositiveRepresentableQuantitiesCanBePrepared(String quantity) {
         var data=JsonMapper.builder().build().readTree("""

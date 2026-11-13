@@ -30,6 +30,8 @@ public final class LocalCartCommands {
         @Override public String toString() { return "LocalCartClaim[redacted]"; }
     }
     public record Item(String sku,UUID designId,Long designRevision,long quantity) {}
+    public enum EditAction { QUANTITY, REMOVE, RESTORE, DISMISS }
+    public record Edit(UUID lineId, EditAction action, long expectedVersion, Long quantity) {}
     public record Addition(String sku,long quantity,UUID designId,Long designRevision) {
         public Addition(String sku,long quantity) { this(sku,quantity,null,null); }
         Item item() { return new Item(sku,designId,designRevision,quantity); }
@@ -57,6 +59,8 @@ public final class LocalCartCommands {
     private final ExactResourceRegistrar registrar;
     private final LocalStudioDesignStore designs;
     private final LocalCartAdditions additions;
+    private final LocalCartEdits edits;
+    private final SavedDesignLibrary library;
     private final SharedCatalogAuthority catalog;
 
     public LocalCartCommands(DataSource source,PrivateCartAssetStore files) {
@@ -74,6 +78,8 @@ public final class LocalCartCommands {
         registrar=new ExactResourceRegistrar(source,files);
         designs=new LocalStudioDesignStore(db,files);
         additions=new LocalCartAdditions(db,batches);
+        edits=new LocalCartEdits(db);
+        library=new SavedDesignLibrary(db);
     }
 
     private static <T> T guarded(Supplier<T> operation) {
@@ -252,6 +258,40 @@ public final class LocalCartCommands {
             });
         });
     }
+
+    public List<SavedDesignLibrary.Item> library(Claim claim,String sid) {
+        if(catalog==null)throw new Conflict();
+        return guarded(()->tx(()->{authority(claim,sid,claim.namespace());return library.list(claim.owner());}));
+    }
+
+    public SavedDesignLibrary.Result changeLibrary(Claim claim,String sid,UUID namespace,UUID intent,SavedDesignLibrary.Change change) {
+        if(catalog==null)throw new Conflict();
+        // Report even a terminal refusal only after its decision has committed.
+        return guarded(()->tx(()->{authority(claim,sid,namespace);return library.change(claim.owner(),intent,change);})).confirmed();
+    }
+
+    private record LibraryRead(SavedDesignLibrary.Entry entry,LocalStudioDesignStore.Line snapshot) {}
+    public java.util.Optional<SavedDesignLibrary.Opened> openSaved(Claim claim,String sid,UUID id) {
+        if(catalog==null)throw new Conflict();
+        return guarded(()->{
+            var read=tx(()->{
+                authority(claim,sid,claim.namespace());
+                var entry=library.current(claim.owner(),id);
+                return entry==null?null:new LibraryRead(entry,designs.snapshot(claim.owner(),entry.design()));
+            });
+            if(read==null)return java.util.Optional.empty();
+            // File I/O is outside both transactions. Re-admit and confirm the
+            // same pointer, so an update/delete during that I/O never opens a mixed revision.
+            var data=designs.restore(read.snapshot);
+            return tx(()->{
+                authority(claim,sid,claim.namespace());
+                var latest=library.current(claim.owner(),id);
+                if(latest==null)return java.util.Optional.empty();
+                if(!latest.equals(read.entry))throw new Conflict();
+                return java.util.Optional.of(new SavedDesignLibrary.Opened(latest.item(),data));
+            });
+        });
+    }
     public Receipt prepare(Claim claim,String sessionId,UUID namespace,UUID batchId,List<Item> lines) {
         return guarded(()->{
             if (lines==null || lines.size()>1000 || lines.stream().anyMatch(Objects::isNull)) throw new InvalidBatch();
@@ -324,6 +364,42 @@ public final class LocalCartCommands {
     public Receipt retire(Claim claim,String sessionId,UUID namespace,UUID batchId) {
         return guarded(()->tx(()->{ authority(claim,sessionId,namespace); return batches.retire(claim.owner(),batchId); }));
     }
+    /** Existing scope/User locks are reacquired after the live catalog lookup.
+     * A receipt replay (including a previously rejected edit) needs no catalog. */
+    public Receipt edit(Claim claim,String sessionId,UUID namespace,UUID intent,Edit request) {
+        if(catalog==null) throw new Conflict();
+        LocalCartEdits.validate(intent,request);
+        var decision=guarded(()->{
+            var pre=tx(()->{
+                authority(claim,sessionId,namespace);
+                var prior=edits.previous(claim.owner(),intent,request);
+                if(prior!=null) return new LocalCartEdits.Preflight(prior,null);
+                var line=edits.current(claim.owner(),request.lineId());
+                if(edits.stale(line,request))
+                    return new LocalCartEdits.Preflight(edits.staleReceipt(claim.owner(),intent,request),null);
+                // Stock is not involved in removal, dismissal or a reduction. A seller
+                // outage must not prevent those actions or reconciliation of their receipts.
+                boolean needsSource=request.action()==EditAction.RESTORE
+                    || request.action()==EditAction.QUANTITY && request.quantity()>line.quantity();
+                return new LocalCartEdits.Preflight(null,needsSource?line.sku():null,needsSource && line.design()!=null
+                    ? assetsFor(claim.owner(),List.of(new Item(line.sku(),line.design(),line.revision(),1))) : List.of());
+            });
+            if(pre.previous()!=null) return pre.previous();
+            verifyAssets(claim,pre.resources());
+            Function<SharedCatalogAuthority.Target,Receipt> write=target->tx(()->{
+                authority(claim,sessionId,namespace);
+                var prior=edits.previous(claim.owner(),intent,request);
+                return prior!=null ? prior : edits.apply(claim.owner(),intent,request,target);
+            });
+            return pre.sku()==null ? write.apply(null) : catalog.withVariant(pre.sku(),row->write.apply(row.orElse(null)));
+        });
+        return switch(decision.state()){
+            case "APPLIED" -> decision;
+            case "STALE" -> throw new Conflict();
+            case "REJECTED" -> throw new InvalidBatch();
+            default -> throw new Unavailable();
+        };
+    }
     public Receipt apply(Claim claim,String sessionId,UUID namespace,UUID batchId) {
         if (claim==null || namespace==null || !namespace.equals(claim.namespace())) throw new Conflict();
         if (batchId==null) throw new InvalidBatch();
@@ -389,7 +465,7 @@ public final class LocalCartCommands {
                 SELECT DISTINCT a.asset_id FROM account_cart.cart_line l JOIN account_cart.variant v
                   ON (v.offer_id,v.id)=(l.offer_id,l.variant_id) JOIN account_cart.design_asset a
                   ON (a.owner_id,a.design_id,a.revision)=(l.owner_id,l.design_id,l.design_revision)
-                  WHERE l.owner_id=? AND v.sku=? LIMIT 257
+                  WHERE l.owner_id=? AND NOT l.removed AND v.sku=? LIMIT 257
                 """,UUID.class,owner,item.sku()));
             if (result.size()>256) throw new InvalidBatch();
         }

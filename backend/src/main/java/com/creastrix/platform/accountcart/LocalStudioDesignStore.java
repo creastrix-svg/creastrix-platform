@@ -125,6 +125,17 @@ final class LocalStudioDesignStore {
                 owner,line)
                 .stream().findFirst().map(l->new Line(l.design,l.sku,l.template,l.layout,slots(owner,l.design,true))).orElse(null);
     }
+    /** Only called after an owned, active library entry has selected the immutable ID. */
+    Line snapshot(UUID owner,UUID design) {
+        return db.query("""
+            SELECT v.sku,d.template_revision,d.canonical_bytes FROM account_cart.design_revision d
+              JOIN account_cart.variant v ON (v.offer_id,v.id)=(d.offer_id,d.variant_id)
+              JOIN account_cart.template_revision t ON (t.offer_id,t.revision)=(d.offer_id,d.template_revision)
+             WHERE d.owner_id=? AND d.design_id=? AND d.revision=1 AND d.layout_format=1
+               AND account_cart.studio_v2(t.configuration,t.revision,v.id) AND octet_length(d.canonical_bytes)<=65536
+            """,(r,i)->new Line(design,r.getString(1),r.getLong(2),r.getBytes(3),List.of()),owner,design)
+            .stream().findFirst().map(l->new Line(design,l.sku,l.template,l.layout,slots(owner,design,true))).orElseThrow(Unavailable::new);
+    }
     ObjectNode restore(Line line) {
         var data=new ArrayList<StudioDesign.Resource>(); int total=0;
         try {

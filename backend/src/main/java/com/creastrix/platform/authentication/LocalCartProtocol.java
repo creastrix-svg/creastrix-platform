@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 
 import com.creastrix.platform.accountcart.LocalCartCommands;
 import com.creastrix.platform.accountcart.StudioDesign;
+import com.creastrix.platform.accountcart.SavedDesignLibrary;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Profile;
@@ -36,7 +37,11 @@ final class LocalCartProtocol {
     private static final String UUID_PATH="([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
     private static final Pattern SAVE=Pattern.compile(PREFIX+"/designs/"+UUID_PATH);
     private static final Pattern ADD=Pattern.compile(PREFIX+"/additions/"+UUID_PATH);
+    private static final Pattern EDIT=Pattern.compile(PREFIX+"/edits/"+UUID_PATH);
     private static final Pattern READ=Pattern.compile(PREFIX+"/lines/"+UUID_PATH+"/design");
+    private static final String LIBRARY=PREFIX+"/library";
+    private static final Pattern LIBRARY_ENTRY=Pattern.compile(LIBRARY+"/"+UUID_PATH);
+    private static final Pattern LIBRARY_COMMAND=Pattern.compile(LIBRARY+"/commands/"+UUID_PATH);
     private static final Pattern PATH=Pattern.compile(PREFIX+"/imports/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/(prepare|apply|status|retire)");
     private static final JsonMapper JSON=JsonMapper.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
@@ -59,8 +64,15 @@ final class LocalCartProtocol {
         if(req.getQueryString()!=null) return null;
         var method=req.getMethod();
         if("POST".equals(method) && RECOVER.equals(req.getRequestURI())) return new Route("recover",null);
+        if("GET".equals(method) && LIBRARY.equals(req.getRequestURI()))return new Route("library",null);
+        var item=LIBRARY_ENTRY.matcher(req.getRequestURI());
+        if("GET".equals(method) && item.matches())return new Route("openSaved",UUID.fromString(item.group(1)));
+        var change=LIBRARY_COMMAND.matcher(req.getRequestURI());
+        if("POST".equals(method) && change.matches())return new Route("changeLibrary",UUID.fromString(change.group(1)));
         var add=ADD.matcher(req.getRequestURI());
         if("POST".equals(method) && add.matches()) return new Route("add",UUID.fromString(add.group(1)));
+        var edit=EDIT.matcher(req.getRequestURI());
+        if("POST".equals(method) && edit.matches()) return new Route("edit",UUID.fromString(edit.group(1)));
         var save=SAVE.matcher(req.getRequestURI());
         if("POST".equals(method) && save.matches()) return new Route("saveDesign",UUID.fromString(save.group(1)));
         var read=READ.matcher(req.getRequestURI());
@@ -75,6 +87,13 @@ final class LocalCartProtocol {
     static void stage(LocalCartSessionBinding binding,Route route,HttpServletRequest request,UUID actor) {
         var slot=LocalCartSessionBinding.pin(request,actor);
         if(route.action.equals("recover")) return;
+        if(route.action.equals("library")){
+            request.setAttribute(STAGED,new LibraryView(slot.owner,binding.commands.library(slot.claim,slot.sid)));return;
+        }
+        if(route.action.equals("openSaved")){
+            binding.commands.openSaved(slot.claim,slot.sid,route.batch).ifPresent(view->
+                request.setAttribute(STAGED,new SavedView(slot.owner,view.item(),view.design())));return;
+        }
         if(route.action.equals("readDesign")) {
             binding.commands.lineDesign(slot.claim,slot.sid,route.batch).ifPresent(value->request.setAttribute(DESIGN,value));
             return;
@@ -110,12 +129,74 @@ final class LocalCartProtocol {
         if(data.size()==2) return new LocalCartCommands.Addition(sku,quantity);
         return new LocalCartCommands.Addition(sku,quantity,id(string(data,"designId")),positive(string(data,"designRevision")));
     }
+    @PostMapping(PREFIX+"/edits/{intent}")
+    ReceiptView edit(HttpServletRequest req) throws IOException {
+        var selected=route(req);
+        if(selected==null || !selected.action.equals("edit")) throw new LocalCartSessionBinding.Refusal();
+        var slot=LocalCartSessionBinding.pinned(req);
+        var namespace=LocalCartSessionBinding.commandNamespace(req,slot);
+        return ReceiptView.of(commands.edit(slot.claim,slot.sid,namespace,selected.batch,edit(body(req,512))));
+    }
+    static LocalCartCommands.Edit edit(JsonNode data) {
+        var action=switch(string(data,"action")){
+            case "quantity" -> LocalCartCommands.EditAction.QUANTITY;
+            case "remove" -> LocalCartCommands.EditAction.REMOVE;
+            case "restore" -> LocalCartCommands.EditAction.RESTORE;
+            case "dismiss" -> LocalCartCommands.EditAction.DISMISS;
+            default -> throw new LocalCartCommands.InvalidBatch();
+        };
+        boolean set=action==LocalCartCommands.EditAction.QUANTITY;
+        if(data.size()!=(set?4:3))throw new LocalCartCommands.InvalidBatch();
+        String expected=string(data,"expectedVersion");
+        return new LocalCartCommands.Edit(id(string(data,"lineId")),action,expected.equals("0")?0L:positive(expected),
+                set?positive(string(data,"quantity")):null);
+    }
     @GetMapping(PREFIX+"/lines/{id}/design")
     ResponseEntity<JsonNode> readDesign(HttpServletRequest request) {
         LocalCartSessionBinding.pinned(request);
         if(request.getAttribute(DESIGN) instanceof JsonNode data)
             return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(data);
         return ResponseEntity.notFound().build();
+    }
+
+    // The browser checks this server-chosen owner before showing private data in an already-mounted account screen.
+    record LibraryView(UUID ownerId,List<SavedDesignLibrary.Item> designs) {}
+    record SavedView(UUID ownerId,SavedDesignLibrary.Item item,JsonNode design) {}
+    @GetMapping(LIBRARY)
+    ResponseEntity<LibraryView> library(HttpServletRequest req){
+        LocalCartSessionBinding.pinned(req);
+        if(req.getAttribute(STAGED) instanceof LibraryView view)
+            return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(view);
+        throw new LocalCartSessionBinding.Refusal();
+    }
+    @GetMapping(LIBRARY+"/{id}")
+    ResponseEntity<SavedView> saved(HttpServletRequest req){
+        LocalCartSessionBinding.pinned(req);
+        if(req.getAttribute(STAGED) instanceof SavedView view)
+            return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(view);
+        return ResponseEntity.notFound().build();
+    }
+    @PostMapping(LIBRARY+"/commands/{intent}")
+    SavedDesignLibrary.Result changeLibrary(HttpServletRequest req) throws IOException {
+        var chosen=route(req);
+        if(chosen==null || !chosen.action.equals("changeLibrary"))throw new LocalCartSessionBinding.Refusal();
+        var slot=LocalCartSessionBinding.pinned(req);
+        return commands.changeLibrary(slot.claim,slot.sid,LocalCartSessionBinding.commandNamespace(req,slot),
+            chosen.batch,libraryChange(body(req,512)));
+    }
+    static SavedDesignLibrary.Change libraryChange(JsonNode data){
+        var action=switch(string(data,"action")){
+            case "save"->SavedDesignLibrary.Action.SAVE;
+            case "copy"->SavedDesignLibrary.Action.COPY;
+            case "delete"->SavedDesignLibrary.Action.DELETE;
+            default->throw new LocalCartCommands.InvalidBatch();
+        };
+        if(data.size()!=(action==SavedDesignLibrary.Action.DELETE?3:4))throw new LocalCartCommands.InvalidBatch();
+        String version=string(data,"expectedVersion"); long expected=version.equals("0")?0:positive(version);
+        if(expected==0 && action!=SavedDesignLibrary.Action.SAVE)throw new LocalCartCommands.InvalidBatch();
+        return new SavedDesignLibrary.Change(action,id(string(data,"id")),expected,
+            action==SavedDesignLibrary.Action.SAVE?id(string(data,"designId")):null,
+            action==SavedDesignLibrary.Action.COPY?id(string(data,"copyId")):null);
     }
 
     @GetMapping(STATUS)

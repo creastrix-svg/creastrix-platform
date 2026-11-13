@@ -10,7 +10,6 @@ import java.util.UUID;
 
 import javax.sql.DataSource;
 
-import com.creastrix.platform.accountcart.persistence.PermanentCartReader;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -103,7 +102,7 @@ final class PreparedCartImportStore {
                 FROM account_cart.cart_line l LEFT JOIN account_cart.design_revision d
                   ON (d.owner_id,d.design_id,d.revision)=(l.owner_id,l.design_id,l.design_revision)
                 LEFT JOIN account_cart.template_revision t ON (t.offer_id,t.revision)=(d.offer_id,d.template_revision)
-                WHERE l.owner_id=? ORDER BY l.id FOR UPDATE OF l
+                WHERE l.owner_id=? AND NOT l.removed ORDER BY l.id FOR UPDATE OF l
                 """, (r,n) -> new Current(r.getObject("id",UUID.class),r.getTimestamp("created_at").toInstant(),
                     source(r)), owner);
             var decorated = new java.util.HashSet<OfferVariant>();
@@ -121,9 +120,7 @@ final class PreparedCartImportStore {
             // Check the resulting cart rather than the batch length or an intermediate
             // count: coalescing duplicate existing rows can make room for a genuine new
             // line. All cart edits must hold the same owner/cart lock through commit.
-            long retainedCount = (long) current.size() + plan.insertions().size()
-                    - plan.replacements().stream().mapToLong(change -> change.redundantIds().size()).sum();
-            if (retainedCount > PermanentCartReader.MAX_READ_LINES) throw new IllegalStateException("CART_LINE_LIMIT");
+            if (!CartLineCapacity.makeRoom(db,owner,plan)) throw new IllegalStateException("CART_LINE_LIMIT");
             var representatives = new HashMap<LineKey,Source>();
             incoming.forEach(l -> representatives.putIfAbsent(l.key(),l));
             for (var line : plan.insertions()) {

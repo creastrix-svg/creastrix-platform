@@ -90,6 +90,56 @@ class DirectCartAdditionPostgresTest {
         assertThat(api.bind(c,session)).isEqualTo(BindResult.BOUND);
         return c;
     }
+
+    @Test void privateLibraryVersionChangesAndCopiesNeverRewriteTheCartSnapshot() throws Exception {
+        var shop=new LocalCartCommands(cartSource,files,IsolatedCatalogAuthority.from(storefront));
+        var anna=StudioDesignTest.artwork();
+        StudioDesignTest.withText(anna,"rounded").put("text","Anna");
+        var maria=anna.deepCopy();
+        ((tools.jackson.databind.node.ObjectNode)maria.get("objects").get(1)).put("text","Maria");
+        UUID initial=shop.stageDesign(buyer,sid,buyer.namespace(),UUID.randomUUID(),StudioDesign.parse(anna));
+        UUID updated=shop.stageDesign(buyer,sid,buyer.namespace(),UUID.randomUUID(),StudioDesign.parse(maria));
+        UUID id=UUID.randomUUID(),copy=UUID.randomUUID(),create=UUID.randomUUID(),save=UUID.randomUUID(),delete=UUID.randomUUID();
+        var createAnna=new SavedDesignLibrary.Change(SavedDesignLibrary.Action.SAVE,id,0,initial,null);
+        var saveMaria=new SavedDesignLibrary.Change(SavedDesignLibrary.Action.SAVE,id,1,updated,null);
+        var copyAnna=new SavedDesignLibrary.Change(SavedDesignLibrary.Action.COPY,id,1,null,copy);
+        var remove=new SavedDesignLibrary.Change(SavedDesignLibrary.Action.DELETE,id,2,null,null);
+        assertThat(shop.library(buyer,sid)).isEmpty();
+        assertThat(shop.changeLibrary(buyer,sid,buyer.namespace(),create,createAnna)).isEqualTo(new SavedDesignLibrary.Result(id,"1"));
+        assertThat(shop.changeLibrary(buyer,sid,buyer.namespace(),UUID.randomUUID(),copyAnna)).isEqualTo(new SavedDesignLibrary.Result(copy,"1"));
+        assertThat(read(buyer.owner())).isEmpty();
+        var v1=shop.openSaved(buyer,sid,id).orElseThrow();
+        assertThat(shop.library(buyer,sid)).hasSize(2);
+        assertThat(v1.item().caption()).isEqualTo("Anna");
+        assertThat(v1.design()).isEqualTo(anna);
+        UUID premature=UUID.randomUUID();
+        assertThatThrownBy(()->shop.changeLibrary(buyer,sid,buyer.namespace(),premature,remove)).isInstanceOf(Conflict.class);
+        var line=shop.add(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Addition("cobalt",1,initial,1L)).lineId();
+        assertThat(shop.changeLibrary(buyer,sid,buyer.namespace(),save,saveMaria)).isEqualTo(new SavedDesignLibrary.Result(id,"2"));
+        var v2=shop.openSaved(buyer,sid,id).orElseThrow();
+        assertThat(v2.design()).isEqualTo(maria);
+        assertThat(v2.item().caption()).isEqualTo("Maria");
+        // It was refused before version 2 existed. A later delivery of the
+        // very same command cannot delete a design which is now at version 2.
+        assertThatThrownBy(()->shop.changeLibrary(buyer,sid,buyer.namespace(),premature,remove)).isInstanceOf(Conflict.class);
+        assertThat(shop.openSaved(buyer,sid,copy).orElseThrow().design()).isEqualTo(v1.design());
+        assertThat(shop.lineDesign(buyer,sid,line).orElseThrow()).isEqualTo(v1.design());
+        assertThatThrownBy(()->shop.changeLibrary(buyer,sid,buyer.namespace(),UUID.randomUUID(),saveMaria)).isInstanceOf(Conflict.class);
+        assertThat(shop.changeLibrary(buyer,sid,buyer.namespace(),delete,remove)).isEqualTo(new SavedDesignLibrary.Result(id,"3"));
+        assertThat(shop.openSaved(buyer,sid,id)).isEmpty();
+        assertThat(shop.changeLibrary(buyer,sid,buyer.namespace(),save,saveMaria)).isEqualTo(new SavedDesignLibrary.Result(id,"2"));
+        assertThat(shop.changeLibrary(buyer,sid,buyer.namespace(),create,createAnna)).isEqualTo(new SavedDesignLibrary.Result(id,"1"));
+        assertThatThrownBy(()->shop.changeLibrary(buyer,sid,buyer.namespace(),UUID.randomUUID(),createAnna)).isInstanceOf(Conflict.class);
+        assertThat(shop.library(buyer,sid)).extracting(SavedDesignLibrary.Item::id).containsExactly(copy);
+        assertThat(shop.lineDesign(buyer,sid,line).orElseThrow()).isEqualTo(v1.design());
+        assertThat(read(buyer.owner())).singleElement().extracting(PermanentCartReader.Line::quantity).isEqualTo("1");
+        var next=login(newOwner(),"other-library-owner");
+        assertThat(shop.library(next,"other-library-owner")).isEmpty();
+        assertThat(shop.openSaved(next,"other-library-owner",copy)).isEmpty();
+        assertThatThrownBy(()->shop.changeLibrary(next,"other-library-owner",next.namespace(),UUID.randomUUID(),createAnna))
+                .isInstanceOf(InvalidBatch.class);
+        assertThatThrownBy(()->shop.openSaved(buyer,sid,copy)).isInstanceOf(Conflict.class);
+    }
     Receipt add(UUID id,long quantity) { return api.add(buyer,sid,buyer.namespace(),id,new Addition(TIDE,quantity)); }
     List<PermanentCartReader.Line> read(UUID owner) { return new PermanentCartReader(db).lines(owner).orElseThrow(); }
     List<Long> receipts(UUID owner) {
@@ -101,6 +151,22 @@ class DirectCartAdditionPostgresTest {
         assertThat(add(LEGACY_INTENT,2)).isEqualTo(new Receipt("APPLIED",1L));
         assertThat(receipts(legacyOwner)).containsExactly(1L);
         assertThat(read(legacyOwner)).singleElement().satisfies(l->{assertThat(l.lineId()).isEqualTo(LEGACY_LINE);assertThat(l.quantity()).isEqualTo("2");});
+    }
+
+    @Test void aNewAdditionCanUseASlotFromAbandonedUndoWithoutChangingActiveLinesOrReplayingAnAddition() {
+        UUID owner=buyer.owner(),intent=UUID.randomUUID();
+        db.update("INSERT INTO account_cart.cart(owner_id) VALUES (?)",owner);
+        db.update("""
+                INSERT INTO account_cart.cart_line(owner_id,id,offer_id,variant_id,quantity,removed)
+                SELECT ?,gen_random_uuid(),'tide','cobalt',1,true FROM generate_series(1,1000)
+                """,owner);
+        var applied=add(intent,2);
+        assertThat(applied).isEqualTo(new Receipt("APPLIED",1L));
+        var result=read(owner);
+        assertThat(result).hasSize(1000);
+        assertThat(result).filteredOn(l->!l.removed()).singleElement().satisfies(l->assertThat(l.quantity()).isEqualTo("2"));
+        assertThat(add(intent,2)).isEqualTo(applied);
+        assertThat(read(owner)).isEqualTo(result);
     }
 
     @Test void concurrentIdenticalClicksAndLaterReplayReturnOriginalVersionWithoutAddingTwice() throws Exception {
@@ -306,5 +372,133 @@ class DirectCartAdditionPostgresTest {
         assertThatThrownBy(()->shop.add(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Addition(sku,1))).isInstanceOf(InvalidBatch.class);
         assertThatThrownBy(()->shop.prepare(buyer,sid,buyer.namespace(),UUID.randomUUID(),List.of(new Item("kiln-blue",null,null,1))))
                 .isInstanceOf(InvalidBatch.class);
+    }
+
+    @Test void absoluteEditsKeepTheirReceiptAndUseStockAcrossTheVariant() {
+        var source=IsolatedCatalogAuthority.from(storefront);
+        var shop=new LocalCartCommands(cartSource,files,source);
+        var view=new PermanentCartReader(db,source);
+        assertThat(view.snapshot(buyer.owner()).orElseThrow().version()).isZero();
+        shop.add(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Addition(TIDE,2));
+        var original=view.lines(buyer.owner()).orElseThrow().getFirst().lineId();
+        var change=new Edit(original,EditAction.QUANTITY,1,3L);
+        UUID id=UUID.randomUUID();
+        assertThat(shop.edit(buyer,sid,buyer.namespace(),id,change)).isEqualTo(new Receipt("APPLIED",2L));
+        assertThatThrownBy(()->shop.edit(buyer,sid,buyer.namespace(),id,new Edit(original,EditAction.QUANTITY,1,4L))).isInstanceOf(Conflict.class);
+        assertThatThrownBy(()->shop.edit(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Edit(original,EditAction.REMOVE,1,null))).isInstanceOf(Conflict.class);
+        assertThat(shop.edit(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Edit(original,EditAction.QUANTITY,2,3L)).version()).isEqualTo(2);
+        var removal=new Edit(original,EditAction.REMOVE,2,null);
+        var removeId=UUID.randomUUID();
+        assertThat(shop.edit(buyer,sid,buyer.namespace(),removeId,removal).version()).isEqualTo(3);
+        assertThat(shop.edit(buyer,sid,buyer.namespace(),id,change).version()).isEqualTo(2);
+        assertThat(view.snapshot(buyer.owner()).orElseThrow()).satisfies(cart->{
+            assertThat(cart.version()).isEqualTo(3);
+            assertThat(cart.lines()).singleElement().satisfies(l->{assertThat(l.removed()).isTrue();assertThat(l.quantity()).isEqualTo("3");});
+        });
+        shop.add(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Addition(TIDE,18));
+        var undo=new Edit(original,EditAction.RESTORE,4,null);
+        var undoId=UUID.randomUUID();
+        assertThatThrownBy(()->shop.edit(buyer,sid,buyer.namespace(),undoId,undo)).isInstanceOf(InvalidBatch.class);
+        var otherLine=view.lines(buyer.owner()).orElseThrow().stream().filter(l->!l.removed()).findFirst().orElseThrow().lineId();
+        shop.edit(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Edit(otherLine,EditAction.QUANTITY,4,1L));
+        assertThatThrownBy(()->shop.edit(buyer,sid,buyer.namespace(),undoId,undo)).isInstanceOf(InvalidBatch.class);
+        assertThat(shop.edit(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Edit(original,EditAction.RESTORE,5,null)).version()).isEqualTo(6);
+        assertThat(view.lines(buyer.owner()).orElseThrow()).singleElement().satisfies(l->{
+            assertThat(l.lineId()).isEqualTo(original);assertThat(l.quantity()).isEqualTo("4");assertThat(l.removed()).isFalse();});
+        assertThat(shop.edit(buyer,sid,buyer.namespace(),removeId,removal).version()).isEqualTo(3);
+        var other=login(newOwner(),"line-edit-next-owner");
+        assertThatThrownBy(()->shop.edit(other,"line-edit-next-owner",other.namespace(),id,change)).isInstanceOf(Conflict.class);
+        assertThatThrownBy(()->shop.edit(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Edit(original,EditAction.REMOVE,6,null))).isInstanceOf(Conflict.class);
+        assertThat(view.snapshot(buyer.owner()).orElseThrow().version()).isEqualTo(6);
+        assertThat(view.lines(other.owner()).orElseThrow()).isEmpty();
+    }
+
+    @Test void undoRestoresOriginalPrivateDesignAndMergesOnlyEquivalentNewGuestLines() {
+        var shop=new LocalCartCommands(cartSource,files,IsolatedCatalogAuthority.from(storefront));
+        var input=StudioDesignTest.artwork();StudioDesignTest.withText(input,"rounded").put("text","Anna");
+        var original=shop.stageDesign(buyer,sid,buyer.namespace(),UUID.randomUUID(),StudioDesign.parse(input));
+        var equivalent=shop.stageDesign(buyer,sid,buyer.namespace(),UUID.randomUUID(),StudioDesign.parse(input));
+        var diff=input.deepCopy();((tools.jackson.databind.node.ObjectNode)diff.get("objects").get(1)).put("text","Joy");
+        var different=shop.stageDesign(buyer,sid,buyer.namespace(),UUID.randomUUID(),StudioDesign.parse(diff));
+        UUID click=UUID.randomUUID();var first=new Addition("cobalt",2,original,1L);var bought=shop.add(buyer,sid,buyer.namespace(),click,first);
+        UUID line=bought.lineId();
+        shop.edit(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Edit(line,EditAction.REMOVE,1,null));
+        var batch=UUID.randomUUID();
+        shop.prepare(buyer,sid,buyer.namespace(),batch,List.of(new Item("cobalt",equivalent,1L,1),new Item("cobalt",different,1L,2)));
+        var imported=shop.apply(buyer,sid,buyer.namespace(),batch); assertThat(imported.version()).isEqualTo(3);
+        assertThat(read(buyer.owner())).hasSize(3);
+        assertThat(shop.add(buyer,sid,buyer.namespace(),click,first)).isEqualTo(bought);
+        var second=login(buyer.owner(),"line-undo-after-login");
+        var undo=new Edit(line,EditAction.RESTORE,3,null);
+        UUID id=UUID.randomUUID();
+        assertThat(shop.edit(second,"line-undo-after-login",second.namespace(),id,undo).version()).isEqualTo(4);
+        assertThat(shop.edit(second,"line-undo-after-login",second.namespace(),id,undo).version()).isEqualTo(4);
+        assertThat(shop.apply(second,"line-undo-after-login",second.namespace(),batch)).isEqualTo(imported);
+        assertThat(read(buyer.owner())).hasSize(2).allMatch(l->!l.removed());
+        assertThat(read(buyer.owner()).stream().filter(l->l.lineId().equals(line))).singleElement().satisfies(l->{
+            assertThat(l.designId()).isEqualTo(original);assertThat(l.quantity()).isEqualTo("3");});
+        assertThat(shop.lineDesign(second,"line-undo-after-login",line)).contains(input);
+        shop.edit(second,"line-undo-after-login",second.namespace(),UUID.randomUUID(),new Edit(line,EditAction.REMOVE,4,null));
+        var dismiss=new Edit(line,EditAction.DISMISS,5,null);UUID dismissId=UUID.randomUUID();
+        assertThat(shop.edit(second,"line-undo-after-login",second.namespace(),dismissId,dismiss).version()).isEqualTo(6);
+        assertThat(shop.edit(second,"line-undo-after-login",second.namespace(),dismissId,dismiss).version()).isEqualTo(6);
+        assertThat(shop.lineDesign(second,"line-undo-after-login",line)).isEmpty();
+        assertThat(db.queryForObject("SELECT count(*) FROM account_cart.design_asset WHERE owner_id=? AND design_id=?",Long.class,buyer.owner(),original)).isPositive();
+        assertThat(read(buyer.owner())).singleElement().satisfies(l->assertThat(l.designId()).isEqualTo(different));
+    }
+
+    @Test void twoTabsEditingTheSameCartVersionCannotOverwriteOneAnother() throws Exception {
+        var shop=new LocalCartCommands(cartSource,files,IsolatedCatalogAuthority.from(storefront));
+        shop.add(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Addition(TIDE,2));
+        var row=read(buyer.owner()).getFirst().lineId();var start=new CountDownLatch(1);
+        try(var pool=Executors.newFixedThreadPool(2)){
+            var results=List.of(3L,5L).stream().map(q->pool.submit(()->{
+                start.await();
+                try{return shop.edit(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Edit(row,EditAction.QUANTITY,1,q)).state();}
+                catch(Conflict stale){return "STALE";}
+            })).toList();
+            start.countDown();
+            assertThat(List.of(results.get(0).get(15,TimeUnit.SECONDS),results.get(1).get(15,TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder("APPLIED","STALE");
+        }
+        assertThat(read(buyer.owner())).singleElement().satisfies(l->assertThat(l.quantity()).isIn("3","5"));
+        assertThat(db.queryForObject("SELECT version FROM account_cart.cart WHERE owner_id=?",Long.class,buyer.owner())).isEqualTo(2);
+    }
+
+    @Test void faultAtReceiptCommitRollsBackTheRemovedFlagAndCartVersion() {
+        var shop=new LocalCartCommands(cartSource,files,IsolatedCatalogAuthority.from(storefront));
+        shop.add(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Addition(TIDE,2));
+        var row=read(buyer.owner()).getFirst().lineId();var id=UUID.randomUUID();var remove=new Edit(row,EditAction.REMOVE,1,null);
+        db.execute("""
+                CREATE FUNCTION account_cart_fixture.rollback_edit_test() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN RAISE EXCEPTION 'edit fixture'; END $$;
+                CREATE CONSTRAINT TRIGGER rollback_edit_test AFTER INSERT ON account_cart.line_edit_receipt
+                DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION account_cart_fixture.rollback_edit_test()
+                """);
+        try {
+            assertThatThrownBy(()->shop.edit(buyer,sid,buyer.namespace(),id,remove)).isInstanceOf(Unavailable.class);
+            assertThat(new PermanentCartReader(db).snapshot(buyer.owner()).orElseThrow()).satisfies(c->{
+                assertThat(c.version()).isEqualTo(1);assertThat(c.lines().getFirst().removed()).isFalse();});
+            assertThat(db.queryForObject("SELECT count(*) FROM account_cart.line_edit_receipt WHERE intent_id=?",Long.class,id)).isZero();
+        } finally {db.execute("DROP TRIGGER rollback_edit_test ON account_cart.line_edit_receipt; DROP FUNCTION account_cart_fixture.rollback_edit_test()");}
+        assertThat(shop.edit(buyer,sid,buyer.namespace(),id,remove).version()).isEqualTo(2);
+    }
+
+    @Test void retiredItemsCanBeReducedOrRemovedButCannotBeIncreasedOrRestored() {
+        var shop=new LocalCartCommands(cartSource,files,IsolatedCatalogAuthority.from(storefront));
+        String sku="retiring-slate";var merchandise=new JdbcTemplate(storefront);
+        merchandise.update("""
+                INSERT INTO local_catalog.variant(product_id,id,sku,cents,stock,colors,check_tone,name,photos,display_order)
+                SELECT product_id,?,?,1450,7,colors,check_tone,name,photos,99 FROM local_catalog.variant
+                 WHERE product_id='drift' ORDER BY id LIMIT 1
+                """,sku,sku);
+        shop.add(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Addition(sku,4));
+        var line=read(buyer.owner()).getFirst().lineId();
+        merchandise.update("DELETE FROM local_catalog.variant WHERE sku=?",sku);
+        assertThatThrownBy(()->shop.edit(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Edit(line,EditAction.QUANTITY,1,5L))).isInstanceOf(InvalidBatch.class);
+        assertThat(shop.edit(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Edit(line,EditAction.QUANTITY,1,3L)).version()).isEqualTo(2);
+        assertThat(shop.edit(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Edit(line,EditAction.REMOVE,2,null)).version()).isEqualTo(3);
+        assertThatThrownBy(()->shop.edit(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Edit(line,EditAction.RESTORE,3,null))).isInstanceOf(InvalidBatch.class);
+        assertThat(shop.edit(buyer,sid,buyer.namespace(),UUID.randomUUID(),new Edit(line,EditAction.DISMISS,3,null)).version()).isEqualTo(4);
     }
 }
