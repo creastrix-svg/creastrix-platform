@@ -25,7 +25,7 @@ Open [the built storefront](http://localhost:4173/). The preview serves `dist/`,
 To run the existing catalog and product cards against PostgreSQL instead,
 use the separate [connected local catalog](../docs/local-catalog.md) mode.
 
-For the signed-in buying journey, follow the [local account cart runbook](../docs/engineering/account-cart-local-run.md), then run `npm run dev:shared-cart` and open `http://localhost:4317`. This mode supports guest cart import and **My designs** for synthetic local buyers.
+For the signed-in buying journey, follow the [local account cart runbook](../docs/engineering/account-cart-local-run.md), then run `npm run dev:shared-cart` and open `http://localhost:4317`. Synthetic local buyers can import their guest cart, use **My designs** and reopen [saved product variants](../docs/engineering/local-buyer-favorites.md) from another browser profile.
 
 ## Find a feature
 
@@ -56,6 +56,8 @@ Keep tests, styles and interface copy near the feature they exercise. A product 
 Start at `/` → `/catalog` → a product page. Buy as offered or open the studio if the product supports personalisation. Applying a design makes a snapshot; adding it to the cart does not change a previously added, different design. Go to `/preview/cart`; `/preview/checkout` is a local preview only.
 
 [Storefront behaviour and fixtures](docs/storefront.md) covers search, languages, stock limits, image/model fallbacks and navigation. [Studio and persistence](docs/personalisation.md) describes allowed zones, artwork/fonts, cart snapshots and storage limits. The [domain boundary](../docs/frontend-personalization-zones.md) explains why visual personalisation is not a production specification.
+
+**Next buyer-facing work:** refine the catalog and its slide-out menu together, then the product review journey, followed by the buyer account. These are planning priorities, not completed features. Before expanding checkout, agree on delivery destinations, shipping charges and how to present the total when delivery is unavailable.
 
 ## Verify a change
 

@@ -26,7 +26,7 @@ const ModelPreview = lazy(() => new Promise<typeof import('./ModelPreview')>((re
 }));
 
 type GalleryProps = {
-  favorite: boolean; toggleFavorite: () => void; t: ProductCopy; locale?: StorefrontLocale;
+  favorite: boolean; favoriteDisabled?:boolean; favoritePrivate?:boolean; toggleFavorite: () => void; t: ProductCopy; locale?: StorefrontLocale;
   initialMode?: 'photo' | 'model'; onModeChange?: (mode: 'photo' | 'model') => void;
 };
 type OfferGalleryProps = GalleryProps & {
@@ -45,7 +45,7 @@ export default function MediaGallery({ variant, decoration, ...props }: GalleryP
 
 // A photograph-only offer uses the same tabs, zoom dialog, loading states and thumbnails.
 // The model import stays dormant when the offer does not supply a model.
-export function OfferMediaGallery({ media, sku, finishName, favorite, toggleFavorite, t: originalCopy, initialMode = 'photo', onModeChange, decoration, sketch, locale = 'en', unavailableModelReason, imageSize = [1200, 802] }: OfferGalleryProps) {
+export function OfferMediaGallery({ media, sku, finishName, favorite, favoriteDisabled, favoritePrivate, toggleFavorite, t: originalCopy, initialMode = 'photo', onModeChange, decoration, sketch, locale = 'en', unavailableModelReason, imageSize = [1200, 802] }: OfferGalleryProps) {
   const p = personalizationCopy[locale];
   const t = decoration ? { ...originalCopy, photo: p.edit, backToPhotos: p.edit } : originalCopy;
   const modelReasonId = useId();
@@ -105,7 +105,7 @@ export function OfferMediaGallery({ media, sku, finishName, favorite, toggleFavo
       <div className="product-model-host" ref={setInlineHost} hidden={!media.model || displayMode !== 'model' || open} />
       {displayMode === 'model' ? media.model ? <button ref={enlarge} type="button" className="product-model-expand product-icon-button" disabled={modelPhase !== 'ready'} aria-busy={modelBusy} aria-label={t.enlarge} onClick={() => setOpen(true)}>{modelBusy ? <Spinner /> : <Icon name="expand" />}</button> : unavailable : decoration ? <button type="button" ref={enlarge} className="product-photo-open" aria-label={t.enlarge} onClick={() => setOpen(true)}>{sketch}<span className="product-photo-expand"><Icon name="expand" /></span></button> : hasPhotos && !photoFailed ? <button ref={enlarge} type="button" className="product-photo-open" disabled={photoBusy} aria-busy={photoBusy} aria-label={t.enlarge} onClick={() => setOpen(true)}><MediaImage key={photoKey} src={rawPhoto} alt={t.photoAlt} width={imageSize[0]} height={imageSize[1]} priority="high" className="product-photo-change" loadingLabel={t.loadingPhoto} errorLabel={t.noPhotoShort} announce onPhase={photoPhase} onFailure={() => failPhoto(photoKey)} /><span className="product-photo-expand">{photoBusy ? <Spinner /> : <Icon name="expand" />}</span></button>
         : noPhoto}
-      <button type="button" className="product-favorite" aria-label={favorite ? t.unfavorite : t.favorite} aria-description={finishName} aria-pressed={favorite} onClick={() => { if (!favorite) setFavoriteTick(value => value + 1); toggleFavorite(); }}><span key={favoriteTick} className={favorite && favoriteTick > 0 ? 'product-heart-added' : undefined}><Icon name="heart" filled={favorite} /></span></button>
+      <button type="button" className="product-favorite" data-private-account={favoritePrivate||undefined} disabled={favoriteDisabled} aria-label={favorite ? t.unfavorite : t.favorite} aria-description={finishName} aria-pressed={favorite} onClick={() => { if (!favorite) setFavoriteTick(value => value + 1); toggleFavorite(); }}><span key={favoriteTick} className={favorite && favoriteTick > 0 ? 'product-heart-added' : undefined}><Icon name="heart" filled={favorite} /></span></button>
     </div>
     {thumbnails(false)}
     {decorationFailed && decoration && <p role="alert">{p.modelUnavailable}</p>}

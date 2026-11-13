@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import com.creastrix.platform.accountcart.LocalCartCommands;
+import com.creastrix.platform.accountcart.BuyerFavorites;
 import com.creastrix.platform.user.application.port.UserIdentityBindingRepository.Identity;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -152,6 +153,48 @@ class LocalCartProtocolTest {
                 data.deepCopy().put("expectedVersion",2),data.deepCopy().put("expectedVersion","01"),
                 data.deepCopy().put("action","move"),data.deepCopy().put("designId","none")))
             assertThatThrownBy(()->LocalCartProtocol.libraryChange(malformed)).isInstanceOf(LocalCartCommands.InvalidBatch.class);
+    }
+
+    @Test void favoritesAcceptOnlyTheCanonicalOperationsAndBoundedVariantInputs() {
+        var key=UUID.randomUUID();
+        String root="/api/account-cart/favorites";
+        for (var path:List.of(root+"/commands/"+key,root+"/imports/"+key)) {
+            var post=new MockHttpServletRequest("POST",path);
+            assertThat(LocalCartProtocol.route(post).batch()).isEqualTo(key);
+            assertThat(LocalCartProtocol.route(new MockHttpServletRequest("GET",path))).isNull();
+            assertThat(LocalCartProtocol.route(new MockHttpServletRequest("POST",path+"/"))).isNull();
+            assertThat(LocalCartProtocol.route(new MockHttpServletRequest("POST",path.replace(key.toString(),"unknown")))).isNull();
+            post.setQueryString("owner=extra");assertThat(LocalCartProtocol.route(post)).isNull();
+        }
+        assertThat(LocalCartProtocol.route(new MockHttpServletRequest("GET",root)).action()).isEqualTo("favorites");
+        assertThat(LocalCartProtocol.route(new MockHttpServletRequest("POST",root))).isNull();
+        var json=JsonMapper.builder().build();
+        assertThat(LocalCartProtocol.favoriteChange(json.readTree("{\"sku\":\"cobalt\",\"saved\":true}"),false).operation())
+                .isEqualTo(BuyerFavorites.Operation.SET);
+        assertThat(LocalCartProtocol.favoriteChange(json.readTree("{\"sku\":\"coral\",\"saved\":false}"),false).operation())
+                .isEqualTo(BuyerFavorites.Operation.UNSET);
+        for(var bad:List.of("{\"sku\":\"a\",\"saved\":1}","{\"sku\":\"a\",\"saved\":true,\"owner\":\"me\"}",
+                "{\"sku\":\"a\",\"saved\":\"false\"}","{\"sku\":\"A\",\"saved\":false}","{\"sku\":\"a,b\",\"saved\":false}"))
+            assertThatThrownBy(()->LocalCartProtocol.favoriteChange(json.readTree(bad),false)).isInstanceOf(LocalCartCommands.InvalidBatch.class);
+        for(var bad:List.of("{\"skus\":[\"a\",\"a\"]}","{\"skus\":[null]}","{\"skus\":\"a\"}","{\"skus\":[],\"ownerId\":\"b\"}"))
+            assertThatThrownBy(()->LocalCartProtocol.favoriteChange(json.readTree(bad),true)).isInstanceOf(LocalCartCommands.InvalidBatch.class);
+        assertThatThrownBy(()->new BuyerFavorites.Change(BuyerFavorites.Operation.IMPORT,
+                java.util.stream.IntStream.rangeClosed(0,1000).mapToObj(n->"color-"+n).toList())).isInstanceOf(LocalCartCommands.InvalidBatch.class);
+    }
+
+    @Test void favoriteImportPinsGuestProofFromOriginalServerLoginNotCallerInput() throws Exception {
+        UUID guest=UUID.randomUUID(),fake=UUID.randomUUID();
+        var c=new Callback();c.request.setAttribute(LocalCartSessionBinding.GUEST_INTENT,guest);c.select();c.complete();
+        var request=new MockHttpServletRequest("POST","/api/account-cart/favorites/imports/"+fake);
+        request.setSession(c.session);request.addHeader("X-Cart-Namespace",c.ns.toString());
+        request.setContentType("application/json");request.setContent("{\"skus\":[\"cobalt\"]}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThatThrownBy(()->LocalCartProtocol.stage(c.binding,LocalCartProtocol.route(request),request,c.buyer))
+                .isInstanceOf(LocalCartSessionBinding.Refusal.class);
+        request.addHeader("X-Cart-Context",c.ticket.toString());
+        LocalCartProtocol.stage(c.binding,LocalCartProtocol.route(request),request,c.buyer);
+        LocalCartProtocol.writeFavorites(c.commands,request);
+        verify(c.commands).changeFavorites(eq(c.claim),eq(c.session.getId()),eq(c.ns),eq(fake),eq(guest),
+                eq(new BuyerFavorites.Change(BuyerFavorites.Operation.IMPORT,List.of("cobalt"))));
     }
 
     @Test void privateLibraryReadsEchoOnlyTheServerAdmittedBuyer() {

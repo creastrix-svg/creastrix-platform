@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import { productCopy } from '../copy';
-import { cartAdded, favoriteToggled, variantCartQuantity } from '../demoStore';
+import { cartAdded, variantCartQuantity } from '../demoStore';
+import {useFavoriteHeart} from '../favorites/favoriteShelf';
 import { editionItem, editionItems } from '../fixtures/editionCatalog';
 import { shelfCopy } from '../home/homeShelfCopy';
 import { OfferMediaGallery } from '../media/MediaGallery';
@@ -30,7 +31,7 @@ export default function TideProductPage() {
   const edition = editionItems(locale), item = editionItem(tideOffer.id, locale)!;
   const cobalt = tideOffer.finish;
   const inCart = useAppSelector(state => variantCartQuantity(state.productDemo, tideOffer.sku));
-  const favorite = useAppSelector(state => state.productDemo.favorites.includes(tideOffer.sku));
+  const heart=useFavoriteHeart(tideOffer.sku);
   const dispatch = useAppDispatch();
   const [quantity, setQuantity] = useState(readQuantity);
   const updateQuantity = (next: number) => {
@@ -44,7 +45,7 @@ export default function TideProductPage() {
     gallery={<OfferMediaGallery sku={tideOffer.sku} finishName={cobalt.name[locale]} locale={locale}
       t={{ ...t, photoAlt: item.name + ' · ' + item.title + ' · ' + item.material }}
       media={tideOffer.media} imageSize={[1024, 1024]} unavailableModelReason={tideOffer.media.model ? undefined : t.modelFailed}
-      favorite={favorite} toggleFavorite={() => dispatch(favoriteToggled(tideOffer.sku))} />}
+      {...heart} />}
     reviews={{ list: reviewList, write: score => reviewList + '/new?rating=' + score }}
     price={<ProductPrice cents={tideOffer.unitCents} previousCents={tideOffer.previousCents} language={locale} t={t} />}
     purchase={<ProductPurchasePanel locale={locale} stock={tideOffer.stock} remaining={tideOffer.stock - inCart}

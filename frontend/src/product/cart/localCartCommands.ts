@@ -1,5 +1,6 @@
 import type { AppliedLoopDesign } from './appliedLoopDesign';
 import type {LibraryChange} from '../designs/designLibraryApi';
+import {allowedFavoriteSku,readFavoriteSnapshot} from '../favorites/favoriteSnapshot';
 
 /** Commands are only wired by the dedicated loopback development entry. Never
  * accept a caller-provided URL or send a server ticket to another origin. */
@@ -56,6 +57,23 @@ export function localCartCommands(fetcher:typeof fetch, guard:Guard) {
       ...(payload === undefined ? {} : {body:JSON.stringify(payload)})},statuses);
   }
   return {
+    async listFavorites(signal:AbortSignal){
+      const {status,value}=await request('/api/account-cart/favorites',signal,false,{},undefined,[200,409]);
+      if(status===409)return value.error==='request_not_completed'&&Object.keys(value).length===1?'conflict' as const:refused();
+      return readFavoriteSnapshot(value,guard.ownerId);
+    },
+    async changeFavorites(binding:Binding,id:string,command:{sku:string;saved:boolean}|{skus:readonly string[]},signal:AbortSignal){
+      if(binding.ownerId!==guard.ownerId)return refused();
+      const transfer='skus' in command;
+      if(transfer ? command.skus.length>1000||!command.skus.every(allowedFavoriteSku)||new Set(command.skus).size!==command.skus.length
+        : !allowedFavoriteSku(command.sku)||typeof command.saved!=='boolean')return refused();
+      const {value,status}=await request('/api/account-cart/favorites/'+(transfer?'imports':'commands')+'/'+tokenId(id),signal,true,{
+        'X-Cart-Namespace':tokenId(binding.namespace),'X-Cart-Context':tokenId(binding.writeContext),
+      },command,[200,409,422,503]);
+      if((status===409||status===422)&&value.error==='request_not_completed')return status===422?'invalid' as const:'conflict' as const;
+      if(status!==200)return refused(); // Unknown delivery: repeat only the original intent.
+      return readFavoriteSnapshot(value,guard.ownerId);
+    },
     async library(binding:Binding,intent:string,body:LibraryChange,signal:AbortSignal){
       if(binding.ownerId!==guard.ownerId || !/^(0|[1-9][0-9]{0,18})$/.test(body.expectedVersion)
         || BigInt(body.expectedVersion)>9223372036854775807n || (body.action!=='save'&&body.expectedVersion==='0'))return refused();

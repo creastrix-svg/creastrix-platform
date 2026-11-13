@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 import com.creastrix.platform.accountcart.LocalCartCommands;
 import com.creastrix.platform.accountcart.StudioDesign;
 import com.creastrix.platform.accountcart.SavedDesignLibrary;
+import com.creastrix.platform.accountcart.BuyerFavorites;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Profile;
@@ -40,6 +41,9 @@ final class LocalCartProtocol {
     private static final Pattern EDIT=Pattern.compile(PREFIX+"/edits/"+UUID_PATH);
     private static final Pattern READ=Pattern.compile(PREFIX+"/lines/"+UUID_PATH+"/design");
     private static final String LIBRARY=PREFIX+"/library";
+    private static final String FAVORITES=PREFIX+"/favorites";
+    private static final Pattern FAVORITE_SET=Pattern.compile(FAVORITES+"/commands/"+UUID_PATH);
+    private static final Pattern FAVORITE_IMPORT=Pattern.compile(FAVORITES+"/imports/"+UUID_PATH);
     private static final Pattern LIBRARY_ENTRY=Pattern.compile(LIBRARY+"/"+UUID_PATH);
     private static final Pattern LIBRARY_COMMAND=Pattern.compile(LIBRARY+"/commands/"+UUID_PATH);
     private static final Pattern PATH=Pattern.compile(PREFIX+"/imports/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/(prepare|apply|status|retire)");
@@ -65,6 +69,11 @@ final class LocalCartProtocol {
         var method=req.getMethod();
         if("POST".equals(method) && RECOVER.equals(req.getRequestURI())) return new Route("recover",null);
         if("GET".equals(method) && LIBRARY.equals(req.getRequestURI()))return new Route("library",null);
+        if("GET".equals(method) && FAVORITES.equals(req.getRequestURI()))return new Route("favorites",null);
+        var favorite=FAVORITE_SET.matcher(req.getRequestURI());
+        if("POST".equals(method) && favorite.matches())return new Route("setFavorite",UUID.fromString(favorite.group(1)));
+        var union=FAVORITE_IMPORT.matcher(req.getRequestURI());
+        if("POST".equals(method) && union.matches())return new Route("importFavorites",UUID.fromString(union.group(1)));
         var item=LIBRARY_ENTRY.matcher(req.getRequestURI());
         if("GET".equals(method) && item.matches())return new Route("openSaved",UUID.fromString(item.group(1)));
         var change=LIBRARY_COMMAND.matcher(req.getRequestURI());
@@ -87,6 +96,9 @@ final class LocalCartProtocol {
     static void stage(LocalCartSessionBinding binding,Route route,HttpServletRequest request,UUID actor) {
         var slot=LocalCartSessionBinding.pin(request,actor);
         if(route.action.equals("recover")) return;
+        if(route.action.equals("favorites")){
+            request.setAttribute(STAGED,binding.commands.favorites(slot.claim,slot.sid));return;
+        }
         if(route.action.equals("library")){
             request.setAttribute(STAGED,new LibraryView(slot.owner,binding.commands.library(slot.claim,slot.sid)));return;
         }
@@ -197,6 +209,47 @@ final class LocalCartProtocol {
         return new SavedDesignLibrary.Change(action,id(string(data,"id")),expected,
             action==SavedDesignLibrary.Action.SAVE?id(string(data,"designId")):null,
             action==SavedDesignLibrary.Action.COPY?id(string(data,"copyId")):null);
+    }
+
+    @GetMapping(FAVORITES)
+    ResponseEntity<BuyerFavorites.Snapshot> favorites(HttpServletRequest req) {
+        LocalCartSessionBinding.pinned(req);
+        if (!(req.getAttribute(STAGED) instanceof BuyerFavorites.Snapshot list)) throw new LocalCartSessionBinding.Refusal();
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(list);
+    }
+
+    @PostMapping({FAVORITES+"/commands/{intent}",FAVORITES+"/imports/{intent}"})
+    ResponseEntity<BuyerFavorites.Snapshot> changeFavorites(HttpServletRequest req) throws IOException {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(writeFavorites(commands,req));
+    }
+
+    static BuyerFavorites.Snapshot writeFavorites(LocalCartCommands commands,HttpServletRequest req) throws IOException {
+        var selected=route(req);
+        if (selected==null || !(selected.action.equals("setFavorite") || selected.action.equals("importFavorites")))
+            throw new LocalCartSessionBinding.Refusal();
+        var slot=LocalCartSessionBinding.pinned(req);
+        var namespace=LocalCartSessionBinding.commandNamespace(req,slot);
+        boolean union=selected.action.equals("importFavorites");
+        var change=favoriteChange(body(req,union?256*1024:512),union);
+        return commands.changeFavorites(slot.claim,slot.sid,namespace,selected.batch,slot.guestIntent,change);
+    }
+
+    static BuyerFavorites.Change favoriteChange(JsonNode data,boolean union) {
+        if (!union) {
+            var saved=data.get("saved");
+            if(data.size()!=2 || saved==null || !saved.isBoolean())throw new LocalCartCommands.InvalidBatch();
+            return new BuyerFavorites.Change(saved.asBoolean()?BuyerFavorites.Operation.SET:BuyerFavorites.Operation.UNSET,
+                    List.of(string(data,"sku")));
+        }
+        var list=data.get("skus");
+        if(data.size()!=1 || list==null || !list.isArray() || list.size()>BuyerFavorites.LIMIT)
+            throw new LocalCartCommands.InvalidBatch();
+        var skus=new ArrayList<String>();
+        for(var item:list){
+            if (!item.isString())throw new LocalCartCommands.InvalidBatch();
+            skus.add(item.asString());
+        }
+        return new BuyerFavorites.Change(BuyerFavorites.Operation.IMPORT,skus);
     }
 
     @GetMapping(STATUS)

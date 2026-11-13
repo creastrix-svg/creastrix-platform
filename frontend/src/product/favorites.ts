@@ -3,6 +3,7 @@ import { catalogReady, connectedOffers } from './catalog/localCatalog';
 import { isCartSku } from './cartSku';
 import type { CartSku } from './cartSku';
 import { tideOffer } from './fixtures/tideOffer';
+import {sharedCatalogMode} from './catalog/permanentCatalog';
 
 // One bounded key per known colour: saving Coral cannot replace another tab's
 // Chalk. Removal deletes only that key; no startup or bulk snapshot writes.
@@ -18,10 +19,12 @@ export const favoriteKey = (id: CartSku) => id === tideOffer.sku ? 'creastrix.pr
   : isVariantId(id) ? prefix + id : 'creastrix.catalog.favorites.v1.' + id;
 const unsaved = new WeakMap<object, Map<CartSku, boolean>>();
 export function readFavoriteIds(owner?: object): CartSku[] | null {
+  if(sharedCatalogMode)return []; // Legacy markers cannot identify the guest or the signed-in buyer.
   try { return favoriteSkus().filter(id => (owner && unsaved.get(owner)?.get(id)) ?? (localStorage.getItem(favoriteKey(id)) === '1')); }
   catch { return null; }
 }
 export function writeFavorite(owner: object, id: CartSku, saved: boolean) {
+  if(sharedCatalogMode)return undefined;
   if (!isCartSku(id)) return undefined;
   try {
     if (saved) localStorage.setItem(favoriteKey(id), '1');

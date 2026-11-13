@@ -146,10 +146,10 @@ Preferences are local to this browser origin, not account synchronization or
 cross-tab ordering. The native description summary switches localized Show more /
 Show less with the saved open state; both labels reserve one shared width at
 weight 600, hover only underlines and keyboard focus remains visible.
-The owner requires future
-authenticated cart/favorites to be stored by the backend for the internal User;
-that needs a separate identity/target slice and is not delivered here. Browser
-preference storage is not a substitute; guest-cart merge is not simulated.
+Browser preferences are separate from account storage. In the
+[shared local storefront](../../docs/engineering/account-cart-local-run.md),
+synthetic buyers have a server-backed cart and [saved product variants](../../docs/engineering/local-buyer-favorites.md).
+The offline preview has no account data or guest-to-account merge.
 Quantity is whole-digit input,
 bounded by each sample stock (24/8/15/6), not nine; cart totals use integer cents.
 Sample variants have one or two swatch colours with an exact-half diagonal split.
@@ -166,7 +166,7 @@ not resize controls.
 The heart saves a product in its selected colour, not a standalone colour or a
 personalised design. Saved products lists each marked variant
 with its own photo or swatch, current sample price and direct variant link.
-Each variant has its own localStorage key. Loop keeps its existing
+In the offline preview, each variant has its own localStorage key. Loop keeps its existing
 `creastrix.product.loop.favorites.v1.` keys; Tide uses `creastrix.product.tide.favorites.v1.cobalt`:
 saving writes a one-character marker and removing deletes only that key. Tabs
 cannot overwrite other colours by writing an outdated list. No design,
