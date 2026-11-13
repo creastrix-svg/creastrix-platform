@@ -61,6 +61,7 @@ public final class LocalCartCommands {
     private final LocalCartAdditions additions;
     private final LocalCartEdits edits;
     private final SavedDesignLibrary library;
+    private final BuyerFavorites favorites;
     private final SharedCatalogAuthority catalog;
 
     public LocalCartCommands(DataSource source,PrivateCartAssetStore files) {
@@ -80,6 +81,7 @@ public final class LocalCartCommands {
         additions=new LocalCartAdditions(db,batches);
         edits=new LocalCartEdits(db);
         library=new SavedDesignLibrary(db);
+        favorites=new BuyerFavorites(db);
     }
 
     private static <T> T guarded(Supplier<T> operation) {
@@ -262,6 +264,49 @@ public final class LocalCartCommands {
     public List<SavedDesignLibrary.Item> library(Claim claim,String sid) {
         if(catalog==null)throw new Conflict();
         return guarded(()->tx(()->{authority(claim,sid,claim.namespace());return library.list(claim.owner());}));
+    }
+
+    public BuyerFavorites.Snapshot favorites(Claim claim, String sid) {
+        if (catalog == null || claim == null) throw new Conflict();
+        return guarded(() -> tx(() -> {
+            authority(claim,sid,claim.namespace());
+            return favorites.snapshot(claim.owner());
+        }));
+    }
+
+    /** The guest proof comes from the server-selected, successfully completed login,
+     * never the posted body. A later login may only reconcile an existing decision
+     * of the same owner; it cannot make a first decision for the old guest batch. */
+    public BuyerFavorites.Snapshot changeFavorites(Claim claim,String sid,UUID ns,UUID intent,
+                                                   UUID originalGuestIntent,BuyerFavorites.Change change) {
+        if (catalog == null || claim == null) throw new Conflict();
+        if (intent == null || change == null) throw new InvalidBatch();
+        byte[] fingerprint=change.fingerprint();
+        return guarded(() -> {
+            Supplier<BuyerFavorites.Decision> admitted = () -> {
+                authority(claim,sid,ns);
+                var old=favorites.prior(claim.owner(),intent,change,fingerprint);
+                if (old==null && change.operation()==BuyerFavorites.Operation.IMPORT && !intent.equals(originalGuestIntent))
+                    throw new Conflict();
+                return old;
+            };
+            var known=tx(() -> {
+                var old=admitted.get();
+                if (old!=null) return old;
+                // Forgetting a withdrawn variant already on this owner's shelf
+                // needs no catalog access, even during an outage.
+                if (change.operation()==BuyerFavorites.Operation.UNSET && favorites.holds(claim.owner(),change.skus().getFirst()))
+                    return favorites.apply(claim.owner(),claim.generation(),intent,change,fingerprint,java.util.Set.of());
+                return null;
+            });
+            if (known!=null) return known;
+            // Lock order matches cart: acquire current seller rows, then the
+            // write scope, re-admit, and commit membership with its receipt.
+            return catalog.withVariants(change.skus(), rows -> tx(() -> {
+                var prior=admitted.get();
+                return prior!=null ? prior : favorites.apply(claim.owner(),claim.generation(),intent,change,fingerprint,rows.keySet());
+            }));
+        }).confirmed();
     }
 
     public SavedDesignLibrary.Result changeLibrary(Claim claim,String sid,UUID namespace,UUID intent,SavedDesignLibrary.Change change) {

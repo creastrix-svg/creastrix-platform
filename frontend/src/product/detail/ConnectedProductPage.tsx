@@ -4,7 +4,8 @@ import { useAppDispatch, useAppSelector } from '../../hooks';
 import { connectedOffer, entryForPath, type CatalogProduct, type CatalogVariant } from '../catalog/localCatalog';
 import type { CatalogEntry, Rail } from '../catalog/catalogEntries';
 import { isCartSku, type CartSku } from '../cartSku';
-import { cartAdded, favoriteToggled, variantCartQuantity } from '../demoStore';
+import { cartAdded, variantCartQuantity } from '../demoStore';
+import {useFavoriteHeart} from '../favorites/favoriteShelf';
 import { productCopy } from '../copy';
 import { catalogCopy } from '../browse/catalogCopy';
 import { departmentForSlug } from '../home/homeFeatured';
@@ -100,8 +101,7 @@ function SurfaceOfferCard(props:OfferCardProps){
 function OfferCard({entry, offer, variant, sku, select,design,personalization}: OfferCardProps & {design?:SavedDesign;personalization?:React.ReactNode}) {
   const locale = useProductLocale(), t = productCopy[locale], c = catalogCopy[locale];
   const account=useContext(AccountPurchaseContext);
-  const dispatch = useAppDispatch();
-  const favorite = useAppSelector(state => state.productDemo.favorites.includes(sku));
+  const heart=useFavoriteHeart(sku);
   const finish = variant.name[locale], title = entry.title[locale], material = entry.material[locale];
   const categorySlug = entry.categories[0], department = departmentForSlug(categorySlug);
   const category = department ? {label: shelfCopy[locale][department], href: '/catalog?category=' + categorySlug}
@@ -117,7 +117,7 @@ function OfferCard({entry, offer, variant, sku, select,design,personalization}: 
     selected={variant.id} urlVariant={sku} onSelect={offer.variants.length > 1 ? select : undefined}
     gallery={<OfferMediaGallery sku={sku} finishName={finish} media={variant} imageSize={[1024,1024]} locale={locale}
       t={{...t, photoAlt: entry.name + ' · ' + title}} unavailableModelReason={variant.model ? undefined : t.modelFailed}
-      favorite={favorite} toggleFavorite={() => dispatch(favoriteToggled(sku))}/>}
+      {...heart}/>}
     reviews={{list:list + (query ? '?' + query : ''), write: score => list + '/new?' + (query ? query + '&' : '') + 'rating=' + score}}
     personalization={personalization}
     price={<ProductPrice cents={variant.cents+(design?offer.designFeeCents:0)} designFeeCents={design?offer.designFeeCents:0}

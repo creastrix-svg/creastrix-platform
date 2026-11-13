@@ -91,6 +91,126 @@ class DirectCartAdditionPostgresTest {
         return c;
     }
 
+    private LocalCartCommands sharedShop() {
+        return new LocalCartCommands(cartSource,files,IsolatedCatalogAuthority.from(storefront));
+    }
+
+    private static BuyerFavorites.Change mark(String sku,boolean saved) {
+        return new BuyerFavorites.Change(saved?BuyerFavorites.Operation.SET:BuyerFavorites.Operation.UNSET,List.of(sku));
+    }
+
+    @Test void variantFavoritesAreAnOwnerSetAcrossLoginsNotACart() {
+        var shop=sharedShop();
+        assertThat(shop.favorites(buyer,sid)).isEqualTo(new BuyerFavorites.Snapshot(buyer.owner(),"0",List.of()));
+        assertThatThrownBy(()->api.favorites(buyer,sid)).isInstanceOf(Conflict.class); // isolated fixture lacks the catalog
+        UUID first=UUID.randomUUID();
+        assertThat(shop.changeFavorites(buyer,sid,buyer.namespace(),first,null,mark("cobalt",true)).skus()).containsExactly("cobalt");
+        shop.changeFavorites(buyer,sid,buyer.namespace(),UUID.randomUUID(),null,mark("coral",true));
+        assertThat(shop.changeFavorites(buyer,sid,buyer.namespace(),UUID.randomUUID(),null,mark("cobalt",true)).version()).isEqualTo("2");
+        var remaining=shop.changeFavorites(buyer,sid,buyer.namespace(),UUID.randomUUID(),null,mark("cobalt",false));
+        assertThat(remaining.skus()).containsExactly("coral");
+        assertThat(shop.changeFavorites(buyer,sid,buyer.namespace(),first,null,mark("cobalt",true))).isEqualTo(remaining);
+        assertThatThrownBy(()->shop.changeFavorites(buyer,sid,buyer.namespace(),first,null,mark("cobalt",false))).isInstanceOf(Conflict.class);
+        var next=login(buyer.owner(),"new-favorite-session");
+        assertThat(shop.favorites(next,"new-favorite-session")).isEqualTo(remaining);
+        assertThatThrownBy(()->shop.favorites(buyer,sid)).isInstanceOf(Conflict.class);
+        assertThatThrownBy(()->shop.changeFavorites(buyer,sid,buyer.namespace(),first,null,mark("cobalt",true))).isInstanceOf(Conflict.class);
+        assertThat(read(buyer.owner())).isEmpty();
+    }
+
+    @Test void guestUnionRequiresTheOriginalLoginAndAReplayNeverRestoresARemovedHeart() throws Exception {
+        var shop=sharedShop();
+        UUID guest=UUID.randomUUID();shop.reserveGuestIntent(guest);
+        var union=new BuyerFavorites.Change(BuyerFavorites.Operation.IMPORT,List.of(TIDE,"cobalt"));
+        assertThatThrownBy(()->shop.changeFavorites(buyer,sid,buyer.namespace(),guest,null,union)).isInstanceOf(Conflict.class);
+        shop.changeFavorites(buyer,sid,buyer.namespace(),UUID.randomUUID(),null,mark(TIDE,true));
+        try(var threads=Executors.newFixedThreadPool(2)) {
+            var start=new CountDownLatch(1);
+            Callable<BuyerFavorites.Snapshot> concurrent=()->{start.await();return shop.changeFavorites(buyer,sid,buyer.namespace(),guest,guest,union);};
+            var a=threads.submit(concurrent); var b=threads.submit(concurrent); start.countDown();
+            assertThat(a.get(15,TimeUnit.SECONDS)).isEqualTo(b.get(15,TimeUnit.SECONDS));
+        }
+        var old=shop.favorites(buyer,sid);
+        assertThat(old.skus()).containsExactly("cobalt",TIDE); assertThat(old.version()).isEqualTo("2");
+        var one=shop.changeFavorites(buyer,sid,buyer.namespace(),UUID.randomUUID(),null,mark("cobalt",false));
+        var other=login(newOwner(),"another-favorite-buyer");
+        assertThatThrownBy(()->shop.changeFavorites(other,"another-favorite-buyer",other.namespace(),guest,null,union)).isInstanceOf(Conflict.class);
+        assertThat(shop.favorites(other,"another-favorite-buyer").skus()).isEmpty();
+        var later=login(buyer.owner(),"return-to-favorites");
+        var reordered=new BuyerFavorites.Change(BuyerFavorites.Operation.IMPORT,List.of("cobalt",TIDE));
+        assertThat(shop.changeFavorites(later,"return-to-favorites",later.namespace(),guest,null,reordered)).isEqualTo(one);
+        assertThatThrownBy(()->shop.changeFavorites(later,"return-to-favorites",later.namespace(),guest,null,
+                new BuyerFavorites.Change(BuyerFavorites.Operation.IMPORT,List.of("cobalt")))).isInstanceOf(Conflict.class);
+        assertThat(db.queryForObject("SELECT count(*) FROM account_cart.favorite_receipt WHERE guest_intent=?",Integer.class,guest)).isOne();
+        assertThat(read(buyer.owner())).isEmpty();
+    }
+
+    @Test void firstLateGuestUnionHonorsConfirmedRemovalsIncludingNoOpAndANewLoginCanChooseAgain() {
+        var shop=sharedShop();
+        UUID guest=UUID.randomUUID();shop.reserveGuestIntent(guest);
+        shop.changeFavorites(buyer,sid,buyer.namespace(),UUID.randomUUID(),guest,mark("chalk",true));
+        shop.changeFavorites(buyer,sid,buyer.namespace(),UUID.randomUUID(),guest,mark("chalk",false));
+        // Coral was absent on this device. The explicit request still means “do not save it”.
+        shop.changeFavorites(buyer,sid,buyer.namespace(),UUID.randomUUID(),guest,mark("coral",false));
+        var merge=new BuyerFavorites.Change(BuyerFavorites.Operation.IMPORT,List.of("cobalt","coral","chalk"));
+        var merged=shop.changeFavorites(buyer,sid,buyer.namespace(),guest,guest,merge);
+        assertThat(merged.skus()).containsExactly("cobalt");
+        assertThat(shop.changeFavorites(buyer,sid,buyer.namespace(),guest,guest,merge)).isEqualTo(merged);
+        UUID again=UUID.randomUUID();shop.reserveGuestIntent(again);
+        String freshSession="fresh-favorite-choice";
+        var later=login(buyer.owner(),freshSession);
+        var reselection=new BuyerFavorites.Change(BuyerFavorites.Operation.IMPORT,List.of("chalk"));
+        assertThat(shop.changeFavorites(later,freshSession,later.namespace(),again,again,reselection).skus())
+                .containsExactly("chalk","cobalt");
+        assertThat(shop.changeFavorites(later,freshSession,later.namespace(),guest,null,merge).skus())
+                .containsExactly("chalk","cobalt");
+    }
+
+    @Test void guestUnionIsAtomicAtBoundsAndDecisionsRemainFinalAfterCapacityChanges() {
+        var shop=sharedShop();
+        db.update("INSERT INTO account_cart.favorite_shelf VALUES (?,1)",buyer.owner());
+        db.update("""
+                INSERT INTO account_cart.favorite_variant SELECT ?, 'retained-' || num
+                FROM generate_series(1,999) num
+                """,buyer.owner());
+        var batch=new BuyerFavorites.Change(BuyerFavorites.Operation.IMPORT,List.of(TIDE,"coral"));
+        UUID guest=UUID.randomUUID();shop.reserveGuestIntent(guest);
+        assertThatThrownBy(()->shop.changeFavorites(buyer,sid,buyer.namespace(),guest,guest,batch)).isInstanceOf(InvalidBatch.class);
+        var unchanged=shop.favorites(buyer,sid);
+        assertThat(unchanged.skus()).hasSize(999).doesNotContain(TIDE,"coral");
+        shop.changeFavorites(buyer,sid,buyer.namespace(),UUID.randomUUID(),null,mark("retained-1",false));
+        assertThatThrownBy(()->shop.changeFavorites(buyer,sid,buyer.namespace(),guest,guest,batch)).isInstanceOf(InvalidBatch.class);
+        UUID fresh=UUID.randomUUID();shop.reserveGuestIntent(fresh);
+        assertThat(shop.changeFavorites(buyer,sid,buyer.namespace(),fresh,fresh,batch).skus()).hasSize(1000).contains(TIDE,"coral");
+    }
+
+    @Test void unknownGuestVariantRejectsEntireSetAndAnEmptyShelfDoesNotRequireStock() {
+        var shop=sharedShop();
+        var wanted=new BuyerFavorites.Change(BuyerFavorites.Operation.IMPORT,List.of("not-in-catalog",TIDE));
+        UUID guest=UUID.randomUUID();shop.reserveGuestIntent(guest);
+        assertThatThrownBy(()->shop.changeFavorites(buyer,sid,buyer.namespace(),guest,guest,wanted)).isInstanceOf(InvalidBatch.class);
+        assertThat(shop.favorites(buyer,sid).skus()).isEmpty();
+        var catalogDb=new JdbcTemplate(storefront);
+        int stock=catalogDb.queryForObject("SELECT stock FROM local_catalog.variant WHERE sku=?",Integer.class,TIDE);
+        try {
+            catalogDb.update("UPDATE local_catalog.variant SET stock=0 WHERE sku=?",TIDE);
+            assertThat(shop.changeFavorites(buyer,sid,buyer.namespace(),UUID.randomUUID(),null,mark(TIDE,true)).skus()).containsExactly(TIDE);
+            assertThat(catalogDb.queryForObject("SELECT stock FROM local_catalog.variant WHERE sku=?",Integer.class,TIDE)).isZero();
+        } finally {catalogDb.update("UPDATE local_catalog.variant SET stock=? WHERE sku=?",stock,TIDE);}
+    }
+
+    @Test void receiptAndFavoritesRollBackTogetherAfterAWriteFailure() {
+        var shop=sharedShop();
+        var batch=new BuyerFavorites.Change(BuyerFavorites.Operation.IMPORT,List.of(TIDE,"cobalt"));
+        UUID guest=UUID.randomUUID();shop.reserveGuestIntent(guest);
+        db.execute("ALTER TABLE account_cart.favorite_receipt ADD CONSTRAINT fixture_reject_favorite CHECK (intent_id<>'"+guest+"'::uuid)");
+        try {
+            assertThatThrownBy(()->shop.changeFavorites(buyer,sid,buyer.namespace(),guest,guest,batch)).isInstanceOf(Unavailable.class);
+            assertThat(shop.favorites(buyer,sid)).isEqualTo(new BuyerFavorites.Snapshot(buyer.owner(),"0",List.of()));
+        } finally {db.execute("ALTER TABLE account_cart.favorite_receipt DROP CONSTRAINT fixture_reject_favorite");}
+        assertThat(shop.changeFavorites(buyer,sid,buyer.namespace(),guest,guest,batch).version()).isEqualTo("1");
+    }
+
     @Test void privateLibraryVersionChangesAndCopiesNeverRewriteTheCartSnapshot() throws Exception {
         var shop=new LocalCartCommands(cartSource,files,IsolatedCatalogAuthority.from(storefront));
         var anna=StudioDesignTest.artwork();

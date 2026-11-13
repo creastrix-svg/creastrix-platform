@@ -1,6 +1,7 @@
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useStore } from 'react-redux';
+import {useFavoriteHeart} from '../favorites/favoriteShelf';
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import type { RootState } from '../../store';
 import { isVariantId, variantById, loopVariants } from '../fixtures/loop';
@@ -8,7 +9,7 @@ import { readCartSku } from '../fixtures/cartSkus';
 import { money, photoDescription } from '../productDisplay';
 import type { VariantId } from '../fixtures/loop';
 import { productCopy } from '../copy';
-import { cartAdded, cartLineDesignCleared, cartLineId, cartLinePrice, configurationCartQuantity, favoriteToggled, productDescriptionChanged, productMediaModeSelected, productVariantSelected, purchaseQuantityChanged, variantCartQuantity, type CartLine } from '../demoStore';
+import { cartAdded, cartLineDesignCleared, cartLineId, cartLinePrice, configurationCartQuantity, productDescriptionChanged, productMediaModeSelected, productVariantSelected, purchaseQuantityChanged, variantCartQuantity, type CartLine } from '../demoStore';
 import { loopPrice } from '../loopPricing';
 import MediaGallery from '../media/MediaGallery';
 import ProductPurchasePanel, { ReadOnlyCartNotice } from './ProductPurchasePanel';
@@ -140,6 +141,7 @@ function ProductCard({ variantId, selectVariant, line, design, applied, onClear 
 }) {
   const language = useProductLocale(), t = productCopy[language];
   const demo = useAppSelector(state => state.productDemo), dispatch = useAppDispatch();
+  const heart=useFavoriteHeart(variantId);
   const variant = variantById(variantId), acceptsDesign = readCartSku(variantId).acceptsDesign;
   const viewCart = useRef<HTMLAnchorElement>(null);
   const price = line ? cartLinePrice(line) : loopPrice(variantId, Boolean(design));
@@ -151,7 +153,7 @@ function ProductCard({ variantId, selectVariant, line, design, applied, onClear 
   const facts = [[t.material, entry?.material[language] ?? t.plastic], [t.dimensions, catalogCopy[language].productDetails], [t.process, t.printing]] as const;
   return <ProductCardLayout locale={language} name={profile.name} subtitle={entry?.title[language] ?? t.subtitle} category={{ label: t.living, href: '/catalog?category=living' }}
     selected={variantId} urlVariant={variantId} finishes={variants.map(v => ({ ...v, name: v.name[language] }))} onSelect={selectVariant}
-    gallery={<MediaGallery key={variantId} variant={variantId} locale={language} decoration={decoration} initialMode={demo.mediaMode} onModeChange={mode => dispatch(productMediaModeSelected(mode))} favorite={demo.favorites.includes(variantId)} toggleFavorite={() => dispatch(favoriteToggled(variantId))} t={{ ...t, photoAlt: photoDescription(t.photoAlt, variant.name[language]) }} />}
+    gallery={<MediaGallery key={variantId} variant={variantId} locale={language} decoration={decoration} initialMode={demo.mediaMode} onModeChange={mode => dispatch(productMediaModeSelected(mode))} {...heart} t={{ ...t, photoAlt: photoDescription(t.photoAlt, variant.name[language]) }} />}
     reviews={{ list:review.list, write:score => review.form + '&rating=' + score }}
     price={<ProductPrice cents={price.unitCents} designFeeCents={price.feeCents} hasDesign={Boolean(design)} previousCents={variant.previousCents} language={language} t={t} />}
     purchase={line ? <section className="product-purchase" aria-label={t.cart}>

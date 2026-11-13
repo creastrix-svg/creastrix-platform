@@ -12,6 +12,7 @@ import type { LocalCartSession } from './product/cart/localCartSession';
 import GuestCartTransferNotice from './product/cart/GuestCartTransferNotice';
 import CartUndoVisitScope from './product/cart/CartUndoVisitScope';
 import {sharedCatalogMode} from './product/catalog/permanentCatalog';
+import SharedFavoriteProvider from './product/favorites/SharedFavoriteProvider';
 import {designLibraryCopy} from './product/designs/designLibraryCopy';
 import {bindGuestDesignLogin} from './product/designs/guestDesignHandoff';
 import {designLibraryPath,isDesignLibraryPath} from './product/routes';
@@ -122,7 +123,10 @@ function NotFound() {
   return <section className="not-found page-intro"><p className="eyebrow">{t.notFoundEyebrow}</p><h1>{t.notFoundTitle}</h1><p className="lead">{t.notFoundBody}</p><Link className="button primary" to="/">{t.backHome}<span aria-hidden="true">→</span></Link></section>;
 }
 
-export default function App({ cartSession }: { cartSession?: LocalCartSession } = {}) {
+export default function App({cartSession}:{cartSession?:LocalCartSession}={}){
+  return sharedCatalogMode&&cartSession?<SharedFavoriteProvider session={cartSession}><AppRoutes cartSession={cartSession}/></SharedFavoriteProvider>:<AppRoutes cartSession={cartSession}/>;
+}
+function AppRoutes({cartSession}:{cartSession?:LocalCartSession}) {
   const language = useAppSelector(state => state.ui.language);
   const auth = useAppSelector(state => state.authentication);
   const runtime = useContext(AuthenticationContext);

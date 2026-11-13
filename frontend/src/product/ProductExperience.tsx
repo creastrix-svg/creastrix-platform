@@ -25,6 +25,8 @@ import CheckoutView from './checkout/CheckoutView';
 import { SearchResultsView } from './browse/SearchResultsView';
 import { ConceptView } from './browse/ConceptView';
 import { FavoritesView } from './favorites/FavoritesView';
+import {useFavoriteShelf} from './favorites/favoriteShelf';
+import {FavoriteStatus} from './favorites/FavoriteStatus';
 import { InfoView } from './info/InfoView';
 import { NotFoundView } from './NotFoundView';
 import { ReviewFormView } from './reviews/ReviewFormView';
@@ -83,11 +85,11 @@ function LoopRoute({studio = false, account}: {studio?: boolean; account: boolea
 }
 function Storefront({ cartReady = true, accountCart }: { cartReady?: boolean; accountCart?: AccountCartAdmission }) {
   const language = useProductLocale(), t = productCopy[language];
-  const demo = useAppSelector(state => state.productDemo);
+  const demo = useAppSelector(state => state.productDemo),shelf=useFavoriteShelf();
   const dispatch = useAppDispatch(), store = useStore();
   const catalogAvailable = catalogReady();
   useEffect(() => {
-    if (!catalogAvailable) return;
+    if (!catalogAvailable || sharedCatalogMode) return;
     const refresh = () => { const ids = readFavoriteIds(store.getState); if (ids) dispatch(favoritesRead(ids)); };
     const changed = (event: StorageEvent) => { if (isFavoriteEvent(event)) refresh(); };
     window.addEventListener('storage', changed); refresh();
@@ -120,9 +122,10 @@ function Storefront({ cartReady = true, accountCart }: { cartReady?: boolean; ac
       <header ref={header} className="product-header product-width">
         <Link to="/" className="product-logo" aria-label={t.home}><img src="/brand/creastrix-logo-horizontal-black.svg" alt="Creastrix" width="174" height="44" /></Link>
         <SearchControl />
-        <div className="product-header-actions"><Link to="/account" className="product-icon-button" aria-label={t.account}><Icon name="user" /></Link><Link to="/preview/saved" className="product-icon-button" aria-label={demo.favorites.length ? t.favorites + ' · ' + demo.favorites.length : t.favorites}><Icon name="heart" />{demo.favorites.length > 0 && <span className="product-count">{demo.favorites.length}</span>}</Link>{accountCart ? sharedCatalogMode ? <AccountCartBadge admission={accountCart} label={t.cart}/> : <Link className="product-icon-button" aria-label={t.cart} to="/preview/cart"><Icon name="bag" /></Link> : <HeaderCart ready={cartReady} />}</div>
+        <div className="product-header-actions"><Link to="/account" className="product-icon-button" aria-label={t.account}><Icon name="user" /></Link><Link to="/preview/saved" data-private-account={shelf.private||undefined} className="product-icon-button" aria-label={shelf.ids.length ? t.favorites + ' · ' + shelf.ids.length : t.favorites}><Icon name="heart" />{shelf.ids.length > 0 && <span className="product-count">{shelf.ids.length}</span>}</Link>{accountCart ? sharedCatalogMode ? <AccountCartBadge admission={accountCart} label={t.cart}/> : <Link className="product-icon-button" aria-label={t.cart} to="/preview/cart"><Icon name="bag" /></Link> : <HeaderCart ready={cartReady} />}</div>
       </header>
-      {demo.favoritesMemoryOnly && <p role="status" className="product-width">{t.favoritesMemoryOnly}</p>}
+      {sharedCatalogMode && <FavoriteStatus shelf={shelf}/>}
+      {!sharedCatalogMode && demo.favoritesMemoryOnly && <p role="status" className="product-width">{t.favoritesMemoryOnly}</p>}
       <StorefrontNavigation appearance={appearance} onAppearance={setAppearance} />
       <main className="product-main product-width" id="product-main" tabIndex={-1} ref={main}><StorefrontOrigin.Provider value={origin}><StorefrontHistoryBack.Provider value={historyBack}><AccountPurchaseContext.Provider value={accountCart??null}><GuestCartActionsEnabled.Provider value={!accountCart}><Routes>
         <Route path="/" element={permanentCatalogMode && !sharedCatalogMode ? <Navigate to="/catalog" replace /> : <StorefrontHome />} />

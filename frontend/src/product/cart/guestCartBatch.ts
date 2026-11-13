@@ -1,5 +1,6 @@
 import { connectedSku } from '../catalog/localCatalog';
-import { permanentCatalogMode } from '../catalog/permanentCatalog';
+import { permanentCatalogMode, sharedCatalogMode } from '../catalog/permanentCatalog';
+import { guestFavoriteKey, notifyGuestFavorites, sealGuestFavorites } from '../favorites/guestFavoriteHandoff';
 import { MAX_LOCAL_DESIGN_CHARS, queueStudioStorage } from '../studio/session/studioStorage';
 import { emptyGuestPartition, guestFormat, isolateLegacyCart } from './guestCartHandoff';
 import { projectAppliedLoop, readAppliedLoopDesign, type AppliedLoopDesign } from './appliedLoopDesign';
@@ -94,7 +95,8 @@ type Source = 'current'|'firstClaim'|'claimKey'|{intentId:string}|null;
 // A bounded compound-key lookup never examines another buyer's claims.
 function run<T>(ownerId:string|null, current:()=>boolean, mode:IDBTransactionMode,
   source:Source,
-  work:(raw:unknown,pending:unknown,store:IDBObjectStore,pendingKey:string[])=>T, committed?:(value:T)=>void): Promise<T> {
+  work:(raw:unknown,pending:unknown,store:IDBObjectStore,pendingKey:string[],favorites:unknown)=>T,
+  committed?:(value:T)=>void, readGuestFavorites=false): Promise<T> {
   return queueStudioStorage(()=>new Promise<T>((resolve,reject)=>{
     let db:IDBDatabase|undefined, tx:IDBTransaction|undefined, settled=false, result:T;
     let failure:unknown=new Error('GUEST_CART_TRANSACTION');
@@ -129,10 +131,11 @@ function run<T>(ownerId:string|null, current:()=>boolean, mode:IDBTransactionMod
             : source === 'claimKey' && ownerId ? store.getKey(claimKeys(ownerId))
             : source && typeof source==='object' ? store.get(intentKey(source.intentId)) : undefined;
           const pending=ownerId!==null ? store.get(pendingKey) : undefined;
-          (pending ?? raw!).onsuccess=()=>{
+          const favorites=readGuestFavorites ? store.get(guestFavoriteKey) : undefined;
+          (favorites ?? pending ?? raw!).onsuccess=()=>{
             try {
               if(!current()) return fail('ADMISSION_CHANGED');
-              result=work(raw?.result,pending?.result,store,pendingKey);
+              result=work(raw?.result,pending?.result,store,pendingKey,favorites?.result);
             } catch(error){abort(error);}
           };
         } catch(error){abort(error);}
@@ -190,12 +193,15 @@ function heldCart(intent:string,lines:unknown[],d:Record<string,unknown>) {
  * the next buyer starts with a separate editable guest partition. */
 export async function sealGuestCart(stillCurrent:()=>boolean,designLoginIntent?:string):Promise<string|null> {
   if(designLoginIntent!==undefined && !uuid.test(designLoginIntent))return fail('UNPROVEN');
-  const result=await run(null,stillCurrent,'readwrite','current',(raw,_pending,store)=>{
+  const result=await run(null,stillCurrent,'readwrite','current',(raw,_pending,store,_key,favorites)=>{
+    const proposed=designLoginIntent??crypto.randomUUID();
+    const favoriteIntent=sharedCatalogMode ? sealGuestFavorites(favorites,store,proposed) : null;
+    const otherIntent=designLoginIntent??favoriteIntent;
     if(raw===undefined) {
       // Fence an unsaved edit in another document whose CAS baseline is null.
       // An empty sign-in still must not leave that old baseline publishable.
       store.put(emptyGuestPartition(),'current');
-      return {intent:designLoginIntent??null,changed:true};
+      return {intent:otherIntent,changed:true};
     }
     if(typeof raw!=='string') return fail('UNSUPPORTED');
     const eligible=isolateLegacyCart(raw,store,MAX_LOCAL_DESIGN_CHARS);
@@ -210,16 +216,16 @@ export async function sealGuestCart(stillCurrent:()=>boolean,designLoginIntent?:
         if(empty.length>MAX_LOCAL_DESIGN_CHARS) return fail('UNSUPPORTED');
         store.put(empty,'current');
       }
-      return {intent:designLoginIntent??null,changed:true};
+      return {intent:otherIntent,changed:true};
     }
-    const intent=designLoginIntent??crypto.randomUUID();
+    const intent=proposed;
     const held=heldCart(intent,lines,data);
     const next=emptyGuestPartition();
     if(next.length>MAX_LOCAL_DESIGN_CHARS) return fail('UNSUPPORTED');
     store.add(held,intentKey(intent));
     store.put(next,'current');
     return {intent,changed:true};
-  },value=>{ if(value.changed) announcePartition(); });
+  },value=>{ if(value.changed){announcePartition();if(sharedCatalogMode)notifyGuestFavorites();} },sharedCatalogMode);
   return result.intent;
 }
 
