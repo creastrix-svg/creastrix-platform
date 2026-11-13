@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
@@ -130,6 +131,7 @@ public final class OidcTestProvider implements AutoCloseable {
     private final String clientSecret;
     private final String callback;
     private final URI issuer;
+    private final boolean recordTestTraffic;
     private final Map<String, CodeGrant> codes = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Object>> accessTokens = new ConcurrentHashMap<>();
     private final List<Map<String, String>> authorizationRequests = new CopyOnWriteArrayList<>();
@@ -139,17 +141,23 @@ public final class OidcTestProvider implements AutoCloseable {
     private final AtomicInteger userInfoRequests = new AtomicInteger();
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
     private final Map<String, TokenResponseGate> tokenGates = new ConcurrentHashMap<>();
-    private volatile Scenario scenario = Scenario.verified("synthetic|pilot");
+    private volatile Supplier<Scenario> scenarios = () -> Scenario.verified("synthetic|pilot");
 
     public OidcTestProvider(String clientId, String clientSecret, String callback, Clock clock) {
+        this(clientId, clientSecret, callback, clock, 0);
+    }
+
+    /** A fixed loopback port keeps the synthetic issuer stable between local runtime restarts. */
+    public OidcTestProvider(String clientId, String clientSecret, String callback, Clock clock, int port) {
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.callback = callback;
         this.clock = clock;
+        this.recordTestTraffic = port == 0;
         try {
             key = newKey("fixture-key");
             otherKey = newKey("other-key");
-            server = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0), 0);
+            server = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 0);
             issuer = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/");
             server.setExecutor(executor);
             server.createContext("/", this::handle);
@@ -163,7 +171,9 @@ public final class OidcTestProvider implements AutoCloseable {
 
     public URI issuer() { return issuer; }
     public String endpoint(String path) { return issuer.resolve(path).toString(); }
-    public void scenario(Scenario next) { scenario = next; }
+    public void scenario(Scenario next) { scenarios = () -> next; }
+    /** Select once per validated authorization; the single-use code retains that scenario through token exchange. */
+    public void scenarios(Supplier<Scenario> next) { scenarios = next; }
     public List<Map<String, String>> authorizationRequests() { return List.copyOf(authorizationRequests); }
     public List<Map<String, String>> tokenRequests() { return List.copyOf(tokenRequests); }
     public List<String> issuedTokenValues() { return List.copyOf(issuedTokenValues); }
@@ -211,7 +221,7 @@ public final class OidcTestProvider implements AutoCloseable {
         issuedTokenValues.clear();
         userInfoRequests.set(0);
         failure.set(null);
-        scenario = Scenario.verified("synthetic|pilot");
+        scenario(Scenario.verified("synthetic|pilot"));
     }
 
     private void handle(HttpExchange exchange) throws IOException {
@@ -254,7 +264,7 @@ public final class OidcTestProvider implements AutoCloseable {
     private void authorize(HttpExchange exchange) throws IOException {
         require("GET".equals(exchange.getRequestMethod()));
         var request = parameters(exchange.getRequestURI().getRawQuery());
-        authorizationRequests.add(request);
+        if (recordTestTraffic) authorizationRequests.add(request);
         require(clientId.equals(request.get("client_id")));
         require(callback.equals(request.get("redirect_uri")));
         require("code".equals(request.get("response_type")));
@@ -267,7 +277,7 @@ public final class OidcTestProvider implements AutoCloseable {
         require(Set.of(request.getOrDefault("scope", "").split(" "))
                 .equals(Set.of("openid", "profile", "email")));
         String code = UUID.randomUUID().toString();
-        Scenario current = scenario;
+        Scenario current = scenarios.get();
         codes.put(code, new CodeGrant(request, current));
         String state = current.wrongState() ? "not-the-request-state" : request.get("state");
         exchange.getResponseHeaders().set("Location", callback + "?code=" + encode(code)
@@ -281,7 +291,7 @@ public final class OidcTestProvider implements AutoCloseable {
                 (encode(clientId) + ":" + encode(clientSecret)).getBytes(StandardCharsets.UTF_8));
         require(expectedBasic.equals(exchange.getRequestHeaders().getFirst("Authorization")));
         var request = parameters(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-        tokenRequests.add(request);
+        if (recordTestTraffic) tokenRequests.add(request);
         require("authorization_code".equals(request.get("grant_type")));
         CodeGrant grant = codes.remove(request.getOrDefault("code", ""));
         if (grant == null) {
@@ -326,7 +336,7 @@ public final class OidcTestProvider implements AutoCloseable {
         userInfo.putAll(current.userInfoClaims());
         current.missingUserInfoClaims().forEach(userInfo::remove);
         String token = UUID.randomUUID().toString();
-        accessTokens.put(token, Collections.unmodifiableMap(userInfo));
+        if (recordTestTraffic) accessTokens.put(token, Collections.unmodifiableMap(userInfo));
         var jwt = new JWSObject(new JWSHeader.Builder(current.algorithm())
                 .keyID(current.unknownKeyId() ? "unknown-key" : key.getKeyID()).build(),
                 new Payload(JSONObjectUtils.toJSONString(claims)));
@@ -334,7 +344,7 @@ public final class OidcTestProvider implements AutoCloseable {
         String idToken = jwt.serialize();
         json(exchange, 200, Map.of("access_token", token, "token_type", "Bearer",
                 "expires_in", 600, "scope", "openid profile email", "id_token", idToken));
-        issuedTokenValues.addAll(List.of(token, idToken));
+        if (recordTestTraffic) issuedTokenValues.addAll(List.of(token, idToken));
     }
 
     private void jwks(HttpExchange exchange) throws IOException {

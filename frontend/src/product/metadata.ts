@@ -12,20 +12,23 @@ import { checkoutCopy } from './checkout/checkoutCopy';
 import { personalizationCopy } from './studio/personalizationCopy';
 import { studioZoneCopy } from './studio/studioZoneCopy';
 import { catalogCopy } from './browse/catalogCopy';
+import {designLibraryCopy} from './designs/designLibraryCopy';
+import {isDesignLibraryPath} from './routes';
 import { homeCopy } from './home/homeCopy';
-import { isCatalogPath, isTideOfferPath, tideOfferPath, tideReviewRoute } from './routes';
+import { isCatalogOfferHref, isCatalogPath, isTideOfferPath, tideOfferPath, tideReviewRoute } from './routes';
 import { editionCollectionPath, editionCopy, editionItem } from './fixtures/editionCatalog';
 
-export function useProductMetadata(t: ProductCopy, locale: StorefrontLocale) {
+export function useProductMetadata(t: ProductCopy, locale: StorefrontLocale, accountCart = false) {
   const { pathname: rawPath, search } = useLocation();
   const pathname = isTideOfferPath(rawPath) ? tideOfferPath : rawPath.replace(/\/+$/, '') || '/';
   const tideReviews = tideReviewRoute(pathname);
-  const entry = entryForPath(pathname);
+  const entry = isCatalogOfferHref(pathname) ? entryForPath(pathname) : undefined;
   const reviewMatch = pathname.match(/^(.*)\/reviews(\/new)?$/);
   const reviewed = reviewMatch && entryForPath(reviewMatch[1]);
   const info = { help: [t.help, t.helpBody], delivery: [t.delivery, t.deliveryBody], returns: [t.returns, t.returnsBody], contact: [t.contact, t.contactBody], about: [t.about, t.aboutInfo], legal: [t.legal, t.legalBody] };
   let title = t.notFound, description = t.notFoundBody;
   if (pathname === '/') { title = homeCopy[locale].title; description = homeCopy[locale].description; }
+  else if(isDesignLibraryPath(pathname)){title=designLibraryCopy[locale].title;description='';}
   else if (pathname === editionCollectionPath) { title = editionCopy[locale].title; description = editionCopy[locale].intro; }
   else if (entry?.kind === 'offer') { title = entry.name + ' · ' + entry.title[locale]; description = entry.description[locale]; }
   else if (reviewed?.kind === 'offer') {
@@ -47,6 +50,9 @@ export function useProductMetadata(t: ProductCopy, locale: StorefrontLocale) {
     const product = products.length === 1 && products[0] === 'lamp' ? 'Luma' : loopName();
     title = personalizationCopy[locale].eyebrow + ' · ' + product;
     description = studioZoneCopy[locale].intro;
+  }
+  else if (accountCart && (pathname.toLowerCase() === '/preview/cart' || pathname.toLowerCase() === '/preview/checkout')) {
+    title = t.cart; description = t.viewCart;
   }
   else if (pathname === '/preview/cart') { title = t.cart; description = t.cartBoundary; }
   else if (pathname === '/preview/checkout') { title = checkoutCopy[locale].title; description = checkoutCopy[locale].prototypeNote; }

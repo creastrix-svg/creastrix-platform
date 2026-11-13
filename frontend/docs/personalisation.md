@@ -79,7 +79,13 @@ merge. A late old save cannot mark a newer failed/oversized draft saved. Corrupt
 unsupported stored state is retained, with explicit memory-only continuation.
 Quota, unavailable storage and serialization failure show a not-saved notice while
 keeping live work usable. Browser site-data clearing/eviction is outside this local
-durability boundary. No account save/quote/upload/order endpoint is called.
+durability boundary. This browser-only preview does not call account or order endpoints.
+
+The separate local shared-catalog storefront offers **Save design**. The buyer
+can reopen a saved composition from **Account → My designs**, including its
+pictures, text and fonts. Saving does not add a cart item. **Apply design** and
+**Add to cart** select the version to buy; subsequent library edits leave the
+cart version intact. See the [account walkthrough](../../docs/engineering/account-cart-local-run.md).
 Loop uses one illustrative €5 surcharge per personalised unit, independent of
 the number of text or picture layers. The studio previews the draft's unit
 price; the product uses the applied design and each cart line uses its own saved
@@ -131,7 +137,7 @@ studio session, each at most 2 MiB. Luma's base offers only sans, serif and mono
 its front panel offers the bundled Allerta Stencil. A file
 header check precedes browser FontFace decoding, with an eight-second bound and
 owned cleanup. Unique accepted font IDs preserve applied previews and text undo.
-Font files are not transmitted. Rights and available glyphs remain the buyer's
+In the browser-only preview font files are not transmitted. Rights and available glyphs remain the buyer's
 responsibility; browser fallback is not proof of a usable manufacturing font.
 
 Luma is a plywood-lamp example, not another purchasable catalog item. Its prepared
@@ -161,7 +167,7 @@ node --experimental-strip-types --test scripts/generate-lamp-models.test.mjs
 
 The studio supports all seven storefront languages and light/dark appearance.
 Connected AI, computer vision/vector validation, seller-side area authoring,
-authoritative manufacturing limits, saved account designs, commercial cart/order
+authoritative manufacturing limits, public account designs, commercial cart/order
 integration and manufacturing export require later, separately approved slices.
 The owner's accepted direction includes configured personalisation on existing
 stock, but that hybrid workflow is outside the current APPROVED Ready-Made Product

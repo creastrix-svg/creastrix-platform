@@ -11,6 +11,7 @@ import type { ShelfFilter } from './homeShelfCopy';
 import { Icon } from '../Icon';
 import { useProductLocale } from '../useProductLocale';
 import { RatingBadge } from '../reviews/RatingBadge';
+import { publishedPhotoId } from '../catalog/photoRenditions';
 import './homeSpotlight.css';
 
 // Keep a filter when Back restores this history entry, without leaking it to a
@@ -81,7 +82,7 @@ function Shelf({ entryKey }: { entryKey: string }) {
       const title = id + '-' + item.id, material = title + '-material', status = title + '-status';
       return <li key={item.id} className="home-featured-tile">
         <Link to={item.href} className="home-featured-card" aria-labelledby={title} aria-describedby={material + ' ' + status}>
-          <span className="home-featured-media"><FeaturePhoto src={item.thumb} srcSet={item.thumb && item.photo && item.thumb !== item.photo ? item.thumb + ' 480w, ' + item.photo + ' 1024w' : undefined}
+          <span className="home-featured-media"><FeaturePhoto src={item.thumb} srcSet={item.thumb && item.photo && item.thumb !== item.photo && !publishedPhotoId(item.photo, 'detail') ? item.thumb + ' 480w, ' + item.photo + ' 1024w' : undefined}
             sizes="(min-width: 1600px) 370px, (min-width: 1024px) 24vw, (min-width: 780px) 32vw, 48vw" unavailable={copy.noPhotoShort}/></span>
           <span className="home-featured-caption">
             <span className="home-featured-title" id={title}><strong>{item.name}</strong><span>{item.title}</span></span>

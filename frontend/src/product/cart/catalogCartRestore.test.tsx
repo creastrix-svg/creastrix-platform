@@ -2,13 +2,16 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeAll, expect, it, vi } from 'vitest';
-import { createAppStore } from '../../store';
+import { authenticationFinished, authenticationStarted, createAppStore } from '../../store';
+import ProductExperience from '../ProductExperience';
+import { bindAccountCartReader, type AccountCartAdmission } from './accountCartAdmission';
 import * as catalog from '../catalog/localCatalog';
 import { isCartSku } from '../cartSku';
 import { cartAdded, cartHydrated, cartTotal } from '../demoStore';
 import { defaultLettering } from '../studio/design/personalization';
 import { createStudioFontLibrary } from '../studio/design/studioFonts';
 import { saveDesign, sessionWithDocument } from '../studio/session/designSnapshot';
+import { initialStudioComposition } from '../studio/design/studioComposition';
 import PersistentStudio from '../studio/session/PersistentStudio';
 import * as storage from '../studio/session/studioStorage';
 import { unlistedCartNote } from './studioCartCopy';
@@ -36,6 +39,47 @@ afterEach(() => vi.unstubAllGlobals());
 const sketch = (text: string) => ({ selectedId: 'studio-object-7', objects: [{ id: 'studio-object-7', kind: 'text' as const,
   value: { ...defaultLettering('chalk'), text } }] });
 const creative = { drafts: {}, applied: {}, customFonts: [] };
+
+it('hides a restored guest-only unlisted row in account mode and keeps it available on return to the guest cart', async () => {
+  const store = createAppStore('en');
+  const owner = { document: 'page', epoch: 1, request: 1, revision: 'first' };
+  store.dispatch(authenticationStarted({ owner, phase: 'CHECKING', notice: 'NONE' }));
+  store.dispatch(authenticationFinished({ owner, result: { phase: 'AUTHENTICATED', notice: 'NONE', user: { id: 'buyer', status: 'ACTIVE' } } }));
+  const read = vi.fn(), recover = vi.fn();
+  const admission = bindAccountCartReader(store, { read, recover }, { isCurrentOwner: () => true });
+  const retired = { variant: 'retired-standard', quantity: 3 };
+  const original = storage.serializeStudio(initialStudioComposition(), creative, { cart: [], cartSerial: 1 }, [retired]);
+  let disk = original;
+  vi.stubGlobal('indexedDB', {});
+  Object.defineProperty(document, 'fonts', { configurable: true, value: { add: vi.fn(), delete: vi.fn() } });
+  vi.stubGlobal('FontFace', class { async load() { return this; } });
+  const storageCall = vi.spyOn(storage, 'studioStorage').mockImplementation(async (op, value, expected) => {
+    const previous = disk;
+    if (op === 'write') {
+      if (expected !== previous) throw new Error('STALE_WRITE');
+      disk = value!;
+    }
+    return previous;
+  });
+  const page = (accountCart?: AccountCartAdmission) => <Provider store={store}><MemoryRouter initialEntries={['/preview/info/help']}>
+    <ProductExperience accountCart={accountCart} />
+  </MemoryRouter></Provider>;
+  const view = render(page(admission));
+  try {
+    // Exercise the actual persistence gate on a non-cart route; the account cart
+    // route deliberately bypasses it and would not expose the old failure.
+    await waitFor(() => expect(storageCall.mock.calls.some(([op]) => op === 'write')).toBe(true));
+    expect(screen.queryByText(unlistedCartNote.en)).not.toBeInTheDocument();
+    expect(JSON.parse(disk).lines).toEqual([retired]);
+    expect(read).not.toHaveBeenCalled();
+    view.rerender(page());
+    expect(await screen.findByText(unlistedCartNote.en)).toBeVisible();
+    expect(JSON.parse(disk).lines).toEqual([retired]);
+  } finally {
+    view.unmount();
+    admission.dispose();
+  }
+});
 const fonts = () => {
   const library = createStudioFontLibrary();
   vi.spyOn(library, 'loadBuiltin').mockImplementation(async id => ({ id, family: id, label: id }));

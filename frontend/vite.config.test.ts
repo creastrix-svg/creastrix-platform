@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUTH_PROXY_PATTERN, authProxy, catalogProxyPattern, frontendConfig } from './vite.config';
+import { AUTH_PROXY_PATTERN, authProxy, catalogProxyPattern, frontendConfig, mediaProxyPattern, publicMediaProxyGate, publicCatalogProxyGate } from './vite.config';
 const config = frontendConfig('development');
 
 describe('fixed development transport configuration, not a runtime proxy proof', () => {
@@ -32,11 +32,37 @@ describe('fixed development transport configuration, not a runtime proxy proof',
   it('confines the dedicated catalog mode to loopback with no account transport', () => {
     const config = frontendConfig('local-catalog'), route = new RegExp(catalogProxyPattern);
     expect(config.server.proxy).toEqual(config.preview.proxy);
-    expect(Object.keys(config.server.proxy)).toEqual([catalogProxyPattern]);
+    expect(Object.keys(config.server.proxy)).toEqual([catalogProxyPattern, mediaProxyPattern]);
     expect(config.server).toMatchObject({host:'127.0.0.1',port:4174,strictPort:true});
     expect(config.build.outDir).toBe('dist-local-catalog');
     expect(route.test('/api/local-catalog/products')).toBe(true);
     for (const path of ['/api/me','/auth/login','/api/local-catalog/products/extra','/api/local-catalog/private'])
       expect(route.test(path)).toBe(false);
+  });
+  it('forwards only reads of canonical public JPEG renditions in the media namespace', () => {
+    const base = '/api/local-catalog/media/deadbeef-1234-4321-8abc-1234567890ab/';
+    for (const role of ['thumb','detail']) {
+      for (const method of ['GET','HEAD']) {
+        const headers={cookie:'synthetic',authorization:'synthetic','proxy-authorization':'synthetic',accept:'image/jpeg'};
+        expect(publicMediaProxyGate({method,url:base+role+'.jpg',headers})).toBeUndefined();
+        expect(headers).toEqual({accept:'image/jpeg'});
+      }
+    }
+    for (const method of ['POST','PATCH','DELETE']) expect(publicMediaProxyGate({method,url:base+'thumb.jpg',headers:{}})).toBe(false);
+    for (const url of [base+'original.jpg',base+'detail.jpg?role=original',base+'thumb.jpg/other',
+      base.toUpperCase()+'thumb.jpg',base+'thumb.jpg\n','/api/local-catalog/private','/api/me'])
+      expect(publicMediaProxyGate({method:'GET',url,headers:{}})).toBe(false);
+  });
+  it('shares the public catalog before matching the local account API, and never enables account writes in preview', () => {
+    const cfg=frontendConfig('shared-cart-local'), proxy=cfg.server.proxy;
+    expect(cfg.server.port).toBe(4317);
+    expect(Object.keys(proxy)).toEqual([catalogProxyPattern,mediaProxyPattern,AUTH_PROXY_PATTERN]);
+    expect(proxy[catalogProxyPattern]?.target).toBe('http://127.0.0.1:8081');
+    expect(proxy[AUTH_PROXY_PATTERN]?.target).toBe('http://127.0.0.1:8191');
+    expect(cfg.preview.proxy).toEqual({});
+    const req={method:'GET',headers:{cookie:'synthetic',authorization:'synthetic','proxy-authorization':'synthetic',accept:'application/json'}};
+    expect(publicCatalogProxyGate(req)).toBeUndefined();
+    expect(req.headers).toEqual({accept:'application/json'});
+    expect(publicCatalogProxyGate({method:'POST',headers:{}})).toBe(false);
   });
 });

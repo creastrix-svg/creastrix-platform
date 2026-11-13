@@ -1,3 +1,6 @@
+import { permanentCatalogMode } from '../../catalog/permanentCatalog';
+import { isLoopV2Font, loopV2FontBytes } from './loopV2Fonts';
+
 export const standardStudioFonts = ['sans', 'serif', 'mono', 'rounded', 'editorial', 'handwritten'] as const;
 export const builtinStudioFonts = [...standardStudioFonts, 'stencil'] as const;
 export type BuiltinStudioFont = typeof builtinStudioFonts[number];
@@ -30,8 +33,9 @@ export function hasBundledStudioFont(id: BuiltinStudioFont): boolean {
   return Object.hasOwn(fontAssets, id);
 }
 const customFamilies = new Map<StudioFontId, string>();
-const customResources = new Map<StudioFontId, string>();
-export const studioFontResource = (id: StudioFontId) => customResources.get(id);
+const customResources = new Map<StudioFontId, NonNullable<LoadedStudioFont['resource']>>();
+export const studioFontResource = (id: StudioFontId) => customResources.get(id)?.data;
+export const transferableLoopFont = (id:StudioFontId) => isLoopV2Font(id) || ['font.ttf','font.otf'].includes(customResources.get(id)?.name??'');
 let nextCustomFont = 1;
 
 export type StudioFontErrorCode = 'unsupported' | 'tooLarge' | 'limit' | 'invalid' | 'timeout' | 'cancelled' | 'unavailable';
@@ -86,7 +90,7 @@ export function createStudioFontLibrary() {
   const owned = new Map<StudioFontId, OwnedFont>(), pending = new Set<AbortController>();
   let customPending = 0;
 
-  async function load(id: StudioFontId, label: string, family: string, source: () => Promise<string | ArrayBuffer>, weight: string, options: Options): Promise<LoadedStudioFont> {
+  async function load(id: StudioFontId, label: string, family: string, source: (signal:AbortSignal) => Promise<string | ArrayBuffer>, weight: string, options: Options): Promise<LoadedStudioFont> {
     if (options.signal?.aborted) throw new StudioFontError('cancelled');
     const existing = owned.get(id);
     if (existing) return existing.value;
@@ -103,7 +107,7 @@ export function createStudioFontLibrary() {
     const assertCurrent = () => { if (controller.signal.aborted) throw new StudioFontError('cancelled'); };
     try {
       const face = await Promise.race([cancelled, (async () => {
-        const input = await source(); assertCurrent();
+        const input = await source(controller.signal); assertCurrent();
         const candidate = new FontFace(family, input, { weight, style: 'normal', display: 'block' });
         await candidate.load(); assertCurrent();
         return candidate;
@@ -128,11 +132,20 @@ export function createStudioFontLibrary() {
   }
 
   return {
+    /** Reopening a saved design can reference a font already registered in this
+     * exact editor. Reuse its runtime ID; never borrow a face from another owner. */
+    findCustom(data:string):LoadedStudioFont|undefined {
+      for(const [id,entry] of owned){
+        const resource=customResources.get(id);
+        if(resource?.data===data)return {...entry.value,resource};
+      }
+    },
     async loadBuiltin(id: BuiltinStudioFont, options: Options = {}): Promise<LoadedStudioFont> {
       if (options.signal?.aborted) throw new StudioFontError('cancelled');
       const asset = fontAssets[id];
       if (!asset) return Object.freeze({ id, label: id, family: studioFontFamily(id) });
-      return load(id, id, asset.family, async () => `url("${asset.path}") format("truetype")`, asset.weight, options);
+      return load(id, id, asset.family, async signal => permanentCatalogMode && isLoopV2Font(id) ? loopV2FontBytes(id,signal)
+        : `url("${asset.path}") format("truetype")`, asset.weight, options);
     },
     async loadCustom(file: File, options: Options = {}): Promise<LoadedStudioFont> {
       if (options.signal?.aborted) throw new StudioFontError('cancelled');
@@ -155,7 +168,7 @@ export function createStudioFontLibrary() {
           resource = { name: 'font.' + file.name.split('.').at(-1)!.toLowerCase(), data: btoa(binary) };
           return bytes;
         }, '400', options);
-        if (resource) customResources.set(id, resource.data);
+        if (resource) customResources.set(id, resource);
         return Object.freeze({ ...loaded, resource });
       } finally { customPending--; }
     },

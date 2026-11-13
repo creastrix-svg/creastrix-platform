@@ -1,4 +1,6 @@
 import { storefrontLocales, type StorefrontLocale } from '../locale';
+import { publishedPhotoId } from './photoRenditions';
+import { sharedCatalogMode } from './permanentCatalog';
 
 export type CatalogRating = Readonly<{ count: number; average: number | null }>;
 type Localized = Readonly<Record<StorefrontLocale, string>>;
@@ -17,6 +19,13 @@ const object = (v: unknown) => v !== null && typeof v === 'object' && !Array.isA
 const slug = (v: unknown) => typeof v === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v) ? v : invalid();
 const position = (v: unknown) => v === null || (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0) ? v : invalid();
 const photo = (v: unknown) => v === null || (typeof v === 'string' && /^\/(?:product|shop-edition)\/[a-z0-9_-]+\.webp$/.test(v)) ? v : invalid();
+function entryPhotos(e: Record<string, unknown>) {
+  if ((import.meta.env.MODE === 'local-catalog' || sharedCatalogMode) && typeof e.photo === 'string' && typeof e.thumb === 'string') {
+    const id = publishedPhotoId(e.photo, 'detail');
+    if (id && publishedPhotoId(e.thumb, 'thumb') === id) return { photo: e.photo, thumb: e.thumb };
+  }
+  return { photo: photo(e.photo), thumb: photo(e.thumb) };
+}
 function localized(v: unknown, required: boolean): Localized {
   const labels = object(v);
   return Object.freeze(Object.fromEntries(storefrontLocales.map(lang => {
@@ -45,7 +54,7 @@ function entry(raw: unknown): CatalogEntry {
     || (collectionId === null) !== (collectionName === null)) return invalid();
   return Object.freeze({ id, kind, href, name: e.name, collectionId, collectionName, title: localized(e.title, true),
     material: localized(e.material, false), description: localized(e.description, false),
-    categories: Object.freeze(e.categories.map(slug)), photo: photo(e.photo), thumb: photo(e.thumb),
+    categories: Object.freeze(e.categories.map(slug)), ...entryPhotos(e),
     editionOrder: position(e.editionOrder), homeOrder: position(e.homeOrder), rating: rating(e.rating) });
 }
 

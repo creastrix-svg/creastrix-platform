@@ -23,6 +23,11 @@ This page helps readers find the correct source. It is a navigation aid and does
 - [Backend README](../backend/README.md) — backend setup and implementation guidance.
 - [Frontend README](../frontend/README.md) — local startup, feature locations and verification.
 - [Connected local catalog](local-catalog.md) — run the buyer catalog and product cards against a dedicated PostgreSQL database.
+- [Local buyer storefront](engineering/account-cart-local-run.md) — run the shared catalog, synthetic account cart and private design library.
+- [Guest cart at sign-in](engineering/guest-cart-merge.md) — original buyer rules and acceptance examples.
+- [Account cart import contract](engineering/account-cart-import.md) — design equality, atomic receipts and write admission; the runbook describes the implemented local subset.
+- [Account-cart storage decision](engineering/account-cart-activation.md#accepted-storage-decision) — catalog and design ownership, file lifetimes, and gates before enabling writes.
+- [Media storage](engineering/media-storage.md) — private originals, catalogue previews and the boundary between PostgreSQL and file storage.
 - [Personalisation zones](frontend-personalization-zones.md) — configured buyer tools and the gap to production fulfillment.
 - [Local account pilot](authentication-pilot.md) and [provider migration](authentication-provider-migration.md) — current boundaries and operator procedures.
 - [Engineering history](engineering/integration-history.md) — dated integration and verification records, separate from current instructions.

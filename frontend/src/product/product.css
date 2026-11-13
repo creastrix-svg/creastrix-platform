@@ -265,6 +265,8 @@
 .product-section-heading small { color: var(--product-muted); font-size: 12px; font-weight: 400; text-align: end; margin-inline-start: auto; }
 .product-rail-frame { position: relative; min-width: 0; }
 .product-rail { list-style: none; display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 32px) / 3); gap: 16px; padding: 2px 2px 10px; margin: 0; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none; }
+/* Keep offscreen cards’ accessible rating labels inside the rail’s scroll area. */
+.product-rail { position: relative; }
 .product-rail::-webkit-scrollbar { display: none; }
 .product-carousel-similar .product-section-heading { text-align: center; margin-bottom: 18px; }
 .product-carousel-similar .product-rail-frame {

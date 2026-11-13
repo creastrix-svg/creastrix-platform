@@ -19,6 +19,7 @@ import { initialLanguage, LANGUAGE_KEY } from './language';
 import type { Language } from './language';
 import { AUTH_BOUNDARY_KEY } from './authBoundary';
 import { bindAuthenticationLifecycle } from './authenticationLifecycle';
+import { createLocalCartSession, type LocalCartSession } from './product/cart/localCartSession';
 
 const A = { id: '11111111-1111-4111-8111-111111111111', status: 'ACTIVE' };
 const B = { id: '22222222-2222-4222-8222-222222222222', status: 'ACTIVE' };
@@ -37,7 +38,8 @@ function show(path = '/', language: Language = 'en') {
   return { ...view, store, user: userEvent.setup() };
 }
 
-function connected(path = '/account', language: Language = 'en', enabled = true, lifecycle = false) {
+function connected(path = '/account', language: Language = 'en', enabled = true, lifecycle = false,
+                   seal?:LocalCartSession['sealBeforeLogin']) {
   const requests: { path: RequestInfo | URL; init?: RequestInit; resolve: (response: Response) => void; reject: (error: Error) => void }[] = [];
   const fetch = vi.fn<typeof globalThis.fetch>((path, init) => new Promise<Response>((resolve, reject) => { requests.push({ path, init, resolve, reject }); }));
   const store = createAppStore(language);
@@ -53,12 +55,14 @@ function connected(path = '/account', language: Language = 'en', enabled = true,
     finished: (owner, result) => { store.dispatch(authenticationFinished({ owner, result })); },
   });
   controllers.push(runtime);
+  const session=seal ? {...createLocalCartSession(store,runtime,fetch),sealBeforeLogin:seal} : undefined;
+  if(session) lifecycleDisposers.push(session.dispose);
   const binding = lifecycle ? bindAuthenticationLifecycle(runtime) : null;
   if (binding) lifecycleDisposers.push(binding.dispose);
   const started = binding ? binding.started : runtime.start();
   const view = render(<StrictMode><Provider store={store}><AuthenticationContext value={runtime}>
     <EmailConfirmationContext value={lifecycle ? { enabled, fetch } : null}>
-      <MemoryRouter initialEntries={[path]}><App /></MemoryRouter>
+      <MemoryRouter initialEntries={[path]}><App cartSession={session} /></MemoryRouter>
     </EmailConfirmationContext>
   </AuthenticationContext></Provider></StrictMode>);
   const reply = async (index: number, response: Response) => {
@@ -234,11 +238,40 @@ describe('state-bound own-account UI (DOM units, not a browser authentication pr
     expect(form).toHaveAttribute('method', 'post');
     expect(form).toHaveAttribute('action', '/auth/login');
     expect(form).toHaveAttribute('target', '_self');
+    expect(form.querySelector('[name="cart_intent"]')).toBeNull();
     expect(submittedToken).toBe('fixture-echo');
     expect(f.requests.map(request => request.path)).toEqual(['/api/me', '/auth/csrf', '/auth/csrf']);
     expect(f.requests.every(request => request.init?.method === 'GET')).toBe(true);
     expect(localStorage.getItem(LANGUAGE_KEY)).toBeNull();
     expect(Object.keys(JSON.parse(localStorage.getItem('creastrix.auth.boundary')!))).toEqual(['nonce', 'phase']);
+  });
+
+  it.each(['sealed','empty','failure','suspended'] as const)('gates the synthetic native form on a durable, still-owned %s result',async mode=>{
+    let settle!:(id:string|null)=>void, fail!:(reason:Error)=>void;
+    const sealing=new Promise<string|null>((resolve,reject)=>{settle=resolve;fail=reject;});
+    const seal=vi.fn(()=>sealing), f=connected('/login','en',true,false,seal);
+    const submissions:FormData[]=[];
+    vi.spyOn(HTMLFormElement.prototype,'submit').mockImplementation(function(this:HTMLFormElement){submissions.push(new FormData(this));});
+    await f.reply(0,new Response(null,{status:401}));
+    await f.started;
+    await f.user.click(screen.getByRole('button',{name:copy.en.continueLogin}));
+    const data={token:'echo',parameterName:'_csrf',headerName:'X-CSRF-TOKEN'};
+    await f.reply(1,Response.json(data));await f.reply(2,Response.json(data));
+    expect(seal).toHaveBeenCalledTimes(1);
+    expect(submissions).toEqual([]);
+    if(mode==='suspended') act(()=>f.runtime.suspend());
+    await act(async()=>{
+      if(mode==='failure') fail(new Error('quota'));
+      else settle(mode==='empty'?null:A.id);
+    });
+    if(mode==='failure' || mode==='suspended') {
+      expect(submissions).toEqual([]);
+      if(mode==='failure') expect(screen.getByText(copy.en.notice.CART_SEAL_UNAVAILABLE)).toBeVisible();
+    } else {
+      expect(submissions).toHaveLength(1);
+      expect(submissions[0].get('cart_intent')).toBe(mode==='empty'?null:A.id);
+      expect(submissions[0].get('_csrf')).toBe('echo');
+    }
   });
 
   it('clears private DOM/state before logout and labels cleanup-only separately', async () => {

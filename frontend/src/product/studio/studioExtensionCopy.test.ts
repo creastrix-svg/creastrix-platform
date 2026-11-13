@@ -50,7 +50,10 @@ describe('studio extension copy', () => {
       }
       expect(copy.imageFormats, locale).toMatch(/5/u);
       expect(copy.imageFormats, locale).toMatch(/16/u);
-      expect(copy.imageTooLarge, locale).toMatch(/5.*16/u);
+      expect(copy.imageTooLarge, locale).toMatch(/5/u);
+      expect(copy.imageDimensions, locale).toMatch(/16.*8192/u);
+      expect(copy.imageEmptyFile, locale).not.toBe(copy.imageError);
+      expect(copy.imageChooseAgain, locale).not.toBe(copy.imageError);
       for (const format of ['TTF', 'OTF', 'WOFF2']) {
         expect(copy.fontFormats, locale).toContain(format);
         expect(copy.fontInvalid, locale).toContain(format);

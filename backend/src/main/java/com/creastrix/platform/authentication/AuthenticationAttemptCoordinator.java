@@ -130,14 +130,17 @@ final class AuthenticationAttemptCoordinator implements HttpSessionBindingListen
     }
 
     boolean publishLoginIntent(HttpSession session, BrowserSessionContextRegistry contexts, String q,
-                               BrowserSessionContextRegistry.Stamp originalStamp, Clock clock) {
+                               BrowserSessionContextRegistry.Stamp originalStamp, Clock clock,
+                               LocalCartSessionBinding.GuestLogin guestLogin) {
         lock();
         try {
             if (!live(session) || authenticated(session) || originalStamp == null
                     || !originalStamp.equals(contexts.capture(session)) || !contexts.canStart(q, originalStamp)) {
                 return false;
             }
-            session.setAttribute(AuthenticationConfiguration.LOGIN_INTENT, clock.instant());
+            var now=clock.instant();
+            session.setAttribute(AuthenticationConfiguration.LOGIN_INTENT, guestLogin==null ? now
+                    : new LocalCartSessionBinding.Publication(now,guestLogin));
             return true;
         }
         catch (IllegalStateException failure) {
@@ -149,19 +152,31 @@ final class AuthenticationAttemptCoordinator implements HttpSessionBindingListen
 
     enum LoginIntent { ACCEPTED, REQUIRED, ALREADY_AUTHENTICATED }
 
-    LoginIntent consumeLoginIntent(HttpSession session, Clock clock) {
+    LoginIntent consumeLoginIntent(HttpSession session, Clock clock, HttpServletRequest localCartEntry) {
         lock();
         try {
             if (!live(session)) return LoginIntent.REQUIRED;
             if (authenticated(session)) return LoginIntent.ALREADY_AUTHENTICATED;
             Object value = session.getAttribute(AuthenticationConfiguration.LOGIN_INTENT);
             if (value == null) return LoginIntent.REQUIRED;
+            LocalCartSessionBinding.GuestLogin guestLogin = null;
+            if (value instanceof LocalCartSessionBinding.Publication sealed) {
+                // Concurrent POSTs renew one slot. A delayed GET must not take the
+                // newer POST's intent, even when both tabs have the same cookies.
+                if (localCartEntry==null || !sealed.login().query().equals(localCartEntry.getQueryString()))
+                    return LoginIntent.REQUIRED;
+                guestLogin=sealed.login();
+                value=sealed.started();
+            } else if(localCartEntry!=null && localCartEntry.getQueryString()!=null) {
+                return LoginIntent.REQUIRED;
+            }
             // Consume this publication once. Later Q/chain failures never clear or restore the slot.
             session.removeAttribute(AuthenticationConfiguration.LOGIN_INTENT);
             Instant now = clock.instant();
-            return value instanceof Instant start && !start.isAfter(now)
-                    && now.isBefore(start.plus(AuthenticationProperties.FLOW_LIFETIME))
-                    ? LoginIntent.ACCEPTED : LoginIntent.REQUIRED;
+            if (!(value instanceof Instant start) || start.isAfter(now)
+                    || !now.isBefore(start.plus(AuthenticationProperties.FLOW_LIFETIME))) return LoginIntent.REQUIRED;
+            if (guestLogin!=null) localCartEntry.setAttribute(LocalCartSessionBinding.GUEST_INTENT,guestLogin.intent());
+            return LoginIntent.ACCEPTED;
         }
         catch (IllegalStateException failure) {
             if (live(session)) throw failure;

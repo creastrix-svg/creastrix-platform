@@ -101,6 +101,8 @@ describe('creative personalization integration', () => {
     await screen.findByTestId('creative-model'); cutPattern('botanical');
     expect(tab(z.patternTab)).toHaveAttribute('aria-pressed', 'true');
     expect(tab(e.aiTab)).toBeVisible();
+    expect(tab(e.createWithAi)).toBeDisabled();
+    expect(tab(e.createWithAi)).toHaveAccessibleDescription(e.generationUnavailable);
     expect(screen.getByRole('button', { name: e.textTab })).toBeVisible();
     expect(screen.getByRole('button', { name: e.imageTab })).toBeVisible();
     expect(screen.queryByRole('button', { name: e.removeBridges })).toBeNull();
@@ -111,6 +113,7 @@ describe('creative personalization integration', () => {
     expect(tab(e.textTab)).toHaveAttribute('aria-pressed', 'true');
     expect(tab(e.imageTab)).toBeVisible();
     expect(screen.queryByRole('button', { name: z.patternTab })).toBeNull();
+    expect(screen.queryByRole('button', { name: e.createWithAi })).toBeNull();
     expect(screen.queryByRole('button', { name: e.aiTab })).toBeNull();
     expect(screen.queryByRole('group', { name: e.cutout })).toBeNull();
     expect(screen.queryByRole('group', { name: p.inkLabel })).toBeNull();
@@ -218,7 +221,7 @@ describe('creative personalization integration', () => {
     await act(async () => { complete(image(1)); });
     cutPattern('forest');
     expect(mainLamp()).toHaveAttribute('data-image', '');
-    await user.click(zone('base')); expect(tab(c.addImage)).toBeEnabled(); expect(tab(e.imageTab)).toBeDisabled();
+    await user.click(zone('base')); expect(tab(c.addImage)).toBeEnabled(); expect(tab(e.imageTab)).toBeEnabled();
     cutPattern('forest'); expect(mainLamp()).toHaveAttribute('data-image', '');
   });
 
@@ -229,7 +232,7 @@ describe('creative personalization integration', () => {
       void options;
       return id === 'rounded' ? delayed : Promise.resolve({ id, label: id, family: studioFonts.studioFontFamily(id) });
     });
-    vi.spyOn(studioFonts, 'createStudioFontLibrary').mockReturnValue({ loadBuiltin, loadCustom: vi.fn(), dispose: vi.fn() });
+    vi.spyOn(studioFonts, 'createStudioFontLibrary').mockReturnValue({ findCustom:vi.fn(),loadBuiltin, loadCustom: vi.fn(), dispose: vi.fn() });
     const { user } = show(); fireEvent.change(lettering(), { target: { value: 'KEEP' } });
     await user.click(tab('Aa ' + e.fontRounded));
     const signal = loadBuiltin.mock.calls.filter(([id]) => id === 'rounded').at(-1)![1]!.signal!;
@@ -247,7 +250,7 @@ describe('creative personalization integration', () => {
       void options;
       return id === 'rounded' ? delayed : Promise.resolve({ id, label: id, family: studioFonts.studioFontFamily(id) });
     });
-    vi.spyOn(studioFonts, 'createStudioFontLibrary').mockReturnValue({ loadBuiltin, loadCustom: vi.fn(async () => { throw new Error('UNUSED_CUSTOM_FONT'); }), dispose: vi.fn() });
+    vi.spyOn(studioFonts, 'createStudioFontLibrary').mockReturnValue({ findCustom:vi.fn(),loadBuiltin, loadCustom: vi.fn(async () => { throw new Error('UNUSED_CUSTOM_FONT'); }), dispose: vi.fn() });
     const { user } = show(); fireEvent.change(lettering(), { target: { value: 'MIRO' } });
     if (action === 'redo') {
       await user.click(screen.getByRole('button', { name: 'Aa ' + p.serif }));

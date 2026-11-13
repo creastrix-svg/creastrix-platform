@@ -194,7 +194,7 @@
 .studio-tool-tabs button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 65px; padding: 9px 3px; border: 0; border-radius: 7px; background: transparent; color: var(--product-muted); font-size: 11px; line-height: 1.25; }
 .studio-tool-tabs button svg { width: 19px; height: 19px; }
 .studio-tool-tabs button[aria-pressed="true"] { background: var(--product-primary); color: white; }
-.studio-tool-tabs button:hover:not([aria-pressed="true"]) { background: var(--product-soft); color: var(--product-text); }
+.studio-tool-tabs button:enabled:hover:not([aria-pressed="true"]) { background: var(--product-soft); color: var(--product-text); }
 .studio-fonts .studio-custom-fonts { margin-top: 7px; }
 .studio-fonts .studio-font-upload { width: 100%; min-height: 44px; margin-top: 10px; flex-direction: row; gap: 8px; background: transparent; font-size: 11px; }
 .studio-font-upload svg { width: 16px; height: 16px; }
@@ -295,9 +295,11 @@
 .studio-object-add { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
 .studio-object-add > button { flex: 1 1 120px; min-height: 44px; padding: 8px; font-size: 11px; }
 .studio-object-add svg { width: 15px; height: 15px; }
+.studio-object-add .studio-ai-generation small { display: block; font-size: 10px; font-weight: normal; }
 .studio-object-actions { display: flex; align-items: stretch; gap: 6px; margin-top: 9px; }
 .studio-object-actions > button:not(.product-icon-button) { flex: 1; min-width: 0; min-height: 44px; padding: 5px; border: 1px solid var(--product-border); border-radius: 6px; background: var(--product-bg); font-size: 10px; line-height: 1.4; }
 .studio-object-tools button:disabled, .studio-image-fit button:disabled { opacity: .45; cursor: default; }
+.studio-object-add .studio-ai-generation:disabled { opacity: 1; color: var(--product-muted); background: var(--product-soft); border-style: dashed; }
 .product-storefront .studio-object-empty, .product-storefront .studio-object-limit { margin: 10px 0 0; font-size: 11px; line-height: 1.5; }
 .studio-image-fit { margin: 18px 0; padding: 0; border: 0; }
 .studio-image-fit legend { margin-bottom: 9px; font-size: 12px; }

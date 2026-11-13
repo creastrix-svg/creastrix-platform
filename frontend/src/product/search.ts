@@ -2,6 +2,7 @@ import type { StorefrontLocale } from './locale';
 import { mediaForVariant, loopName, loopVariants } from './fixtures/loop';
 import { conceptItems } from './fixtures/conceptItems';
 import { connectedEntries, connectedOffer, entryForId } from './catalog/localCatalog';
+import { thumbnailFor } from './catalog/photoRenditions';
 import { money } from './productDisplay';
 import { productCopy } from './copy';
 import { editionCopy, editionItems } from './fixtures/editionCatalog';
@@ -63,7 +64,7 @@ export function searchCatalog(query: string, language: StorefrontLocale, limit?:
     if (!words.some(word => colourWords.some(part => part.startsWith(word)))) continue;
     const item: SearchResult = {
       kind: 'variant', id: 'loop-' + variant.id, name: loopName() + ' · ' + label, description: subtitle,
-      href: '/products/loop?variant=' + variant.id, photo: mediaForVariant(variant.id).photos[0] ?? '', cents: variant.cents,
+      href: '/products/loop?variant=' + variant.id, photo: thumbnailFor(mediaForVariant(variant.id).photos[0] ?? ''), cents: variant.cents,
     };
     const description = normal(subtitle, language);
     scored.push({ item, score: Math.min(rank(term, words, normal(loopName(), language) + ' ' + colour, description), rank(term, words, colour, description)) });

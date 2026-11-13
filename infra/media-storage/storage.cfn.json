@@ -1,0 +1,116 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Creastrix media storage candidate. Disabled by default; Frankfurt only. No application access is granted.",
+  "Parameters": {
+    "ProvisionStorage": {
+      "Type": "String",
+      "Default": "disabled",
+      "AllowedValues": ["disabled", "enabled"],
+      "Description": "Do not enable without a separately approved deployment and retention plan."
+    }
+  },
+  "Conditions": {
+    "ProvisionInFrankfurt": {
+      "Fn::And": [
+        {"Fn::Equals": [{"Ref": "AWS::Region"}, "eu-central-1"]},
+        {"Fn::Equals": [{"Ref": "ProvisionStorage"}, "enabled"]}
+      ]
+    }
+  },
+  "Resources": {
+    "PrivateOriginals": {
+      "Type": "AWS::S3::Bucket",
+      "Condition": "ProvisionInFrankfurt",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "VersioningConfiguration": {"Status": "Enabled"},
+        "BucketEncryption": {"ServerSideEncryptionConfiguration": [
+          {"ServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}
+        ]},
+        "OwnershipControls": {"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]},
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true, "IgnorePublicAcls": true,
+          "BlockPublicPolicy": true, "RestrictPublicBuckets": true
+        },
+        "Tags": [{"Key": "MediaPurpose", "Value": "private-originals"}]
+      }
+    },
+    "PublishedDerivatives": {
+      "Type": "AWS::S3::Bucket",
+      "Condition": "ProvisionInFrankfurt",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "VersioningConfiguration": {"Status": "Enabled"},
+        "BucketEncryption": {"ServerSideEncryptionConfiguration": [
+          {"ServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}
+        ]},
+        "OwnershipControls": {"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]},
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true, "IgnorePublicAcls": true,
+          "BlockPublicPolicy": true, "RestrictPublicBuckets": true
+        },
+        "Tags": [{"Key": "MediaPurpose", "Value": "published-derivatives"}]
+      }
+    },
+    "PrivateOriginalsPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Condition": "ProvisionInFrankfurt",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Bucket": {"Ref": "PrivateOriginals"},
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "DenyNonTLS",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [{"Fn::GetAtt": ["PrivateOriginals", "Arn"]}, {"Fn::Sub": "${PrivateOriginals.Arn}/*"}],
+              "Condition": {"Bool": {"aws:SecureTransport": "false"}}
+            },
+            {
+              "Sid": "DenyDeletionAndLifecycle",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": ["s3:DeleteBucket", "s3:DeleteObject", "s3:DeleteObjectVersion", "s3:PutLifecycleConfiguration"],
+              "Resource": [{"Fn::GetAtt": ["PrivateOriginals", "Arn"]}, {"Fn::Sub": "${PrivateOriginals.Arn}/*"}]
+            }
+          ]
+        }
+      }
+    },
+    "PublishedDerivativesPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Condition": "ProvisionInFrankfurt",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Bucket": {"Ref": "PublishedDerivatives"},
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "DenyNonTLS",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [{"Fn::GetAtt": ["PublishedDerivatives", "Arn"]}, {"Fn::Sub": "${PublishedDerivatives.Arn}/*"}],
+              "Condition": {"Bool": {"aws:SecureTransport": "false"}}
+            },
+            {
+              "Sid": "DenyDeletionAndLifecycle",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": ["s3:DeleteBucket", "s3:DeleteObject", "s3:DeleteObjectVersion", "s3:PutLifecycleConfiguration"],
+              "Resource": [{"Fn::GetAtt": ["PublishedDerivatives", "Arn"]}, {"Fn::Sub": "${PublishedDerivatives.Arn}/*"}]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

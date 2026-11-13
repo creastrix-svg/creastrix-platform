@@ -2,19 +2,21 @@ import { favoriteSkus, readFavoriteIds } from './favorites';
 import { createSlice, original } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
 import { isVariantId, variants } from './fixtures/loop';
+import { permanentCatalogMode } from './catalog/permanentCatalog';
 import type { VariantId } from './fixtures/loop';
 import { isStorefrontLocale } from './locale';
 import type { StorefrontLocale } from './locale';
 import { readProductPreferences } from './preferences';
 import type { MediaMode, ProductPreferences } from './preferences';
-import { copyDesign, designKey, rebindDesignFonts, visibleDesign } from './studio/session/designSnapshot';
+import { copyDesign, designKey, rebindDesignFonts, visibleDesign, supportsAppliedFonts } from './studio/session/designSnapshot';
 import type { SavedDesign } from './studio/session/designSnapshot';
 import type { StudioFontId } from './studio/design/studioFonts';
 import { cartSkuStock, isCartSku } from './cartSku';
 import type { CartSku } from './cartSku';
 import { readCartSku } from './fixtures/cartSkus';
+import { connectedSku } from './catalog/localCatalog';
 
-export type CartLine<S extends CartSku = CartSku> = { variant: S; quantity: number; id?: string; design?: SavedDesign };
+export type CartLine<S extends CartSku = CartSku> = { variant: S; quantity: number; id?: string; design?: SavedDesign; templateRevision?:string };
 /** A plain line uses its SKU; a design line keeps its own identity through edits and undo. */
 export const cartLineId = (line: Pick<CartLine, 'id' | 'variant'>) => line.id ?? line.variant;
 type Line = CartLine;
@@ -69,7 +71,7 @@ function insertCartLine(state: ProductDemoState, line: Line) {
 }
 
 function reconcilePurchase(state: ProductDemoState, variant: CartSku) {
-  if (!isVariantId(variant)) return; // Only Loop has per-colour draft preferences.
+  if (!isVariantId(variant)) return; // Loop-only draft controls.
   const remaining = cartSkuStock(variant) - variantCartQuantity(state, variant);
   // Zero means unavailable, not a purchase. Released capacity never revives an old excess draft.
   state.purchaseQuantities[variant] = remaining <= 0 ? 0 : Math.max(1, Math.min(state.purchaseQuantities[variant], remaining));
@@ -104,7 +106,8 @@ const slice = createSlice({
     },
     cartAdded(state, { payload }: PayloadAction<Line>) {
       if (!isCartSku(payload.variant) || !Number.isSafeInteger(payload.quantity) || payload.quantity < 1) return;
-      if (payload.design !== undefined && !readCartSku(payload.variant).acceptsDesign) return;
+      if (payload.design !== undefined && (!readCartSku(payload.variant).acceptsDesign
+          || (permanentCatalogMode && !supportsAppliedFonts(payload.design)))) return;
       const sku = payload.variant;
       const design = visibleDesign(payload.design) ? payload.design : undefined;
       const line = state.cart.find(matchesConfiguration(payload.variant, design));
@@ -113,7 +116,8 @@ const slice = createSlice({
       const revision = nextCartRevision(state); if (revision === null) return;
       if (line) line.quantity += Math.min(capacity, payload.quantity);
       else {
-        const next: CartLine = { variant: sku, quantity: Math.min(capacity, payload.quantity), ...(design ? { id: `design-${state.cartSerial++}`, design: copyDesign(design) } : {}) };
+        const next: CartLine = { variant: sku, quantity: Math.min(capacity, payload.quantity), ...(design ? { id: `design-${state.cartSerial++}`, design: copyDesign(design),
+          ...(permanentCatalogMode ? {templateRevision:connectedSku(sku)!.variant.templateRevision ?? connectedSku(sku)!.product.templateRevision} : {}) } : {}) };
         const id = cartLineId(next);
         if (!state.cartOrder.includes(id)) state.cartOrder.push(id);
         insertCartLine(state, next);
@@ -143,6 +147,14 @@ const slice = createSlice({
       state.cart.splice(index, 1); reconcilePurchase(state, line.variant);
       state.cartChange = { revision, kind: 'removed', variant: line.variant, ...(line.id ? { id: line.id } : {}) };
     },
+    cartUndoExpired(state,{payload:through}:PayloadAction<number>){
+      // This is presentation cleanup; active quantities and persistence revisions do not change.
+      const expired=Object.keys(state.cartRemoved).filter(id=>(state.cartRemoved[id]?.revision??Infinity)<=through);
+      if(!expired.length)return;
+      for(const id of expired)delete state.cartRemoved[id];
+      const active=new Set(state.cart.map(cartLineId));
+      state.cartOrder=state.cartOrder.filter(id=>active.has(id)||!!state.cartRemoved[id]);
+    },
     cartLineRestored(state, { payload }: PayloadAction<{ variant: CartSku; revision: number; id?: string }>) {
       if (!isCartSku(payload.variant) || !Number.isSafeInteger(payload.revision) || payload.revision < 1) return;
       const id = cartLineId(payload), removed = state.cartRemoved[id], revision = nextCartRevision(state);
@@ -164,7 +176,9 @@ const slice = createSlice({
     },
     cartDesignChanged(state, { payload }: PayloadAction<{ id: string; expected: string; design: SavedDesign }>) {
       const line = state.cart.find(line => cartLineId(line) === payload.id);
-      if (!line?.design || designKey(line.design) !== payload.expected || !visibleDesign(payload.design)) return;
+      if (!line?.design || (permanentCatalogMode && !isVariantId(line.variant))
+          || designKey(line.design) !== payload.expected || !visibleDesign(payload.design)
+          || (permanentCatalogMode && !supportsAppliedFonts(payload.design))) return;
       line.design = copyDesign(payload.design);
     },
     cartLineDesignCleared(state, { payload }: PayloadAction<{ id: string; variant: CartSku; expected: string }>) {
@@ -189,9 +203,9 @@ const slice = createSlice({
       }
       state.cartChange = { revision, kind: 'other' };
     },
-    cartHydrated(state, { payload }: PayloadAction<{ lines: CartLine[]; serial: number; fontRemap?: Record<string, StudioFontId> }>) {
+    cartHydrated(state, { payload }: PayloadAction<{ lines: CartLine[]; serial: number; fontRemap?: Record<string, StudioFontId>; replaceCaptured?: boolean }>) {
       // Existing live additions win over a late restore. The UI is held during normal hydration.
-      if (state.cart.length || state.cartChange.revision) {
+      if (!payload.replaceCaptured && (state.cart.length || state.cartChange.revision)) {
         // Returning from an account/info route retains Redux lines, but their
         // previous storefront's FontFaces were disposed. Only runtime font IDs
         // are rebound; identities, quantities, designs and removal tokens survive.
@@ -209,12 +223,13 @@ const slice = createSlice({
       }
       state.cart = payload.lines;
       state.cartOrder = payload.lines.map(cartLineId); state.cartRemoved = {};
+      if (payload.replaceCaptured) state.cartChange = { revision: nextCartRevision(state) ?? state.cartChange.revision, kind: 'other' };
       state.cartSerial = payload.serial;
       for (const variant of variants) reconcilePurchase(state, variant.id);
     },
   },
 });
-export const { favoriteStorageReported, favoritesRead, favoriteToggled, favoriteRemoved, cartAdded, cartQuantityChanged, cartLineRemoved, cartLineRestored, cartRemovedLineDismissed, cartDesignChanged, cartLineDesignCleared, cartHydrated, productLocaleSelected, productVariantSelected, purchaseQuantityChanged, productDescriptionChanged, productMediaModeSelected } = slice.actions;
+export const { favoriteStorageReported, favoritesRead, favoriteToggled, favoriteRemoved, cartAdded, cartQuantityChanged, cartLineRemoved, cartUndoExpired, cartLineRestored, cartRemovedLineDismissed, cartDesignChanged, cartLineDesignCleared, cartHydrated, productLocaleSelected, productVariantSelected, purchaseQuantityChanged, productDescriptionChanged, productMediaModeSelected } = slice.actions;
 export default slice.reducer;
 export const cartCount = (state: ProductDemoState) => state.cart.reduce((sum, line) => sum + line.quantity, 0);
 export const cartLinePrice = (line: Pick<CartLine, 'variant' | 'design'>) => {

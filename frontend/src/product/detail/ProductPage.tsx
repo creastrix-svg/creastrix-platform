@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useStore } from 'react-redux';
 import { useAppDispatch, useAppSelector } from '../../hooks';
@@ -11,15 +11,22 @@ import { productCopy } from '../copy';
 import { cartAdded, cartLineDesignCleared, cartLineId, cartLinePrice, configurationCartQuantity, favoriteToggled, productDescriptionChanged, productMediaModeSelected, productVariantSelected, purchaseQuantityChanged, variantCartQuantity, type CartLine } from '../demoStore';
 import { loopPrice } from '../loopPricing';
 import MediaGallery from '../media/MediaGallery';
-import ProductPurchasePanel from './ProductPurchasePanel';
+import ProductPurchasePanel, { ReadOnlyCartNotice } from './ProductPurchasePanel';
+import { GuestCartActionsEnabled } from '../cart/guestCartActions';
+import { AccountPurchaseContext } from '../cart/accountPurchaseContext';
+import { AccountOfferPurchase } from '../cart/AccountOfferPurchase';
+import { OpenPurchasedDesign } from '../cart/OpenPurchasedDesign';
+import { PurchasedDesignUnavailable } from '../cart/PurchasedDesignUnavailable';
 import { loopCarouselContent } from './carouselContent';
-import { connectedMode, entryForId } from '../catalog/localCatalog';
+import { connectedMode, connectedSku, entryForId } from '../catalog/localCatalog';
 import ProductPrice from '../ProductPrice';
 import PersonalizationEntry from '../studio/PersonalizationEntry';
 import { getStudioProduct } from '../studio/studioProducts';
 import { useProductLocale } from '../useProductLocale';
 import { usePersonalizationSession } from '../studio/session/personalizationSession';
-import { designKey, saveDesign, visibleDesign } from '../studio/session/designSnapshot';
+import { designKey, saveDesign, visibleDesign, supportsAppliedFonts } from '../studio/session/designSnapshot';
+import { designFontHint } from '../cart/accountProductLabels';
+import { permanentCatalogMode, sharedCatalogMode } from '../catalog/permanentCatalog';
 import type { SavedDesign } from '../studio/session/designSnapshot';
 import { firstLettering, type CompositionDocument } from '../studio/design/studioComposition';
 import { useDesignDocument } from '../studio/session/useDesignDocument';
@@ -30,10 +37,13 @@ import ProductCardLayout from './ProductCardLayout';
 import { catalogCopy } from '../browse/catalogCopy';
 
 export default function ProductPage() {
+  const guestActions = useContext(GuestCartActionsEnabled);
+  const account=useContext(AccountPurchaseContext);
   const [params] = useSearchParams(), location = useLocation(), navigate = useNavigate();
   const remembered = useAppSelector(state => state.productDemo.selectedVariant), dispatch = useAppDispatch();
   const requested = params.getAll('variant');
   const refs = params.getAll('cartLine'), bound = refs.length > 0;
+  const purchased=params.getAll('accountLine');
   const variantId = requested.length === 0 ? remembered : requested.length === 1 && isVariantId(requested[0]) ? requested[0] : 'cobalt';
   useEffect(() => { if (!bound) dispatch(productVariantSelected(variantId)); }, [dispatch, variantId, bound]);
   function selectVariant(id: VariantId) {
@@ -41,10 +51,23 @@ export default function ProductPage() {
     const next = new URLSearchParams(params); next.set('variant', id);
     // Choosing another finish is ordinary shopping, not an edit to the purchased configuration.
     next.delete('cartLine');
+    next.delete('accountLine');
     // Replace this selection entry, not the history of genuine route changes.
     navigate({ search: '?' + next.toString(), hash: location.hash }, { replace: true, preventScrollReset: true });
   }
+  if(purchased.length){
+    const item=connectedSku(variantId);
+    if(sharedCatalogMode && (!item?.product.personalizable || item.variant.studioFormat!=='surface-print-v1' || item.variant.templateRevision!=='2')){
+      return <PurchasedDesignUnavailable/>;
+    }
+    return sharedCatalogMode && account && purchased.length===1 && !bound && requested.length===1 && requested[0]===variantId && item
+      ? <OpenPurchasedDesign key={purchased[0]} admission={account} variant={variantId} sku={item.variant.sku} lineId={purchased[0]} href={item.product.href}>
+          <CatalogProductCard variantId={variantId} selectVariant={selectVariant}/>
+        </OpenPurchasedDesign>
+      : <CartItemUnavailable/>;
+  }
   if (bound) {
+    if (!guestActions) return <ReadOnlyCartNotice />;
     if (refs.length !== 1 || requested.length !== 1 || !isVariantId(requested[0])) return <CartItemUnavailable/>;
     return <CartLineCard key={variantId} id={refs[0]} variantId={variantId} selectVariant={selectVariant}/>;
   }
@@ -157,10 +180,22 @@ function ProductCard({ variantId, selectVariant, line, design, applied, onClear 
 }
 
 function PurchaseControls({ variantId, unitCents, design }: { variantId: VariantId; unitCents: number; design?: SavedDesign }) {
+  const admission=useContext(AccountPurchaseContext);
+  const item=connectedSku(variantId);
+  if(sharedCatalogMode && admission) {
+    return item && admission.directAdditions && item.variant.directAddSupported
+      ? <AccountOfferPurchase admission={admission} writer={admission.directAdditions} offerId={item.product.id}
+          variant={item.variant} returnTo={item.product.href+'?variant='+item.variant.id} design={design} unitCents={unitCents}/>
+      : <ReadOnlyCartNotice purchase/>;
+  }
+  return <GuestPurchaseControls variantId={variantId} unitCents={unitCents} design={design}/>;
+}
+function GuestPurchaseControls({ variantId, unitCents, design }: { variantId: VariantId; unitCents: number; design?: SavedDesign }) {
   const language = useProductLocale(), t = productCopy[language], variant = variantById(variantId);
   const demo = useAppSelector(state => state.productDemo), dispatch = useAppDispatch();
   const alreadyInCart = useMemo(() => configurationCartQuantity(demo.cart, variantId, design), [demo.cart, variantId, design]);
   const remaining = variant.stock - variantCartQuantity(demo, variantId);
+  if(permanentCatalogMode && design && !supportsAppliedFonts(design)) return <p role="status">{designFontHint[language]}</p>;
   return <ProductPurchasePanel locale={language} stock={variant.stock} remaining={remaining} unitCents={unitCents}
     inCart={alreadyInCart} requested={demo.purchaseQuantities[variantId]} exhaustedLabel={t.allInCart}
     onQuantity={quantity => dispatch(purchaseQuantityChanged({ variant: variantId, quantity }))}

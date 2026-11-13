@@ -72,7 +72,7 @@ describe('personalisation studio', () => {
     expect(text()).toHaveValue('');
     expect(screen.queryByRole('button', { name: z.patternTab })).toBeNull();
     expect(screen.queryByRole('button', { name: e.aiTab })).toBeNull();
-    expect(screen.getByRole('button', { name: e.imageTab })).toBeDisabled();
+    expect(screen.getByRole('button', { name: e.imageTab })).toBeEnabled();
     expect(screen.getByRole('button', { name: studioCompositionCopy.en.addImage })).toBeEnabled();
     await user.click(screen.getByRole('button', { name: 'Pick base surface' }));
     expect(screen.getByRole('button', { name: e.textTab })).toHaveAttribute('aria-pressed', 'true');

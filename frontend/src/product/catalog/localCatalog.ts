@@ -3,24 +3,28 @@ import type { SwatchColors } from '../productDisplay';
 import { isCatalogOfferHref, tideOfferPath } from '../routes';
 import { parseCatalogEntries, unrated, type CatalogRating, type Rail } from './catalogEntries';
 import { expandSellerShelf, lowerShelves } from './recommendationShelves';
+import { permanentCatalogMode, permanentPresentation, sharedCatalogMode } from './permanentCatalog';
+import { publishedPhotoId } from './photoRenditions';
 export type { CatalogRating } from './catalogEntries';
 
-export const catalogEndpoint = '/api/local-catalog/products';
-export const connectedMode = import.meta.env.MODE === 'local-catalog';
+const fixtureAccountCatalog = permanentCatalogMode && !sharedCatalogMode;
+export const catalogEndpoint = fixtureAccountCatalog ? '/api/account-catalog/products' : '/api/local-catalog/products';
+export const connectedMode = import.meta.env.MODE === 'local-catalog' || permanentCatalogMode;
 export type CatalogProductId = 'loop' | 'tide';
 export type LoopFinish = 'cobalt' | 'coral' | 'chalk' | 'cobalt-chalk';
 type Variant<Id extends string = string> = Readonly<{
   id: Id; sku: string; cents: number; previousCents?: number; stock: number;
   name: Readonly<Record<StorefrontLocale, string>>; colors: SwatchColors; checkTone: 'dark' | 'light';
-  photos: readonly string[]; model: string | null;
+  photos: readonly string[]; model: string | null; retainedLoopV2FeeCents?: number; directAddSupported?: true;
+  studioFormat?:'surface-print-v1'; templateRevision?:'2';
 }>;
 type Product<Id extends string = string> = Readonly<{
-  id: string; name: string; href: string; personalizable: boolean; designFeeCents: number; variants: readonly Variant<Id>[];
+  id: string; name: string; href: string; personalizable: boolean; designFeeCents: number; variants: readonly Variant<Id>[]; templateRevision?: string;
 }>;
 export type CatalogProduct = Product;
 export type CatalogVariant = Variant;
 type Cards = Readonly<{loop: Product<LoopFinish>; tide: Product<'cobalt'>}>;
-type Catalog = Cards & ReturnType<typeof parseCatalogEntries> & {
+type Catalog = Partial<Cards> & ReturnType<typeof parseCatalogEntries> & {
   products: readonly Product[]; offersById: ReadonlyMap<string, Product>;
   skus: ReadonlyMap<string, {product: Product; variant: Variant}>;
 };
@@ -33,6 +37,12 @@ function record(raw: unknown): Record<string, unknown> {
 function label(raw: unknown, max: number) {
   return typeof raw === 'string' && raw.trim().length && raw.trim().length <= max ? raw.trim() : invalid();
 }
+// PostgreSQL length(text) counts Unicode characters, not UTF-16 code units.
+function serverLabel(raw: unknown) {
+  if (typeof raw !== 'string') return invalid();
+  const text = raw.trim();
+  return text.length && [...text].length <= 200 ? text : invalid();
+}
 export const isCatalogKey = (raw: unknown): raw is string =>
   typeof raw === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(raw);
 const key = (raw: unknown) => isCatalogKey(raw) ? raw : invalid();
@@ -42,6 +52,8 @@ function integer(raw: unknown) {
   return typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0 && raw <= 1_000_000 ? raw : invalid();
 }
 function localAsset(raw: unknown, extension: 'webp' | 'glb') {
+  if (extension === 'webp' && (sharedCatalogMode || import.meta.env.MODE === 'local-catalog') && typeof raw === 'string'
+      && publishedPhotoId(raw, 'detail')) return raw;
   return typeof raw === 'string' && /^\/(product|shop-edition)\/[a-z0-9_-]+\.(webp|glb)$/.test(raw) && raw.endsWith('.' + extension) ? raw : invalid();
 }
 
@@ -54,10 +66,10 @@ function readProduct(raw: unknown): Product {
   const variants = p.variants.map(rawVariant => {
     const v = record(rawVariant);
     const finish = key(v.id), sku = key(v.sku);
-    if (seen.has(finish) || isReservedCartLineId(sku)) return invalid();
+    if (seen.has(finish) || isReservedCartLineId(sku) || (sharedCatalogMode && sku.length>200)) return invalid();
     seen.add(finish);
     const names = record(v.name);
-    const name = Object.fromEntries(storefrontLocales.map(locale => [locale, label(names[locale], 120)])) as Record<StorefrontLocale, string>;
+    const name = Object.fromEntries(storefrontLocales.map(locale => [locale, permanentCatalogMode ? serverLabel(names[locale]) : label(names[locale], 120)])) as Record<StorefrontLocale, string>;
     if (!Array.isArray(v.colors) || v.colors.length < 1 || v.colors.length > 2
       || !v.colors.every(color => typeof color === 'string' && /^#[\da-f]{6}$/i.test(color))
       || (v.checkTone !== 'light' && v.checkTone !== 'dark') || !Array.isArray(v.photos) || v.photos.length > 10) return invalid();
@@ -68,11 +80,18 @@ function readProduct(raw: unknown): Product {
     if (previousCents !== undefined && previousCents <= cents) return invalid();
     return Object.freeze({ id: finish, sku, name: Object.freeze(name), cents, previousCents, stock,
       colors: Object.freeze([...v.colors]) as SwatchColors, checkTone: v.checkTone,
-      photos: Object.freeze(photos), model: v.model === null ? null : localAsset(v.model, 'glb') });
+      photos: Object.freeze(photos), model: v.model === null ? null : localAsset(v.model, 'glb'),
+      ...(sharedCatalogMode || (fixtureAccountCatalog && v.directAddSupported===true) ? {directAddSupported:true as const} : {}),
+      ...(sharedCatalogMode && p.personalizable && v.studioFormat==='surface-print-v1' && v.templateRevision==='2'
+        ? {studioFormat:'surface-print-v1' as const,templateRevision:'2' as const} : {}),
+      ...(sharedCatalogMode && v.retainedStudioRevision==='2' ? {retainedLoopV2FeeCents:integer(p.designFeeCents)} : {}),
+      ...(permanentCatalogMode && Object.hasOwn(v,'retainedLoopV2FeeCents')
+        ? { retainedLoopV2FeeCents: integer(v.retainedLoopV2FeeCents) } : {}) });
   });
   const designFeeCents = integer(p.designFeeCents);
   if (designFeeCents && !p.personalizable) return invalid();
-  return Object.freeze({ id, name: label(p.name, 200), href, personalizable: p.personalizable, designFeeCents, variants: Object.freeze(variants) });
+  return Object.freeze({ id, name: permanentCatalogMode ? serverLabel(p.name) : label(p.name, 200), href, personalizable: p.personalizable, designFeeCents, variants: Object.freeze(variants),
+    ...(permanentCatalogMode && typeof p.templateRevision === 'string' ? { templateRevision: p.templateRevision } : {}) });
 }
 
 export function parseLocalCatalog(raw: unknown): readonly Product[] {
@@ -140,10 +159,22 @@ export async function fetchCatalog(transport: typeof fetch): Promise<Catalog> {
   if (!response.ok || !response.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
     throw new Error('LOCAL_CATALOG_UNAVAILABLE');
   }
-  const raw: unknown = await response.json(), products = parseLocalCatalog(raw);
+  const payload: unknown = await response.json();
+  const raw = fixtureAccountCatalog ? permanentPresentation(payload) : payload;
+  const products = parseLocalCatalog(raw);
   const offersById = new Map(products.map(p => [p.id, p]));
   const skus = new Map(products.flatMap(product => product.variants.map(variant => [variant.sku, {product,variant}] as const)));
-  return { ...storefrontCatalog(products), ...parseCatalogEntries(raw, products), products, offersById, skus };
+  // A specialised model is a presentation enhancement, never an admission list
+  // for catalogue entries or purchases. Its absence does not invalidate the feed.
+  const candidate=offersById.get('loop');
+  const cards = sharedCatalogMode
+    ? (candidate?.href==='/products/loop' && candidate.variants.length===loopIds.length &&
+        loopIds.every(id=>candidate.variants.some(v=>v.id===id && v.sku===id))
+      ? {loop:cardAdapter(products,'loop','/products/loop',loopIds,id=>id)} : {})
+    : fixtureAccountCatalog
+    ? (offersById.get('loop')?.personalizable ? {loop: cardAdapter(products,'loop','/products/loop',loopIds,id => id)} : {})
+    : storefrontCatalog(products);
+  return { ...cards, ...parseCatalogEntries(raw, products), products, offersById, skus };
 }
 export function loadLocalCatalog(): Promise<Catalog> {
   if (snapshot) return Promise.resolve(snapshot);

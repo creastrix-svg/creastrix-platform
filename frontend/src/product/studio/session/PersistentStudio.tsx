@@ -8,33 +8,54 @@ import { PersonalizationSession, usePersonalizationSession } from './personaliza
 import { StudioCreativeProvider } from './studioCreativeSession';
 import { useStudioCreative } from './studioCreativeContext';
 import { restoreStudio, serializeStudio, studioStorage, type UnavailableCartLine } from './studioStorage';
-import { cartEditNote, studioCartCopy, unlistedCartNote } from '../../cart/studioCartCopy';
+import { cartEditNote, quarantinedCartNote, studioCartCopy, unlistedCartNote } from '../../cart/studioCartCopy';
 import { productCopy } from '../../copy';
 import { useProductLocale } from '../../useProductLocale';
 import { isEditionPath, isTideOfferPath } from '../../routes';
 import { entryForPath } from '../../catalog/localCatalog';
+import { guestPartition, quarantineGuestEdit, subscribeGuestPartition, versionGuestSave } from '../../cart/guestCartBatch';
+import { permanentCatalogMode } from '../../catalog/permanentCatalog';
 
 // Redux outlives the storefront on account routes. Keep its exact CAS
 // baseline with that same lifetime; rereading another tab's record is not
 // permission to publish our retained cart over it. The last bounded local
 // snapshot also restores our own draft/font bytes, not the other tab's design.
 // A full reload creates a new store and hydrates the current stored record.
-type LocalCheckpoint = { expected: string | null; snapshot: string | null; editedUnlisted?: boolean };
+type LocalCheckpoint = { expected: string | null; snapshot: string | null; editedUnlisted?: boolean; archiveId?:string; fenced?:boolean };
 type SaveIntent = Readonly<{ value: string }>;
 const checkpoints = new WeakMap<ReturnType<typeof useAppDispatch>, LocalCheckpoint>();
 
-type StudioGateProps = PropsWithChildren<{ browsingHome?: ReactNode }>;
-export default function PersistentStudio({ children, browsingHome }: StudioGateProps) {
-  const [state, dispatch] = useReducer(compositionReducer, undefined, initialStudioComposition);
-  return <PersonalizationSession.Provider value={{ state, dispatch }}><StudioCreativeProvider><PersistenceGate browsingHome={browsingHome}>{children}</PersistenceGate></StudioCreativeProvider></PersonalizationSession.Provider>;
+async function preserveEdit(owner:LocalCheckpoint) {
+  const base=owner.expected,id=owner.archiveId??=crypto.randomUUID();
+  // An edit can arrive while IDB is committing. Retain the last version of
+  // this very checkpoint before disabling its UI; never grant it a new base.
+  for (;;) {
+    const local=owner.snapshot;
+    if(local===null || local===base || owner.expected!==base) return;
+    const moved=await quarantineGuestEdit(id,base,local);
+    if(owner.expected!==base) return;
+    if(owner.snapshot===local) { if(moved) owner.fenced=true; return; }
+  }
 }
 
-function PersistenceGate({ children, browsingHome }: StudioGateProps) {
+type StudioGateProps = PropsWithChildren<{ browsingHome?: ReactNode; showGuestCartNotices?: boolean }>;
+export default function PersistentStudio({ children, browsingHome, showGuestCartNotices }: StudioGateProps) {
+  const [partition, changed] = useReducer((prior: number) => prior + 1, 0);
+  useEffect(() => subscribeGuestPartition(changed), []);
+  return <StudioPartition key={partition} browsingHome={browsingHome} showGuestCartNotices={showGuestCartNotices}>{children}</StudioPartition>;
+}
+function StudioPartition({ children, browsingHome, showGuestCartNotices }: StudioGateProps) {
+  const [state, dispatch] = useReducer(compositionReducer, undefined, initialStudioComposition);
+  return <PersonalizationSession.Provider value={{ state, dispatch }}><StudioCreativeProvider><PersistenceGate browsingHome={browsingHome} showGuestCartNotices={showGuestCartNotices}>{children}</PersistenceGate></StudioCreativeProvider></PersonalizationSession.Provider>;
+}
+
+function PersistenceGate({ children, browsingHome, showGuestCartNotices = true }: StudioGateProps) {
   const composition = usePersonalizationSession(), creative = useStudioCreative();
   const locale = useProductLocale(), location = useLocation();
-  const editingCart = location.pathname === '/products/loop/personalize' && new URLSearchParams(location.search).has('edit');
+  const editingCart = showGuestCartNotices && location.pathname === '/products/loop/personalize' && new URLSearchParams(location.search).has('edit');
   const demo = useAppSelector(state => state.productDemo), dispatch = useAppDispatch(), c = studioCartCopy[locale];
-  const [phase, setPhase] = useState<'loading' | 'ready' | 'failed' | 'memory'>(() => typeof indexedDB === 'undefined' ? 'memory' : 'loading');
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'failed' | 'memory' | 'conflict'|'quarantined'>(() =>
+    checkpoints.get(dispatch)?.fenced ? 'quarantined' : typeof indexedDB === 'undefined' ? permanentCatalogMode ? 'failed' : 'memory' : 'loading');
   const [result, setResult] = useState<{ intent: SaveIntent; status: 'saved' | 'failed' } | null>(null);
   const [unavailableLines, setUnavailableLines] = useState<UnavailableCartLine[]>([]);
   const [editedUnlisted, setEditedUnlisted] = useState(() => checkpoints.get(dispatch)?.editedUnlisted ?? false);
@@ -47,7 +68,8 @@ function PersistenceGate({ children, browsingHome }: StudioGateProps) {
   // new intent: neither the first A's success nor its failure belongs to it.
   const intent = useMemo(() => snapshot === null ? null : { value: snapshot }, [snapshot]);
   const status = !intent ? 'failed' : result?.intent === intent ? result.status : 'saving';
-  const initial = useRef({ composition, creative, dispatch }), pending = useRef<SaveIntent | null>(null), writing = useRef(false);
+  const initial = useRef({ composition, creative, dispatch, cart, cartSerial, dirtyCart:cart.length>0 || demo.cartChange.revision>0 }),
+    pending = useRef<SaveIntent | null>(null), writing = useRef(false);
   const mounted = useRef(false), checkpoint = useRef<LocalCheckpoint | null>(null);
   useEffect(() => {
     mounted.current = true;
@@ -55,16 +77,45 @@ function PersistenceGate({ children, browsingHome }: StudioGateProps) {
     if (typeof indexedDB !== 'undefined') void studioStorage('read').then(async raw => {
       if (controller.signal.aborted) return;
       const retained = checkpoints.get(start.dispatch);
-      const source = retained ? retained.snapshot : raw;
+      if(retained?.fenced) { setPhase('quarantined'); return; }
+      if(permanentCatalogMode && !retained && start.dirtyCart) {
+        // A memory-only/older mount may leave Redux populated with no CAS
+        // baseline at all. Never attach those bytes to the current partition.
+        try {
+          const local=serializeStudio(start.composition.state,start.creative,start);
+          const archiveId=crypto.randomUUID();
+          await quarantineGuestEdit(archiveId,null,local);
+          checkpoints.set(start.dispatch,{expected:null,snapshot:local,archiveId,fenced:true});
+          if(!controller.signal.aborted) setPhase('quarantined');
+        } catch { if(!controller.signal.aborted) setPhase('conflict'); }
+        return;
+      }
+      const repartitioned = !!retained && guestPartition(raw) !== guestPartition(retained.expected);
+      if (repartitioned && retained.snapshot !== retained.expected) {
+        try {
+          await preserveEdit(retained);
+          if (!controller.signal.aborted) setPhase(retained.fenced ? 'quarantined' : 'conflict');
+        } catch {
+          // Storage may still be unavailable. Keep the dirty checkpoint in
+          // memory; do not allow a memory-only continuation to publish it.
+          if (!controller.signal.aborted) setPhase('conflict');
+        }
+        return;
+      }
+      if (controller.signal.aborted) return;
+      // Captured units now belong to an immutable pending batch. Never restore
+      // them from retained Redux state or grant its old checkpoint a new baseline.
+      const source = retained && !repartitioned ? retained.snapshot : raw;
       if (source !== null) {
         const restored = await restoreStudio(source, start.creative.fonts(), controller.signal);
         if (controller.signal.aborted) return;
         start.composition.dispatch({ type: 'restore', state: restored.composition });
         start.creative.restore?.(restored);
-        start.dispatch(cartHydrated({ lines: restored.lines, serial: restored.serial, fontRemap: restored.fontRemap }));
+        start.dispatch(cartHydrated({ lines: restored.lines, serial: restored.serial, fontRemap: restored.fontRemap,
+          ...(repartitioned ? { replaceCaptured: true } : {}) }));
         setUnavailableLines(restored.unavailableLines);
       }
-      checkpoint.current = retained ?? { expected: raw, snapshot: raw };
+      checkpoint.current = retained && !repartitioned ? retained : { expected: raw, snapshot: raw };
       checkpoints.set(start.dispatch, checkpoint.current);
       setPhase('ready');
     }).catch(() => {
@@ -74,7 +125,12 @@ function PersistenceGate({ children, browsingHome }: StudioGateProps) {
         start.creative.fonts().dispose(); setPhase('failed');
       }
     });
-    return () => { controller.abort(); mounted.current = false; pending.current = null; };
+    return () => {
+      controller.abort(); mounted.current = false;
+      // The last queued synthetic save keeps its own original CAS. Let it
+      // complete there or archive on conflict even if the route has unmounted.
+      if(!permanentCatalogMode) pending.current = null;
+    };
   }, []);
   useEffect(() => {
     if (phase !== 'ready' || !checkpoint.current) return;
@@ -85,13 +141,25 @@ function PersistenceGate({ children, browsingHome }: StudioGateProps) {
       if (writing.current) return;
       writing.current = true;
       try {
-        while (pending.current !== null) {
+        while (pending.current !== null && !checkpoint.current!.fenced) {
           const attempt = pending.current; pending.current = null;
+          const owner = checkpoint.current!;
           try {
-            const owner = checkpoint.current!;
-            await studioStorage('write', attempt.value, owner.expected); owner.expected = attempt.value;
+            const stored = versionGuestSave(attempt.value, owner.expected);
+            await studioStorage('write', stored, owner.expected);
+            owner.expected = stored;
+            owner.archiveId=undefined;
+            if (owner.snapshot === attempt.value) owner.snapshot = stored;
             if (mounted.current) setResult({ intent: attempt, status: 'saved' });
-          } catch { if (mounted.current) setResult({ intent: attempt, status: 'failed' }); }
+          } catch {
+            if(permanentCatalogMode) {
+              try { await preserveEdit(owner); } catch { /* No durable claim; keep original checkpoint for remount. */ }
+            }
+            if (mounted.current) {
+              if(owner.fenced) setPhase('quarantined');
+              else setResult({ intent: attempt, status: 'failed' });
+            }
+          }
         }
       } finally { writing.current = false; }
     }
@@ -102,12 +170,14 @@ function PersistenceGate({ children, browsingHome }: StudioGateProps) {
   const publicHome = browsingHome !== undefined && (location.pathname === '/' ||
     (isEditionPath(location.pathname) && !isTideOfferPath(location.pathname) && entryForPath(location.pathname)?.kind !== 'offer'));
   if (!publicHome && phase === 'loading') return <p role="status" className="studio-local-status">{c.loading}</p>;
-  if (!publicHome && phase === 'failed') return <section className="studio-local-status" role="alert"><p>{c.restoreFailed}</p><button type="button" onClick={() => setPhase('memory')}>{c.memory}</button></section>;
+  if (phase === 'quarantined') return <p className="studio-local-status" role="status" data-guest-edit-quarantined>{quarantinedCartNote[locale]}</p>;
+  if (phase === 'conflict') return showGuestCartNotices ? <p className="studio-local-status" role="alert">{c.saveFailed}</p> : <>{children}</>;
+  if (!publicHome && phase === 'failed') return <section className="studio-local-status" role="alert"><p>{c.restoreFailed}</p>{!permanentCatalogMode && <button type="button" onClick={() => setPhase('memory')}>{c.memory}</button>}</section>;
   // Browsing needs no routine save announcements, but an editable cart preview
   // must still disclose a failed save, even after its last line is removed.
-  const homeCartNotSaved = (demo.cart.length > 0 || demo.cartChange.revision > 0 || unavailableLines.length > 0 || editedUnlisted)
+  const homeCartNotSaved = showGuestCartNotices && (demo.cart.length > 0 || demo.cartChange.revision > 0 || unavailableLines.length > 0 || editedUnlisted)
     && (phase === 'memory' || (phase === 'ready' && status === 'failed'));
-  return <>{unavailableLines.length > 0 && <aside className="studio-local-status">
+  return <>{showGuestCartNotices && unavailableLines.length > 0 && <aside className="studio-local-status">
     <p>{unlistedCartNote[locale]}</p>
     {location.pathname.replace(/\/+$/, '') === '/preview/cart'
       ? <ul>{unavailableLines.map(({ variant, quantity }) => <li key={variant}>{variant} × {quantity}{' '}

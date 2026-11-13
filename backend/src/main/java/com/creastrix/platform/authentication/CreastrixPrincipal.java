@@ -13,7 +13,10 @@ import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
 /** Server-session principal; never a response DTO or browser authority. */
 public record CreastrixPrincipal(UUID userId, Identity identity, Instant authenticatedAt,
-                                OidcUser providerUser) implements OidcUser {
+                                OidcUser providerUser, Long cartEligibility) implements OidcUser {
+    public CreastrixPrincipal(UUID userId, Identity identity, Instant authenticatedAt, OidcUser providerUser) {
+        this(userId,identity,authenticatedAt,providerUser,null);
+    }
     @Override
     public String getName() { return userId.toString(); }
     @Override

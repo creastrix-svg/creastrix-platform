@@ -67,6 +67,11 @@ public final class AccountController {
     @PostMapping("/auth/login")
     public void login(Authentication authentication, HttpServletRequest request, HttpServletResponse response)
             throws IOException {
+        login(authentication,request,response,null);
+    }
+
+    void login(Authentication authentication, HttpServletRequest request, HttpServletResponse response,
+               LocalCartSessionBinding cart) throws IOException {
         if (authentication != null && authentication.isAuthenticated()
                 && !(authentication instanceof AnonymousAuthenticationToken)) {
             AuthenticationConfiguration.jsonError(response, 409);
@@ -74,12 +79,31 @@ public final class AccountController {
         }
         var session = request.getSession(false);
         var coordinator = AuthenticationAttemptCoordinator.existing(session);
+        var stamp=contexts.capture(session);
+        var q=BrowserSessionContextRegistry.cookie(request);
+        LocalCartSessionBinding.GuestLogin guestLogin=null;
+        if(cart!=null) {
+            if(coordinator==null || !contexts.canStart(q,stamp)) {
+                AuthenticationConfiguration.jsonError(response,409);
+                return;
+            }
+            // Commit the one-use nonce outside the servlet mutex. Publication still
+            // rechecks the captured stamp after this I/O; a lost reservation stays spent.
+            try { guestLogin=cart.reserveGuestLogin(request); }
+            catch(LocalCartSessionBinding.Refusal | com.creastrix.platform.accountcart.LocalCartCommands.Conflict refused) {
+                AuthenticationConfiguration.jsonError(response,409);
+                return;
+            } catch(com.creastrix.platform.accountcart.LocalCartCommands.Unavailable unavailable) {
+                AuthenticationConfiguration.jsonError(response,503);
+                return;
+            }
+        }
         if (coordinator == null || !coordinator.publishLoginIntent(session, contexts,
-                BrowserSessionContextRegistry.cookie(request), contexts.capture(session), clock)) {
+                q, stamp, clock, guestLogin)) {
             AuthenticationConfiguration.jsonError(response, 409);
             return;
         }
-        AuthenticationConfiguration.redirect(response, properties.entryUri());
+        AuthenticationConfiguration.redirect(response, properties.entryUri()+(guestLogin==null ? "" : "?"+guestLogin.query()));
     }
 
     @GetMapping("/api/me")

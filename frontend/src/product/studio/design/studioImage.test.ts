@@ -41,11 +41,14 @@ describe('bounded raster header parsing', () => {
     ['PNG', png(1200, 800)], ['JPEG baseline', jpeg(1200, 800)], ['JPEG progressive', jpeg(1200, 800, 194)],
     ['WebP extended', webp('VP8X', 1200, 800)], ['WebP lossy', webp('VP8 ', 1200, 800)], ['WebP lossless', webp('VP8L', 1200, 800)],
   ])('reads %s without decoding pixels', (_name, bytes) => expect(rasterDimensions(bytes)).toEqual({ width: 1200, height: 800 }));
-  it.each([new Uint8Array(), new Uint8Array([255, 216, 255]), new TextEncoder().encode('<svg></svg>'), png(0, 1), png(1, 0), jpeg(20, 10).slice(0, 13)])('rejects unsupported/truncated/zero dimensions', bytes => {
+  it.each([new Uint8Array(), new TextEncoder().encode('<svg></svg>')])('rejects unsupported formats', bytes => {
     expect(() => rasterDimensions(bytes)).toThrowError(new StudioImageError('type'));
   });
+  it.each([new Uint8Array([255,216,255]), png(0,1), png(1,0), jpeg(20,10).slice(0,13)])('recognises an unreadable supported raster', bytes => {
+    expect(() => rasterDimensions(bytes)).toThrowError(new StudioImageError('decode'));
+  });
   it.each([png(8193, 1), png(1, 8193), png(4001, 4000)])('rejects over-limit dimensions before decoding', bytes => {
-    expect(() => rasterDimensions(bytes)).toThrowError(new StudioImageError('size'));
+    expect(() => rasterDimensions(bytes)).toThrowError(new StudioImageError('dimensions'));
   });
   it('accepts exact pixel/edge limits and respects a subarray byte offset', () => {
     expect(rasterDimensions(png(4000, 4000))).toEqual({ width: 4000, height: 4000 });
@@ -56,6 +59,15 @@ describe('bounded raster header parsing', () => {
 });
 
 describe('local image decoding and ownership', () => {
+  it.each(['', 'application/octet-stream'])('recognises a valid JPEG from its contents with opaque MIME %j', async type => {
+    decode.mockResolvedValue(bitmap(200,100));
+    await expect(loadStudioImage(new File([jpeg(200,100).buffer as ArrayBuffer],'picture.jpg',{type}))).resolves.toHaveProperty('aspect',2);
+    expect(decode).toHaveBeenCalledOnce();
+  });
+  it.each(['','application/octet-stream'])('rejects unsupported contents despite a JPG extension and opaque MIME %j', async type=>{
+    await expect(loadStudioImage(new File(['<svg/>'],'fake.jpg',{type}))).rejects.toEqual(new StudioImageError('type'));
+    expect(decode).not.toHaveBeenCalled();
+  });
   it('scales proportionally, canonicalizes to a local PNG and closes the bitmap without network/storage', async () => {
     const decoded = bitmap(3000, 1500), source = file(png(3000, 1500)), network = vi.fn(), storage = vi.spyOn(Storage.prototype, 'setItem');
     vi.stubGlobal('fetch', network); decode.mockResolvedValue(decoded);
@@ -77,7 +89,8 @@ describe('local image decoding and ownership', () => {
   it.each(['empty', 'bytes', 'mime', 'header', 'pixels'])('rejects %s before invoking the decoder', async failure => {
     const source = failure === 'empty' ? new File([], 'empty.png', { type: 'image/png' }) : failure === 'mime' ? file(png(), 'image/svg+xml') : failure === 'header' ? file(new Uint8Array([1, 2, 3])) : failure === 'pixels' ? file(png(4001, 4000)) : file();
     if (failure === 'bytes') vi.spyOn(source, 'size', 'get').mockReturnValue(STUDIO_IMAGE_BYTES + 1);
-    await expect(loadStudioImage(source)).rejects.toBeInstanceOf(StudioImageError);
+    const reason={empty:'empty',bytes:'size',mime:'type',header:'type',pixels:'dimensions'} as const;
+    await expect(loadStudioImage(source)).rejects.toEqual(new StudioImageError(reason[failure as keyof typeof reason]));
     expect(decode).not.toHaveBeenCalled();
   });
   it.each(['read-reject', 'read-throw', 'decode-reject', 'decode-throw'])('normalizes %s and removes timer/abort listener', async failure => {

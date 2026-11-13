@@ -1,6 +1,6 @@
 /** Local raster previews only. SVG/HTML are deliberately not accepted here. */
 export type StudioImage = { id: number; src: string; canvas: HTMLCanvasElement; aspect: number };
-export type StudioImageErrorCode = 'type' | 'size' | 'decode';
+export type StudioImageErrorCode = 'type' | 'size' | 'dimensions' | 'empty' | 'decode';
 export class StudioImageError extends Error {
   constructor(readonly code: StudioImageErrorCode) { super('STUDIO_IMAGE_' + code.toUpperCase()); }
 }
@@ -9,6 +9,7 @@ export const STUDIO_IMAGE_BYTES = 5 * 1024 * 1024;
 // Internal restoration has a separate bounded envelope, not a relaxed uploader.
 export const STUDIO_NORMALIZED_IMAGE_BYTES = 10 * 1024 * 1024;
 export const STUDIO_IMAGE_PIXELS = 16_000_000;
+const MAX_EDGE = 8192;
 let nextImageId = 0;
 
 /** Read dimensions before decoding, so a tiny compressed file cannot request an
@@ -18,7 +19,8 @@ export function rasterDimensions(bytes: Uint8Array): { width: number; height: nu
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const ascii = (at: number, text: string) => [...text].every((character, i) => bytes[at + i] === character.charCodeAt(0));
   let width = 0, height = 0;
-  if (bytes.length >= 24 && bytes[0] === 137 && ascii(1, 'PNG\r\n\x1a\n') && ascii(12, 'IHDR')) {
+  if (bytes[0] === 137 && ascii(1, 'PNG\r\n\x1a\n')) {
+    if (bytes.length < 24 || !ascii(12, 'IHDR')) throw new StudioImageError('decode');
     width = view.getUint32(16); height = view.getUint32(20);
   } else if (bytes.length >= 12 && ascii(0, 'RIFF') && ascii(8, 'WEBP')) {
     if (bytes.length >= 30 && ascii(12, 'VP8X')) {
@@ -42,17 +44,21 @@ export function rasterDimensions(bytes: Uint8Array): { width: number; height: nu
       }
       at += size;
     }
-  }
-  if (!width || !height) throw new StudioImageError('type');
-  if (width > 8192 || height > 8192 || width * height > STUDIO_IMAGE_PIXELS) throw new StudioImageError('size');
+  } else throw new StudioImageError('type');
+  if (!width || !height) throw new StudioImageError('decode');
+  if (width > MAX_EDGE || height > MAX_EDGE || width * height > STUDIO_IMAGE_PIXELS) throw new StudioImageError('dimensions');
   return { width, height };
 }
 
 export const loadStudioImage = (file: File, signal?: AbortSignal) => decodeStudioImage(file, signal, false);
 export const loadNormalizedStudioImage = (file: File, signal?: AbortSignal) => decodeStudioImage(file, signal, true);
 async function decodeStudioImage(file: File, signal: AbortSignal | undefined, normalized: boolean): Promise<StudioImage> {
-  if (!file.size || file.size > (normalized ? STUDIO_NORMALIZED_IMAGE_BYTES : STUDIO_IMAGE_BYTES)) throw new StudioImageError('size');
-  if (!(normalized ? ['image/png'] : ['image/png', 'image/jpeg', 'image/webp']).includes(file.type)) throw new StudioImageError('type');
+  if (!file.size) throw new StudioImageError('empty');
+  if (file.size > (normalized ? STUDIO_NORMALIZED_IMAGE_BYTES : STUDIO_IMAGE_BYTES)) throw new StudioImageError('size');
+  // OS file pickers can leave MIME blank or generic, particularly for a file
+  // exported by another app. The bounded raster header and browser decoder,
+  // not the suffix or this hint, determine whether we can actually use it.
+  if (!(normalized ? ['image/png'] : ['', 'application/octet-stream', 'image/png', 'image/jpeg', 'image/webp']).includes(file.type)) throw new StudioImageError('type');
   const aborted = () => new DOMException('Image loading cancelled', 'AbortError');
   if (signal?.aborted) throw aborted();
   const bytes = new Uint8Array(await new Promise<ArrayBuffer>((resolve, reject) => {
@@ -85,14 +91,19 @@ async function decodeStudioImage(file: File, signal: AbortSignal | undefined, no
   });
   try {
     if (signal?.aborted) throw aborted();
-    if (!bitmap.width || !bitmap.height || bitmap.width * bitmap.height > STUDIO_IMAGE_PIXELS) throw new StudioImageError('size');
+    if (!bitmap.width || !bitmap.height) throw new StudioImageError('decode');
+    if (bitmap.width > MAX_EDGE || bitmap.height > MAX_EDGE || bitmap.width * bitmap.height > STUDIO_IMAGE_PIXELS) throw new StudioImageError('dimensions');
     const scale = Math.min(1, 1536 / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
     const context = canvas.getContext('2d');
     if (!context) throw new StudioImageError('decode');
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    return { id: ++nextImageId, src: canvas.toDataURL('image/png'), canvas, aspect: canvas.width / canvas.height };
+    const src=canvas.toDataURL('image/png');
+    // Newly picked bytes need a usable normalized PNG. Restore callers already
+    // own a validated PNG and retain its exact original bytes as design identity.
+    if (!normalized && (!src.startsWith('data:image/png;base64,') || src.length === 'data:image/png;base64,'.length)) throw new StudioImageError('decode');
+    return { id: ++nextImageId, src, canvas, aspect: canvas.width / canvas.height };
   } finally { bitmap.close(); }
 }
 

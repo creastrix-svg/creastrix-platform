@@ -6,7 +6,7 @@ export type User = { id: string; status: 'ACTIVE' };
 export type Phase = 'CHECKING' | 'ANONYMOUS' | 'AUTHENTICATED' | 'TRANSITION'
   | 'RECOVERY_REQUIRED' | 'DENIED' | 'UNAVAILABLE';
 export type Notice = 'NONE' | 'SESSION_MISSING' | 'PEER_CHANGED' | 'STORAGE_UNAVAILABLE'
-  | 'DEV_ONLY' | 'REQUEST_UNAVAILABLE' | 'LOGOUT_UNKNOWN' | 'SECURITY_DENIED'
+  | 'DEV_ONLY' | 'REQUEST_UNAVAILABLE' | 'CART_SEAL_UNAVAILABLE' | 'LOGOUT_UNKNOWN' | 'SECURITY_DENIED'
   | 'LOCAL_LOGOUT_COMPLETED' | 'CLEANUP_ONLY' | 'RECOVERY_READY' | 'RECOVERY_READY_CLEANUP_ONLY'
   | 'LOGIN_NAVIGATION' | 'SUSPENDED';
 export type Outcome = { phase: Phase; notice: Notice; user: User | null };
@@ -182,10 +182,17 @@ export function createAuthentication(options: {
     });
   }
 
+  // Positive document ownership for private UI, not server authorisation.
+  // Use the same live shared marker as reveal, even before storage events arrive.
+  function isCurrentOwner(owner: Owner) {
+    return !suspended && !disposed && boundary.current(owner);
+  }
+
   return {
+    isCurrentOwner,
     start() { if (started || disposed) return Promise.resolve(); started = true; return check(true); },
     recheck() { return check(); },
-    async login(submit: (token: Csrf) => void) {
+    async login(submit: (token: Csrf) => void, beforeSubmit?: (current:()=>boolean)=>Promise<void>) {
       if (navigating) return;
       if (active?.kind !== 'me' && active !== null) return;
       const op = begin('login', true);
@@ -193,6 +200,11 @@ export function createAuthentication(options: {
       await run(op, async () => {
         const token = await echo(op);
         if (!token || !owns(op)) return;
+        if (beforeSubmit) {
+          try { await Promise.race([beforeSubmit(()=>!op.abort.signal.aborted && owns(op)),op.deadline]); }
+          catch { if(owns(op)) finish(op,outcome('UNAVAILABLE','CART_SEAL_UNAVAILABLE')); return; }
+          if (op.abort.signal.aborted || !owns(op)) return;
+        }
         options.finished(op.owner, outcome('TRANSITION', 'LOGIN_NAVIGATION'));
         if (!owns(op)) return;
         // Only this still-owned synchronous callback may submit a native top-level form.
@@ -211,7 +223,7 @@ export function createAuthentication(options: {
       return check(); // No shared nonce write: focus/pageshow must not start mutual invalidation loops.
     },
     reveal(owner: Owner) {
-      if (!suspended && !disposed && boundary.current(owner)) options.openPrivate();
+      if (isCurrentOwner(owner)) options.openPrivate();
     },
     dispose() { if (!disposed) { boundary.dispose(); disposed = true; } },
   };

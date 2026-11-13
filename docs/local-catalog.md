@@ -42,6 +42,15 @@ which products can serve the same purpose. V9 restricts offer links to the
 three supported detail route families: `/products/:slug`, `/collections/objects/:slug`
 and `/preview/items/:slug`. The same detail paths support reviews. Plain SKUs
 cannot use `design-<number>`, which identifies personalisation lines in the cart.
+V12–V13 bound SKU, product ID and variant ID to 200 ASCII slug characters.
+A SKU permanently identifies one product and variant, and that pair cannot receive
+a different SKU. Price, stock, name and photos can change. A seller can withdraw
+and later relist the original variant, but cannot give its SKU to another item:
+even a buyer opening an old page before their first purchase will not add a substitute.
+The identity ledger contains no buyer data and survives removal of a catalog row.
+The shared cart refuses to start against the older catalog; it checks the identity
+triggers and protocol bounds on the source at startup. Stop the cart before changing
+catalog schema or restoring a database snapshot. Hot schema rollback is not supported.
 Use `CREASTRIX_PG_BIN` if the PostgreSQL server binaries are not found.
 Use `bash backend/tools/local-catalog-db.sh psql` to inspect or edit **only the
 dedicated local catalog**, for example:
@@ -103,8 +112,9 @@ Stop the frontend and backend with Ctrl+C, then run
   items), not reviews or purchases by real people. No text reviews, accounts
   or verified-purchase claims are generated. This slice reads summaries;
   it does not collect or publish buyer reviews.
-- **Presentation:** React formats amounts and discounts. The database selects
-  media paths; the files themselves, UI labels and studio tools stay in the frontend.
+- **Presentation:** React formats amounts and discounts. Until an operator supplies a
+  cover, the existing bundled photos are used. A seller-supplied cover uses two
+  server-generated images; private originals are never included in the feed.
 
 The connected client reads one catalog snapshot on page load, so list and
 detail agree on the price for the same variant. Reload to see a committed
@@ -129,8 +139,51 @@ before replacing the entire feed. Deleting every seed today is not a supported
 way to switch this build to a different catalog.
 
 The endpoint is read-only. A displayed price is not a checkout quote; adding
-an item to the existing browser cart does not write to the database or
+an item to the guest browser cart on port 4174 does not write to the database or
 reserve anything. The seeded product rows and their variants are **local catalog
 data**, not a shortcut to exposing Ready-Made Product inventory, creating a
 Listing, or accepting a manufacturing order. The [domain specifications](domain/README.md)
 retain their existing approval status.
+
+The [shared local buyer storefront](engineering/account-cart-local-run.md#use-the-same-catalog-as-the-storefront)
+reads this same catalog and writes purchases to the separate local account cart.
+The catalog service itself has no buyer mutation endpoint.
+
+## Publish a local seller photo
+
+Start the catalog and storefront as described above. From the repository root:
+
+```sh
+bash backend/tools/catalog-photo.sh compile
+bash backend/tools/catalog-photo.sh seller loop cobalt
+# For Tide, start another session: bash backend/tools/catalog-photo.sh seller tide cobalt
+```
+
+Open the private five-minute link printed in the terminal, choose one JPEG or PNG
+and select **Publish local photo**. The page identifies the product and variant.
+Use the link only on this computer; do not put it in an issue or share it in chat.
+The operator acts for Creastrix using local OS access, not a buyer or marketplace
+seller login. The storefront itself has no upload route. If the outcome of a
+submission cannot be confirmed, check the current cover before starting another.
+
+The server creates a thumbnail (long edge up to 480 px) and a larger display photo
+(up to 1600 px). Both preserve proportions, honour supported orientation metadata
+and never enlarge small images. The display files are JPEGs: transparency is
+composited on white and source metadata is omitted. Originals must be no larger
+than 12 MiB, 24 megapixels and 12,000 px on either side. For PNG use sRGB samples
+without an embedded ICC profile (untagged samples are interpreted as sRGB). Supported
+RGB JPEG profiles are converted on read. If an image is rejected, export an RGB
+JPEG in sRGB; do not simply strip a wide-gamut or linear profile from unchanged pixels.
+Animated and unsupported colour formats are refused without changing the cover.
+
+Reload [the catalog](http://127.0.0.1:4174/catalog): the tile loads the thumbnail;
+the product card and expanded gallery load the larger photo. Publication changes
+only the cover of the chosen variant. Other finishes and gallery images stay in
+place. Superseded cover URLs stop serving files; copies already downloaded by buyers
+cannot be revoked.
+
+The dedicated catalog state directory contains `product-media/originals` and
+`product-media/derivatives`, both private. PostgreSQL selects which derivatives
+buyers may retrieve; it never exposes an original's key. Keep these directories
+outside every web root and back them up together with PostgreSQL. There is no
+automatic deletion or third-party seller management.

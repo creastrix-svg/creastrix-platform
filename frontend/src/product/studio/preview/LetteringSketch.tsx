@@ -11,12 +11,13 @@ import type { StudioObject } from '../design/studioComposition';
 import StudioObjectsSketch from './StudioObjectsSketch';
 import type { StudioObjectInteraction } from './StudioObjectsSketch';
 import { loopProjection } from './loopSketchProjection';
+import type { SwatchColors } from '../../productDisplay';
 
-type Props = StudioObjectInteraction & { objects?: readonly StudioObject[]; variant: VariantId; value: Lettering; artwork?: ImagePlacement; label: string; areaLabel?: string; guides?: boolean; ghost?: string; detail?: boolean; onMove?: (x: number, y: number) => void; onMoveEnd?: () => void };
+type Props = StudioObjectInteraction & { objects?: readonly StudioObject[]; variant: VariantId; colors?:SwatchColors; value: Lettering; artwork?: ImagePlacement; label: string; areaLabel?: string; guides?: boolean; ghost?: string; detail?: boolean; onMove?: (x: number, y: number) => void; onMoveEnd?: () => void };
 
 /** A front elevation, deliberately labelled as a sketch rather than a photograph. */
-export default function LetteringSketch({ variant, value, artwork, objects, selectedId, onSelectObject, onMoveObject, label, areaLabel, guides = false, ghost = '', detail = false, onMove, onMoveEnd }: Props) {
-  const id = useId(), colors = variantById(variant).colors;
+export default function LetteringSketch({ variant, colors: appliedColors, value, artwork, objects, selectedId, onSelectObject, onMoveObject, label, areaLabel, guides = false, ghost = '', detail = false, onMove, onMoveEnd }: Props) {
+  const id = useId(), colors = appliedColors ?? variantById(variant).colors;
   const drag = useSketchDrag(value, onMove, onMoveEnd);
   const { body, lower, layers, rim, opening, foot } = loopProjection;
   const lines = value.text.split('\n');

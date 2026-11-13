@@ -16,6 +16,15 @@ export const cartEditNote: Record<StorefrontLocale, string> = {
   fr: 'Les modifications sont conservées après «Enregistrer cette création du panier».',
   it: 'Le modifiche vengono conservate solo con «Salva il design di questa riga».',
 };
+export const quarantinedCartNote: Record<StorefrontLocale, string> = {
+  en: 'Edits from an earlier guest cart were saved separately in this browser. They were not added to the current cart. Reload this page to open the current cart.',
+  de: 'Änderungen an einem früheren Gastwarenkorb wurden in diesem Browser separat gespeichert, nicht dem aktuellen Warenkorb hinzugefügt. Lade die Seite neu, um den aktuellen Warenkorb zu öffnen.',
+  ru: 'Изменения из прежней гостевой корзины сохранены в этом браузере отдельно и не добавлены в текущую корзину. Перезагрузите страницу, чтобы открыть текущую корзину.',
+  pl: 'Zmiany w poprzednim koszyku gościa zapisano osobno w tej przeglądarce. Nie dodano ich do obecnego koszyka. Odśwież stronę, aby go otworzyć.',
+  es: 'Los cambios del carrito de invitado anterior se guardaron por separado en este navegador. No se añadieron al carrito actual. Recarga la página para abrirlo.',
+  fr: 'Les modifications du précédent panier invité ont été conservées séparément dans ce navigateur, sans être ajoutées au panier actuel. Rechargez la page pour ouvrir le panier actuel.',
+  it: 'Le modifiche al precedente carrello ospite sono state salvate separatamente in questo browser, senza aggiungerle al carrello attuale. Ricarica la pagina per aprire il carrello attuale.',
+};
 export const stockShortageNote: Record<StorefrontLocale, string> = {
   en: 'There are fewer units available than requested. Reduce the quantity or remove the item to continue.',
   de: 'Der Bestand reicht nicht mehr aus. Reduziere die Menge oder entferne den Artikel, um fortzufahren.',

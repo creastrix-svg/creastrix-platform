@@ -2,9 +2,14 @@
 
 The Java backend stores users, organizations, workspaces and ready-made stock in
 PostgreSQL. It also supports a local, owner-only Cognito sign-in. A separate,
-opt-in [local catalog profile](../docs/local-catalog.md) reads Loop and Tide for
+opt-in [local catalog profile](../docs/local-catalog.md) serves products for
 the storefront. It uses its own database and does not handle accounts, cart
 writes or checkout.
+
+The [local buyer storefront](../docs/engineering/account-cart-local-run.md)
+uses that same catalog and a separate account database. Its synthetic test
+buyers can import a guest cart, edit quantities and save personal designs.
+The normal application and the Cognito pilot do not enable these writes.
 
 ## Running tests
 

@@ -28,7 +28,7 @@ const p = personalizationCopy.en, c = studioCompositionCopy.en, e = studioExtens
 beforeEach(() => {
   vi.mocked(loadStudioImage).mockReset();
   vi.spyOn(fonts, 'createStudioFontLibrary').mockReturnValue({
-    loadBuiltin: vi.fn(id => Promise.resolve({ id, label: id, family: fonts.studioFontFamily(id) })), loadCustom: vi.fn(), dispose: vi.fn(),
+    findCustom:vi.fn(),loadBuiltin: vi.fn(id => Promise.resolve({ id, label: id, family: fonts.studioFontFamily(id) })), loadCustom: vi.fn(), dispose: vi.fn(),
   });
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => ({
     font: '', measureText(this: { font: string }, text: string) { return { width: text.length * parseFloat(this.font) * .6 }; },
@@ -65,6 +65,28 @@ const zone = (id: 'base' | 'panel') => within(screen.getByRole('group', { name: 
 const lampObjects = (part: 'base' | 'panel'): StudioObject[] => JSON.parse(screen.getByTestId(part + '-objects').textContent!);
 
 describe('multiple-object studio integration', () => {
+  it('opens the picker from the picture tool when no image exists and leaves the text intact', async () => {
+    vi.mocked(loadStudioImage).mockResolvedValueOnce(image(1));
+    const { user } = show(); setText('KEEP');
+    await choosePicture(user, e.imageTab);
+    expect(document.querySelector('.studio-preview-card image')).toHaveAttribute('href', image(1).src);
+    expect(stageObjects().map(node=>node.textContent)).toContain('KEEP');
+    expect(button(e.imageTab)).toHaveAttribute('aria-pressed','true');
+  });
+  it.each(['add','replace'] as const)('does not apply old content during a pending picture %s', async mode => {
+    const {user}=show();setText('KEEP');
+    if(mode==='replace'){vi.mocked(loadStudioImage).mockResolvedValueOnce(image(1));await choosePicture(user,c.addImage);}
+    let finish!: (i:StudioImage)=>void;
+    vi.mocked(loadStudioImage).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+    const field=screen.getByLabelText(e.uploadImage,{selector:'input'});
+    await user.click(button(mode==='add'?c.addImage:e.replaceImage));
+    expect(button(p.apply)).toBeDisabled();
+    fireEvent.change(field,{target:{files:[file()]}});
+    expect(button(p.apply)).toBeDisabled();
+    await act(async()=>{finish(image(2));});
+    expect(button(p.apply)).toBeEnabled();
+    expect(document.querySelector('.studio-preview-card image')).toHaveAttribute('href',image(2).src);
+  });
   it('selects, reorders and deletes independent text objects with shared undo and separate applied snapshots', async () => {
     const { user, store } = show();
     setText('ONE');
